@@ -1,2 +1,3 @@
-# zero
-A minimal compouting environment
+# Zero
+
+A minimal computing environment
