@@ -25,7 +25,7 @@ for my $f(@files)                                                               
  {my $s = readFile($f);                                                         # Load file
   my $t = swapFilePrefix $f, $home;
   my $w = writeFileUsingSavedToken($user, $repo, $t, $s);
-  lll "$w $s $t";
+  #lll "$w $s $t";
  }
 
 my $d = dateTimeStamp;
