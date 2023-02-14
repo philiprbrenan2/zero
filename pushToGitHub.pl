@@ -47,6 +47,10 @@ jobs:
       with:
         ref: 'main'
 
+    - name: Install Data::Dump
+      run: |
+        sudo cpan install -T Data::Dump
+
     - name: Zero
       run: |
         perl emulator.pl
