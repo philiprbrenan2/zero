@@ -47,15 +47,9 @@ jobs:
       with:
         ref: 'main'
 
-    - name: Download other repos
+    - name: Cpan
       run: |
-        curl -sL https://github.com/philiprbrenan/DataTableText/archive/refs/heads/main.zip > DataTableText.zip
-        unzip DataTableText
-        cp -R DataTableText-main/* .
-
-    - name: Install Data::Dump
-      run: |
-        sudo cpan install -T Data::Dump
+        sudo cpan install -T Data::Dump Data::Table::Text
 
     - name: Zero
       run: |
