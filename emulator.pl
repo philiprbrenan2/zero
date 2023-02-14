@@ -64,13 +64,26 @@ sub emulate($%)                                                                 
     compare => sub
      {my ($i) = @_;                                                             # Instruction
      },
+    load      => sub                                                            # Load data from the locations addressed by the source array into the target array
+     {my ($i) = @_;                                                             # Instruction
+      my $s  = $i->source;
+      my $t  = $i->target;
 
+      if (isScalar $s)                                                          # Broadcast location of
+       {confess "Scalar not allowed for load";
+       }
+      else
+       {for my $i(keys @$t)
+         {$memory[$$t[$i]] = $memory[$memory[$$s[$i]]];
+         }
+       }
+     },
     move     => sub                                                             # Move data moves data from one part of memory to another - "set", by contrast, sets variables from constant values
      {my ($i) = @_;                                                             # Instruction
       my $s  = $i->source;
       my $t  = $i->target;
 
-      if (isScalar $s)
+      if (isScalar $s)                                                          # Broadcast location of
        {for my $i(keys @$t)
          {$memory[$$t[$i]] = $s;
          }
@@ -84,10 +97,10 @@ sub emulate($%)                                                                 
     out     => sub                                                              # Accumulate output as an array of words
      {my ($i) = @_;                                                             # Instruction
       my $s = $i->source;
-      if (isScalar $s)
+      if (isScalar $s)                                                          # Write a string
        {push @out, $i->source;
        }
-      else
+      else                                                                      # Write memory locations
        {for my $j(keys @$s)
          {push @out, $memory[$$s[$j]];
          }
@@ -98,12 +111,12 @@ sub emulate($%)                                                                 
       my $s  = $i->source;
       my $t  = $i->target;
 
-      if (isScalar $s)
+      if (isScalar $s)                                                          # Broadcast one value
        {for my $i(keys @$t)
          {$memory[$$t[$i]] = $s;
          }
        }
-      else
+      else                                                                      # Set multiple values
        {for my $i(keys @$t)
          {$memory[$$t[$i]] = $$s[$i];
          }
@@ -144,6 +157,17 @@ if (1)                                                                          
    ]);
   is_deeply $r->out->[0], 2;
   is_deeply $r->count,    3;
+ }
+
+if (1)                                                                          # Load
+ {my $r = emulate
+   ([instruction(action=>'set',  source=>[1..4], target=>[1..4]),
+     instruction(action=>'load', source=>[4],    target=>[3]),
+     instruction(action=>'load', source=>[3..4], target=>[1..2]),
+     instruction(action=>'out',  source=>[1..4]),
+   ]);
+  is_deeply $r->out, [(4) x 4];
+  is_deeply $r->count,    4;
  }
 
 if (1)                                                                          # 1+2 -> 3
