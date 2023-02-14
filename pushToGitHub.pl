@@ -21,11 +21,11 @@ expandWellKnownWordsInMarkDownFile                                              
 
 push my @files, searchDirectoryTreesForMatchingFiles($home, qw(.pl .md));        # Files
 
-for my $f(@files)                                                               # Upload each selected file
- {my $s = readFile($f);                                                         # Load file
-  my $t = swapFilePrefix $f, $home;
-  my $w = writeFileUsingSavedToken($user, $repo, $t, $s);
-  #lll "$w $s $t";
+for my $s(@files)                                                               # Upload each selected file
+ {my $c = readFile($s);                                                         # Load file
+  my $t = swapFilePrefix $s, $home;
+  my $w = writeFileUsingSavedToken($user, $repo, $t, $c);
+  lll "$w $s $t";
  }
 
 my $d = dateTimeStamp;
