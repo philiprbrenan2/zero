@@ -44,8 +44,8 @@ sub emulate($%)                                                                 
   my $count;                                                                    # Instruction count
   my @memory;                                                                   # Memory
 
-  my %instructions =
-   (add      => sub
+  my %instructions =                                                            # Instruction definitions
+   (add      => sub                                                             # Add two arrays to make a third array
      {my ($i) = @_;                                                             # Instruction
       my $s1 = $i->source_1;
       my $s2 = $i->source_2;
@@ -79,6 +79,14 @@ sub emulate($%)                                                                 
          }
        }
      },
+    inc       => sub                                                            # Increment locations in memory. The first location is incremented by 1, the next by two, etc.
+     {my ($i) = @_;                                                             # Instruction
+      my $t  = $i->target;
+
+      for my $i(keys @$t)
+       {$memory[$$t[$i]] += $i + 1;
+       }
+     },
     jump      => sub                                                            # Jump to the target location
      {my ($i) = @_;                                                             # Instruction
       my $t   = $i->target;
@@ -89,7 +97,7 @@ sub emulate($%)                                                                 
        {$instructionPointer = $memory[$$t[0]];
        }
      },
-    jumpEq    => sub                                                            # Jump to all the target locations for which the corresponding source location is set to zero for equal
+    jumpEq    => sub                                                            # Jump to the target location if the tested memory area is set to zero indicating an equal comparison
      {my ($i) = @_;                                                             # Instruction
       my $s   = $i->source;
       my $t   = $i->target;
@@ -129,6 +137,9 @@ sub emulate($%)                                                                 
          }
        }
      },
+    nop       => sub                                                            # No operation
+     {my ($i) = @_;                                                             # Instruction
+     },
     out     => sub                                                              # Write source as output to an array of words
      {my ($i) = @_;                                                             # Instruction
       my $s = $i->source;
@@ -141,7 +152,7 @@ sub emulate($%)                                                                 
          }
        }
      },
-    set     => sub                                                              # Place data into memory
+    set     => sub                                                              # Place constant data into memory
      {my ($i) = @_;                                                             # Instruction
       my $s  = $i->source;
       my $t  = $i->target;
@@ -159,6 +170,27 @@ sub emulate($%)                                                                 
      },
    );
 
+  my %labels;                                                                   # Load labels
+
+  for my $c(keys @$code)                                                        # Each instruction
+   {my $i = $$code[$c];
+    next unless $$i{label};
+    if (my $l = $i->label)                                                      # Label
+     {$labels{$l} = $c;                                                         # Point label to instruction
+     }
+   }
+
+  for my $c(keys @$code)                                                        # Each instruction
+   {my $i = $$code[$c];
+    next unless $i->action =~ m(\Ajump)i;
+    if (my $l = $i->target)                                                     # Label
+     {next unless isScalar($l);                                                 # Not an array
+      next if $l =~ m/\A[-+]?\d+\Z/;                                            # Not an integer
+      $i->target = $labels{$l};                                                 # Point target keyword to target instruction
+     }
+   }
+
+
   for(;;)                                                                       # Each instruction in the code until we hit an undefined instruction
    {my $i = $$code[$instructionPointer++];
     last unless $i;
@@ -172,6 +204,7 @@ sub emulate($%)                                                                 
     out    => [@out],
     counts => {%counts},
     count  => $count,
+    labels => {%labels},
     memory => [@memory],
    );
  }
@@ -210,6 +243,15 @@ if (1)                                                                          
   is_deeply $r->count,    4;
  }
 
+if (1)                                                                          # Inc
+ {my $r = emulate
+   ([instruction(action=>'inc',     target=>[0..2]),
+     instruction(action=>'out',     source=>[0..2]),
+   ]);
+  is_deeply $r->out, [1,2,3];
+  is_deeply $r->count,     2;
+ }
+
 if (1)                                                                          # 1+2 -> 3
  {my $r = emulate
    ([instruction(action=>'set',  source=>[1,2], target=>[0,1]),
@@ -221,11 +263,9 @@ if (1)                                                                          
  }
 
 if (1)                                                                          # For loop with direct jump targets
- {my @i;
-  my %label;
-  my $r = emulate                             #0 1 2 3 4 5 6
-   ([instruction(action=>'set',     source  =>[0,1,3,0,1,6],      target=>[0..6]), #0 Count 1,2,3
-     instruction(action=>'add',     source_1=>[0], source_2=>[1], target=>[0]), #1 Increment
+ {my $r = emulate                             #0 1 2 3
+   ([instruction(action=>'set',     source  =>[0,1,3,0],       target=>[0..3]), #0 Count 1,2,3
+     instruction(action=>'add',     source_1=>[0], source_2=>[1], target=>[0]), #1 Increment at start of loop
      instruction(action=>'out',     source  =>[0]),                             #2 Print
      instruction(action=>'compare', source_1=>[0], source_2=>[2], target=>[3]), #3 Compare result to m[3]
      instruction(action=>'jumpEq',  source  => 3,                 target=> 6),  #4 Goto end of loop
@@ -236,11 +276,9 @@ if (1)                                                                          
  }
 
 if (1)                                                                          # For loop with indirect jump targets
- {my @i;
-  my %label;
-  my $r = emulate                             #0 1 2 3 4 5 6
-   ([instruction(action=>'set',     source  =>[0,1,3,0,1,6],      target=>[0..6]), #0 Count 1,2,3
-     instruction(action=>'add',     source_1=>[0], source_2=>[1], target=>[0]), #1 Increment
+ {my $r = emulate                             #0 1 2 3 4 5 6
+   ([instruction(action=>'set',     source  =>[0,1,3,0,1,6],   target=>[0..6]), #0 Count 1,2,3
+     instruction(action=>'add',     source_1=>[0], source_2=>[1], target=>[0]), #1 Increment at start of loop
      instruction(action=>'out',     source  =>[0]),                             #2 Print
      instruction(action=>'compare', source_1=>[0], source_2=>[2], target=>[3]), #3 Compare result to m[3]
      instruction(action=>'jumpEq',  source  => 3,                 target=>[5]), #4 m[5] contains location of end of loop
@@ -248,4 +286,19 @@ if (1)                                                                          
    ]);
   is_deeply $r->out, [1,2,3];
   is_deeply $r->count,   15;
+ }
+
+latest:;
+if (1)                                                                          # For loop with labels
+ {my $r = emulate                             #0 1 2 3 4 5 6
+   ([instruction(action=>'set',     source  =>[0,1,3,0,1,6],   target=>[0..6]), #0 Count 1,2,3
+     instruction(action=>'inc',     target  =>[0], label=>"loop"),              #1 Increment at start of loop
+     instruction(action=>'out',     source  =>[0]),                             #2 Print
+     instruction(action=>'compare', source_1=>[0], source_2=>[2], target=>[3]), #3 Compare result to m[3]
+     instruction(action=>'jumpEq',  source  => 3,  target=>"loopEnd"),          #4 Jump to end of loop
+     instruction(action=>'jump',                   target=>"loop"),             #5 Restart loop
+     instruction(action=>'nop',                    label =>"loopEnd"),          #6 End of loop
+   ]);
+  is_deeply $r->out, [1,2,3];
+  is_deeply $r->count,   16;
  }
