@@ -192,6 +192,17 @@ sub emulate($%)                                                                 
          }
        }
      },
+    shiftBlockLeft => sub                                                       # Move a block of longs referenced by the target operand of length the source operand one long to the left
+     {my ($i) = @_;                                                             # Instruction
+      my $S = $i->source;
+      my $s = isScalar($S) ? $S : $memory[$S];                                  # Dereference length if necessary
+      my $T = $i->target;
+      my $t = isScalar($T) ? $T : $memory[$T];                                  # Dereference target if necessary
+
+      for my $i(0..$s-2)                                                          # Move block
+       {$memory[$t+$i] = $memory[$t+$i+1];
+       }
+     },
    );
 
   my %labels;                                                                   # Load labels
@@ -326,7 +337,6 @@ if (1)                                                                          
   is_deeply $r->count,   16;
  }
 
-latest:;
 if (1)                                                                          # For loop with labels
  {my $r = emulate                             #0 1 2
    ([instruction(action=>'set',     source  =>[0,3,0], target=>[0..2]),         #0 Index, limit, compare
@@ -337,4 +347,14 @@ if (1)                                                                          
    ]);
   is_deeply $r->out, [1,2,3];
   is_deeply $r->count,   13;
+ }
+
+latest:;
+if (1)                                                                          # For loop with labels
+ {my $r = emulate
+   ([instruction(action=>'set', source =>[0..3], target=>[0..3]),               #0 Block to move
+     instruction(action=>'shiftBlockLeft', source=>3, target =>0),              #1 Shift left
+     instruction(action=>'out', source =>[0..3]),                               #2 Print
+   ]);
+  is_deeply $r->out, [1,2,2,3];
  }
