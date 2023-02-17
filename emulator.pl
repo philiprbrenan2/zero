@@ -46,15 +46,8 @@ sub emulate($%)                                                                 
 
   my sub jumpOp($$)                                                             # Jump to the target location if the tested memory area if the condition is matched
    {my ($i, $check) = @_;                                                       # Instruction, check
-    my $t = $i->target;
-    if (&$check)                                                                # Check if condition is met
-     {if (isScalar($t))
-       {$instructionPointer = $t;                                               # Constant target
-       }
-      else
-       {$instructionPointer = $memory[$$t[0]];                                  # Target is in memory
-       }
-     }
+    my $T = $i->target; my $t  = isScalar($T) ? $T : $memory[$$T[0]];
+    $instructionPointer = $t if &$check;                                        # Check if condition is met
    }
 
   my %instructions =                                                            # Instruction definitions
@@ -161,6 +154,16 @@ sub emulate($%)                                                                 
          }
        }
      },
+    moveBlock => sub                                                            # Move a block of data from the first source operand to the target operand.  The length of the move is determined by the second source operand.  The source block and the target block may overlap.
+     {my ($i) = @_;                                                             # Instruction
+      my $S1 = $i->source_1; my $s1 = isScalar($S1) ? $S1 : $memory[$S1];
+      my $S2 = $i->source_2; my $s2 = isScalar($S2) ? $S2 : $memory[$S2];
+      my $T  = $i->target;   my $t  = isScalar($T)  ? $T  : $memory[$T];
+
+      my @b;                                                                    # Buffer the data being moved to avoid overwrites
+      push @b, $memory[$s1+$_] for 0..$s2-1;
+      $memory[$t+$_] = $b[$_]  for 0..$s2-1;
+     },
     nop       => sub                                                            # No operation
      {my ($i) = @_;                                                             # Instruction
      },
@@ -194,10 +197,8 @@ sub emulate($%)                                                                 
      },
     shiftBlockLeft => sub                                                       # Move a block of longs referenced by the target operand of length the source operand one long to the left
      {my ($i) = @_;                                                             # Instruction
-      my $S = $i->source;
-      my $s = isScalar($S) ? $S : $memory[$S];                                  # Dereference length if necessary
-      my $T = $i->target;
-      my $t = isScalar($T) ? $T : $memory[$T];                                  # Dereference target if necessary
+      my $S = $i->source; my $s = isScalar($S) ? $S : $memory[$S];              # Dereference length if necessary
+      my $T = $i->target; my $t = isScalar($T) ? $T : $memory[$T];              # Dereference target if necessary
 
       for my $i(0..$s-2)                                                        # Move block
        {$memory[$t+$i] = $memory[$t+$i+1];
@@ -369,13 +370,22 @@ if (1)                                                                          
   is_deeply $r->out, [1,2,2,3];
  }
 
+if (1)                                                                          # For loop with labels
+ {my $r = emulate
+   ([instruction(action=>'set', source =>[0..3], target=>[0..3]),               #0 Block to move
+     instruction(action=>'shiftBlockRight', source=>3, target =>0),             #1 Shift left
+     instruction(action=>'out', source =>[0..3]),                               #2 Print
+   ]);
+  is_deeply $r->out, [0,0,1,3];
+ }
+
 latest:;
 if (1)                                                                          # For loop with labels
  {my $r = emulate
    ([instruction(action=>'set', source =>[0..3], target=>[0..3]),               #0 Block to move
-     instruction(action=>'shiftBlockRight', source=>3, target =>0),              #1 Shift left
+     instruction(action=>'moveBlock', source_1=>1, source_2=>2, target=>0),     #1 Shift left
      instruction(action=>'out', source =>[0..3]),                               #2 Print
    ]);
-# say STDERR "AAAA", dump($r);
-  is_deeply $r->out, [0,0,1,3];
+ #say STDERR "AAAA", dump($r);
+  is_deeply $r->out, [1,2,2,3];
  }
