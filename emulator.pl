@@ -44,6 +44,19 @@ sub emulate($%)                                                                 
   my $count;                                                                    # Instruction count
   my @memory;                                                                   # Memory
 
+  my sub jumpOp($$)                                                             # Jump to the target location if the tested memory area if the condition is matched
+   {my ($i, $check) = @_;                                                       # Instruction, check
+    my $t = $i->target;
+    if (&$check)                                                                # Check if condition is met
+     {if (isScalar($t))
+       {$instructionPointer = $t;                                               # Constant target
+       }
+      else
+       {$instructionPointer = $memory[$$t[0]];                                  # Target is in memory
+       }
+     }
+   }
+
   my %instructions =                                                            # Instruction definitions
    (add      => sub                                                             # Add two arrays to make a third array
      {my ($i) = @_;                                                             # Instruction
@@ -97,18 +110,29 @@ sub emulate($%)                                                                 
        {$instructionPointer = $memory[$$t[0]];
        }
      },
-    jumpEq    => sub                                                            # Jump to the target location if the tested memory area is set to zero indicating an equal comparison
-     {my ($i) = @_;                                                             # Instruction
-      my $s   = $i->source;
-      my $t   = $i->target;
-      if ($memory[$s] == 0)
-       {if (isScalar($t))
-         {$instructionPointer = $t;
-         }
-        else
-         {$instructionPointer = $memory[$$t[0]];
-         }
-       }
+    jumpEq    => sub                                                            # Conditional jumps
+     {my ($i) = @_;
+      jumpOp($i, sub{$memory[$i->source] == 0});
+     },
+    jumpNe    => sub
+     {my ($i) = @_;
+      jumpOp($i, sub{$memory[$i->source] != 0});
+     },
+    jumpLe    => sub
+     {my ($i) = @_;
+      jumpOp($i, sub{$memory[$i->source] <= 0});
+     },
+    jumpLt    => sub
+     {my ($i) = @_;
+      jumpOp($i, sub{$memory[$i->source] <  0});
+     },
+    jumpGe    => sub
+     {my ($i) = @_;
+      jumpOp($i, sub{$memory[$i->source] <= 0});
+     },
+    jumpGt    => sub
+     {my ($i) = @_;
+      jumpOp($i, sub{$memory[$i->source] <  0});
      },
     load      => sub                                                            # Load data from the locations addressed by the source array into the target array
      {my ($i) = @_;                                                             # Instruction
@@ -288,17 +312,29 @@ if (1)                                                                          
   is_deeply $r->count,   15;
  }
 
-latest:;
 if (1)                                                                          # For loop with labels
- {my $r = emulate                             #0 1 2 3 4 5 6
-   ([instruction(action=>'set',     source  =>[0,1,3,0,1,6],   target=>[0..6]), #0 Count 1,2,3
+ {my $r = emulate                             #0 1 2 3
+   ([instruction(action=>'set',     source  =>[0,1,3,0],   target=>[0..4]),     #0 Count 1,2,3
      instruction(action=>'inc',     target  =>[0], label=>"loop"),              #1 Increment at start of loop
      instruction(action=>'out',     source  =>[0]),                             #2 Print
-     instruction(action=>'compare', source_1=>[0], source_2=>[2], target=>[3]), #3 Compare result to m[3]
-     instruction(action=>'jumpEq',  source  => 3,  target=>"loopEnd"),          #4 Jump to end of loop
+     instruction(action=>'compare', source_1=>[0], source_2=>[2], target=>[3]), #3 Compare result into m[3]
+     instruction(action=>'jumpEq',  source  => 3,  target=>"loopEnd"),          #4 Jump to end of loop at end of loop
      instruction(action=>'jump',                   target=>"loop"),             #5 Restart loop
      instruction(action=>'nop',                    label =>"loopEnd"),          #6 End of loop
    ]);
   is_deeply $r->out, [1,2,3];
   is_deeply $r->count,   16;
+ }
+
+latest:;
+if (1)                                                                          # For loop with labels
+ {my $r = emulate                             #0 1 2
+   ([instruction(action=>'set',     source  =>[0,3,0], target=>[0..2]),         #0 Index, limit, compare
+     instruction(action=>'inc',     target  =>[0], label=>"loop"),              #1 Increment at start of loop
+     instruction(action=>'out',     source  =>[0]),                             #2 Print
+     instruction(action=>'compare', source_1=>[0], source_2=>[1], target=>[2]), #3 Compare result into m[3]
+     instruction(action=>'jumpLt',  source  => 2,  target=>"loop"),             #4 Iterate
+   ]);
+  is_deeply $r->out, [1,2,3];
+  is_deeply $r->count,   13;
  }
