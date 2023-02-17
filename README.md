@@ -1,3 +1,3 @@
 # Zero
 
-A minimal computing environment
+A minimal single instruction, multiple data computing environment.
