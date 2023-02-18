@@ -472,4 +472,4 @@ if (1)                                                                          
   is_deeply $r->out, [2];
  }
 
-sub allTests{0 and -d "/home/phil/"}
+sub allTests{0 or !-d "/home/phil/"}
