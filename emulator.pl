@@ -61,6 +61,9 @@ sub instruction(%)                                                              
 
   genHash("Zero::Emulator::Instruction",                                        # Instruction details
     number => undef,
+    owner  => undef,
+    source => undef,
+    target => undef,
     %options);
  }
 
@@ -78,11 +81,33 @@ sub emulate($%)                                                                 
   my $count;                                                                    # Instruction count
   my @memory;                                                                   # Memory
   my @calls;                                                                    # Call stack of calls made
+  my @owner;                                                                    # Who owns the privilege of writing to the corresponding block of memory. undef means that any-one can write, elotherwise the instrycutcion must have the matching owner id
 
   my sub jumpOp($$)                                                             # Jump to the target location if the tested memory area if the condition is matched
    {my ($i, $check) = @_;                                                       # Instruction, check
     my $T = $i->target; my $t  = isScalar($T) ? $T : $memory[$$T[0]];
     $instructionPointer = $t if &$check;                                        # Check if condition is met
+   }
+
+  my sub setMemory($$$)                                                         # Set a memory location checking that the instruction owns the memory concerned
+   {my ($i, $at, $value) = @_;                                                  # Instruction, memory location, value to set
+    if (my $o = $owner[$at])
+     {if (my $O = $i->owner)
+       {if ($o == $O)
+         {$memory[$at] = $value;                                                # Memory owned by this instruction
+         }
+        else
+         {confess "Owner mismatch wanted: $o, got: $O\n";
+         }
+       }
+      else
+       {confess "Memory owned with key: $o but no key provided\n";
+       }
+     }
+    else                                                                        # Memory is open
+     {$memory[$at] = $value;                                                    # Set value
+      $owner [$at] = $i->owner // 0;                                            # Take ownership if an ownership key is supplied
+     }
    }
 
   my %instructions =                                                            # Instruction definitions
@@ -93,13 +118,13 @@ sub emulate($%)                                                                 
       my $t   = $i->target;
 
       if (isScalar $s2)
-       {for my $i(keys @$t)
-         {$memory[$$t[$i]] = $memory[$$s1[$i]] + $s2;
+       {for my $j(keys @$t)
+         {setMemory($i, $$t[$j], $memory[$$s1[$j]] + $s2);
          }
        }
       else
-       {for my $i(keys @$t)
-         {$memory[$$t[$i]] = $memory[$$s1[$i]] + $memory[$$s2[$i]];
+       {for my $j(keys @$t)
+         {setMemory($i, $$t[$j], $memory[$$s1[$j]] + $memory[$$s2[$j]]);
          }
        }
      },
@@ -114,10 +139,10 @@ sub emulate($%)                                                                 
      },
 
     parameters => sub                                                           # Locate the parameter list for the current subroutine call
-     {my ($i)  = @_;                                                             # Instruction
+     {my ($i)  = @_;                                                            # Instruction
       @calls or confess "Not in a subroutine";
       my $c = $calls[-1];
-      $memory[$i->target] = $c->params;
+      setMemory($i, $i->target, $c->params);
      },
 
     return    => sub                                                            # Call a subroutine
@@ -134,13 +159,13 @@ sub emulate($%)                                                                 
       my $t  = $i->target;
 
       if (isScalar $s2)
-       {for my $i(keys @$t)
-         {$memory[$$t[$i]] = $memory[$$s1[$i]] <=> $s2;
+       {for my $j(keys @$t)
+         {setMemory($i, $$t[$j], $memory[$$s1[$j]] <=> $s2);
          }
        }
       else
-       {for my $i(keys @$t)
-         {$memory[$$t[$i]] = $memory[$$s1[$i]] <=> $memory[$$s2[$i]];
+       {for my $j(keys @$t)
+         {setMemory($i, $$t[$j], $memory[$$s1[$j]] <=> $memory[$$s2[$j]]);
          }
        }
      },
@@ -149,8 +174,8 @@ sub emulate($%)                                                                 
      {my ($i) = @_;                                                             # Instruction
       my $t   = $i->target;
 
-      for my $i(keys @$t)
-       {$memory[$$t[$i]] += $i + 1;
+      for my $j(keys @$t)
+       {setMemory($i, $$t[$j], $memory[$$t[$j]] + $j + 1);
        }
      },
 
@@ -196,8 +221,8 @@ sub emulate($%)                                                                 
       my $t  = $i->target;
 
       if (!isScalar $s)                                                         # Load from specified locations
-       {for my $i(keys @$t)
-         {$memory[$$t[$i]] = $memory[$memory[$$s[$i]]];
+       {for my $j(keys @$t)
+         {setMemory($i, $$t[$j], $memory[$memory[$$s[$j]]]);
          }
        }
      },
@@ -208,7 +233,7 @@ sub emulate($%)                                                                 
       my $T = $i->target; my $t = isScalar($T) ? $T : $memory[$T];              # Dereference target if necessary
 
       my $x; $x = !defined($x) || $x < $memory[$_] ? $memory[$_] : $x for @$s;  # Maximum element
-      $memory[$t] = $x;                                                         # Save maximum
+      setMemory($i, $t, $x);                                                    # Save maximum
      },
 
     min => sub                                                                  # Minimum element in source block to target
@@ -217,7 +242,7 @@ sub emulate($%)                                                                 
       my $T = $i->target; my $t = isScalar($T) ? $T : $memory[$T];              # Dereference target if necessary
 
       my $x; $x = !defined($x) || $x > $memory[$_] ? $memory[$_] : $x for @$s;  # Minimum element
-      $memory[$t] = $x;                                                         # Save maximum
+      setMemory($i, $t, $x);                                                    # Save maximum
      },
 
     move     => sub                                                             # Move data moves data from one part of memory to another - "set", by contrast, sets variables from constant values
@@ -227,12 +252,12 @@ sub emulate($%)                                                                 
 
       if (isScalar $s)                                                          # Broadcast source value
        {for my $i(keys @$t)
-         {$memory[$$t[$i]] = $s;
+         {setMemory($i, $$t[$i], $s);
          }
        }
       else
-       {for my $i(keys @$t)                                                     # Look up source values in memory
-         {$memory[$$t[$i]] = $memory[$$s[$i]];
+       {for my $j(keys @$t)                                                     # Look up source values in memory
+         {setMemory($i, $$t[$j], $memory[$$s[$j]]);
          }
        }
      },
@@ -245,7 +270,7 @@ sub emulate($%)                                                                 
 
       my @b;                                                                    # Buffer the data being moved to avoid overwrites
       push @b, $memory[$s1+$_] for 0..$s2-1;
-      $memory[$t+$_] = $b[$_]  for 0..$s2-1;
+      setMemory($i, $t+$_, $b[$_]) for 0..$s2-1;
      },
 
     nop       => sub                                                            # No operation
@@ -265,19 +290,28 @@ sub emulate($%)                                                                 
        }
      },
 
+    ownerClear => sub                                                           # Clear ownership for a range of memory. The target designates the location at which to start, source gives th length of the clear.  The ownership of the memory in this range is reset to zero so that any-one can claim it.
+     {my ($i) = @_;                                                             # Instruction
+      my $S = $i->source; my $s = isScalar($S) ? $S : $memory[$S];              # Length of clear
+      my $T = $i->target; my $t = isScalar($T) ? $T : $memory[$T];              # Target of clear
+      for my $j(0..$s-1)                                                        # Move block
+       {$owner[$t + $j] = 0;                                                    # Zero the ownership of the memory in the range
+       }
+     },
+
     set     => sub                                                              # Place constant data into memory
      {my ($i) = @_;                                                             # Instruction
       my $s  = $i->source;
       my $t  = $i->target;
 
       if (isScalar $s)                                                          # Broadcast one value
-       {for my $i(keys @$t)
-         {$memory[$$t[$i]] = $s;
+       {for my $j(keys @$t)
+         {setMemory($i, $$t[$j], $s);
          }
        }
       else                                                                      # Set multiple values
-       {for my $i(keys @$t)
-         {$memory[$$t[$i]] = $$s[$i];
+       {for my $j(keys @$t)
+         {setMemory($i, $$t[$j], $$s[$j]);
          }
        }
      },
@@ -287,8 +321,8 @@ sub emulate($%)                                                                 
       my $S = $i->source; my $s = isScalar($S) ? $S : $memory[$S];              # Dereference length if necessary
       my $T = $i->target; my $t = isScalar($T) ? $T : $memory[$T];              # Dereference target if necessary
 
-      for my $i(0..$s-2)                                                        # Move block
-       {$memory[$t+$i] = $memory[$t+$i+1];
+      for my $j(0..$s-2)                                                        # Move block
+       {setMemory($i, $t+$j, $memory[$t+$j+1]);
        }
      },
 
@@ -297,8 +331,8 @@ sub emulate($%)                                                                 
       my $S = $i->source; my $s = isScalar($S) ? $S : $memory[$S];              # Dereference length if necessary
       my $T = $i->target; my $t = isScalar($T) ? $T : $memory[$T];              # Dereference target if necessary
 
-      for my $i(reverse 0..$s-2)                                                # Move block
-       {$memory[$t+$i+1] = $memory[$t+$i];
+      for my $j(reverse 0..$s-2)                                                # Move block
+       {setMemory($i, $t+$j+1, $memory[$t+$j]);
        }
      },
 
@@ -308,7 +342,7 @@ sub emulate($%)                                                                 
       my $T = $i->target; my $t = isScalar($T) ? $T : $memory[$T];              # Dereference target if necessary
 
       my $x = 0; $x += $memory[$_] for @$s;                                     # Each location whose contents are to be summed
-      $memory[$t] = $x;                                                         # Save sum
+      setMemory($i, $t, $x);                                                    # Save sum
      },
    );
 
@@ -347,15 +381,16 @@ sub emulate($%)                                                                 
    }
 
   genHash("Zero::Emulator::Results",                                            # Execution results
-    out    => [@out],
-    counts => {%counts},
-    count  => $count,
-    labels => {%labels},
-    memory => [@memory],
+    count  => $count,                                                           # Executed instructions count
+    counts => {%counts},                                                        # Executed instructions by name counts
+    labels => {%labels},                                                        # Labels into code
+    memory => [@memory],                                                        # Memory contents at the end of execution
+    out    => [@out],                                                           # The out channel
+    owner  => [@owner],                                                         # Memory ownership
    );
  }
 
-goto latest unless &allTests;
+eval {goto latest};
 
 is_deeply emulate([instruction(action=>'out', source=>"hello World")])->out,    # Hello World
           ["hello World"];
@@ -391,11 +426,12 @@ if (1)                                                                          
 
 if (1)                                                                          # Inc
  {my $r = emulate
-   ([instruction(action=>'inc',     target=>[0..2]),
+   ([instruction(action=>'set',     source=>0, target=>[0..2]),
+     instruction(action=>'inc',     target=>[0..2]),
      instruction(action=>'out',     source=>[0..2]),
    ]);
   is_deeply $r->out, [1,2,3];
-  is_deeply $r->count,     2;
+  is_deeply $r->count,    3;
  }
 
 if (1)                                                                          # 1+2 -> 3
@@ -529,7 +565,6 @@ if (1)                                                                          
   is_deeply $r->out, [9];
  }
 
-latest:;
 if (1)                                                                          # Minimum of a block
  {my $r = emulate
    ([instruction(action=>'set', source => [10..19], target => [0..9]),          #0 Create and load some memory
@@ -539,4 +574,19 @@ if (1)                                                                          
   is_deeply $r->out, [10];
  }
 
-sub allTests{0 or !-d "/home/phil/"}
+if (1)                                                                          # Ownership of memory
+ {my $r = eval {emulate
+   ([instruction(action=>'set', source => [10..19], owner=>1, target => [0..9]),#0 Create and load some memory with for one owner
+     instruction(action=>'min', source => [0..9],   owner=>2, target => 0),     #1 Minimum but with different owner
+   ])};
+  ok $@ =~ m(Owner mismatch wanted: 1, got: 2);
+ }
+
+#latest:;
+if (1)                                                                          # Clear ownership of memory
+ {my $r = eval {emulate
+   ([instruction(action=>'set',        source => [0..9], owner=>1, target => [0..9]),  #0 Create and load some memory with for one owner
+     instruction(action=>'ownerClear', source => 5,     target => 0),           #1 Clear owner ship of some of the memory
+   ])};
+  is_deeply $r->owner, [0, 0, 0, 0, 0, 1, 1, 1, 1, 1];
+ }
