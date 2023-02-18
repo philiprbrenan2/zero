@@ -86,11 +86,11 @@ sub emulate($%)                                                                 
    }
 
   my %instructions =                                                            # Instruction definitions
-   (add      => sub                                                             # Add two arrays to make a third array
+   (add       => sub                                                            # Add two arrays to make a third array
      {my ($i) = @_;                                                             # Instruction
-      my $s1 = $i->source_1;
-      my $s2 = $i->source_2;
-      my $t  = $i->target;
+      my $s1  = $i->source_1;
+      my $s2  = $i->source_2;
+      my $t   = $i->target;
 
       if (isScalar $s2)
        {for my $i(keys @$t)
@@ -103,6 +103,7 @@ sub emulate($%)                                                                 
          }
        }
      },
+
     call => sub                                                                 # Call a subroutine
      {my ($i) = @_;                                                             # Instruction
       my $S = $i->source // 0; my $s = isScalar($S) ? $S : $memory[$S];         # Parameter list
@@ -111,19 +112,22 @@ sub emulate($%)                                                                 
       push @calls,  callEntry(target=>$t, call=>$i->number, params=>$s);
       $instructionPointer = $t;
      },
+
     parameters => sub                                                           # Locate the parameter list for the current subroutine call
-     {my ($i) = @_;                                                             # Instruction
+     {my ($i)  = @_;                                                             # Instruction
       @calls or confess "Not in a subroutine";
       my $c = $calls[-1];
       $memory[$i->target] = $c->params;
      },
-    return => sub                                                               # Call a subroutine
+
+    return    => sub                                                            # Call a subroutine
      {my ($i) = @_;                                                             # Instruction
       @calls or confess "The call stack is empty so I do not know where to return to";
       my $c = pop @calls;
       $instructionPointer = $c->call+1;
      },
-    compare => sub                                                              # Compare two arrays or one array and a constant and write the result as a mask
+
+    compare   => sub                                                            # Compare two arrays or one array and a constant and write the result as a mask
      {my ($i) = @_;                                                             # Instruction
       my $s1 = $i->source_1;
       my $s2 = $i->source_2;
@@ -140,14 +144,16 @@ sub emulate($%)                                                                 
          }
        }
      },
+
     inc       => sub                                                            # Increment locations in memory. The first location is incremented by 1, the next by two, etc.
      {my ($i) = @_;                                                             # Instruction
-      my $t  = $i->target;
+      my $t   = $i->target;
 
       for my $i(keys @$t)
        {$memory[$$t[$i]] += $i + 1;
        }
      },
+
     jump      => sub                                                            # Jump to the target location
      {my ($i) = @_;                                                             # Instruction
       my $t   = $i->target;
@@ -158,6 +164,7 @@ sub emulate($%)                                                                 
        {$instructionPointer = $memory[$$t[0]];
        }
      },
+
     jumpEq    => sub                                                            # Conditional jumps
      {my ($i) = @_;
       jumpOp($i, sub{$memory[$i->source] == 0});
@@ -182,6 +189,7 @@ sub emulate($%)                                                                 
      {my ($i) = @_;
       jumpOp($i, sub{$memory[$i->source] <  0});
      },
+
     load      => sub                                                            # Load data from the locations addressed by the source array into the target array
      {my ($i) = @_;                                                             # Instruction
       my $s  = $i->source;
@@ -193,6 +201,7 @@ sub emulate($%)                                                                 
          }
        }
      },
+
     max => sub                                                                  # Maximum element in source block to target
      {my ($i) = @_;                                                             # Instruction
       my $s = $i->source;                                                       # Array of locations containing the values to be summed
@@ -201,6 +210,7 @@ sub emulate($%)                                                                 
       my $x; $x = !defined($x) || $x < $memory[$_] ? $memory[$_] : $x for @$s;  # Maximum element
       $memory[$t] = $x;                                                         # Save maximum
      },
+
     min => sub                                                                  # Minimum element in source block to target
      {my ($i) = @_;                                                             # Instruction
       my $s = $i->source;                                                       # Array of locations containing the values to be summed
@@ -209,6 +219,7 @@ sub emulate($%)                                                                 
       my $x; $x = !defined($x) || $x > $memory[$_] ? $memory[$_] : $x for @$s;  # Minimum element
       $memory[$t] = $x;                                                         # Save maximum
      },
+
     move     => sub                                                             # Move data moves data from one part of memory to another - "set", by contrast, sets variables from constant values
      {my ($i) = @_;                                                             # Instruction
       my $s  = $i->source;
@@ -225,6 +236,7 @@ sub emulate($%)                                                                 
          }
        }
      },
+
     moveBlock => sub                                                            # Move a block of data from the first source operand to the target operand.  The length of the move is determined by the second source operand.  The source block and the target block may overlap.
      {my ($i) = @_;                                                             # Instruction
       my $S1 = $i->source_1; my $s1 = isScalar($S1) ? $S1 : $memory[$S1];
@@ -235,9 +247,11 @@ sub emulate($%)                                                                 
       push @b, $memory[$s1+$_] for 0..$s2-1;
       $memory[$t+$_] = $b[$_]  for 0..$s2-1;
      },
+
     nop       => sub                                                            # No operation
      {my ($i) = @_;                                                             # Instruction
      },
+
     out     => sub                                                              # Write source as output to an array of words
      {my ($i) = @_;                                                             # Instruction
       my $s = $i->source;
@@ -250,6 +264,7 @@ sub emulate($%)                                                                 
          }
        }
      },
+
     set     => sub                                                              # Place constant data into memory
      {my ($i) = @_;                                                             # Instruction
       my $s  = $i->source;
@@ -266,6 +281,7 @@ sub emulate($%)                                                                 
          }
        }
      },
+
     shiftBlockLeft => sub                                                       # Move a block of longs referenced by the target operand of length the source operand one long to the left
      {my ($i) = @_;                                                             # Instruction
       my $S = $i->source; my $s = isScalar($S) ? $S : $memory[$S];              # Dereference length if necessary
@@ -275,6 +291,7 @@ sub emulate($%)                                                                 
        {$memory[$t+$i] = $memory[$t+$i+1];
        }
      },
+
     shiftBlockRight => sub                                                      # Move a block of longs referenced by the target operand of length the source operand one long to the right
      {my ($i) = @_;                                                             # Instruction
       my $S = $i->source; my $s = isScalar($S) ? $S : $memory[$S];              # Dereference length if necessary
@@ -284,6 +301,7 @@ sub emulate($%)                                                                 
        {$memory[$t+$i+1] = $memory[$t+$i];
        }
      },
+
     sum => sub                                                                  # Sum the source block and place it in the target
      {my ($i) = @_;                                                             # Instruction
       my $s = $i->source;                                                       # Array of locations containing the values to be summed
@@ -514,11 +532,11 @@ if (1)                                                                          
 latest:;
 if (1)                                                                          # Minimum of a block
  {my $r = emulate
-   ([instruction(action=>'set', source => [0..9], target => [0..9]),            #0 Create and load some memory
-     instruction(action=>'min', source => [0..9], target => 0),                 #1 Minimum
+   ([instruction(action=>'set', source => [10..19], target => [0..9]),          #0 Create and load some memory
+     instruction(action=>'min', source => [0..9],   target => 0),               #1 Minimum
      instruction(action=>'out', source => [0]),                                 #2 Print
    ]);
-  is_deeply $r->out, [0];
+  is_deeply $r->out, [10];
  }
 
 sub allTests{0 or !-d "/home/phil/"}
