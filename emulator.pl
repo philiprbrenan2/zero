@@ -14,20 +14,54 @@ use Test::More qw(no_plan);
 
 makeDieConfess;
 
-my $home   = currentDirectory;                                                  # Home folder
-my $input  = fpe $home, qw(input txt);                                          # Input file
-my $output = fpe $home, qw(output txt);                                         # Output file
+sub maximumInstructionsToExecute {100}                                          # Maximum number of subroutines to execute
+
+sub dataStructure(@)                                                            # Describe a data structure
+ {my ($name, @fields) = @_;                                                     # Structure name, fields names
+
+  my $d = genHash("Zero::Emulator::DataStructure",                              # Description of a data structure
+    name  => $name,                                                             # Name of the structure
+    order => [],                                                                # Order of the elements in the structure, in effect, giving the offset of each element in the data structure
+    names => {},                                                                # Maps the names of the fields to their offsets in the structure
+   );
+  $d->field($_) for @fields;                                                    # Add the field descriptions
+  $d
+ }
+
+sub Zero::Emulator::DataStructure::field($$)                                    # Add a field to a data structure
+ {my ($d, $name) = @_;                                                          # Parameters
+  if (!$d->names->{$name})
+   {$d->names->{$name} = $d->order->@*;
+    push $d->order->@*, $name;
+   }
+  else
+   {confess "Duplicate name: $name in structure: ".$d->name;
+   }
+ }
+
+sub Zero::Emulator::DataStructure::offset($$)                                   # Offset of a field
+ {my ($d, $name) = @_;                                                          # Parameters
+  $d->names->{$name}
+ }
+
+sub callEntry(%)                                                                # Describe an entry on the call stack: the return address, the parameter list length, the parameter list location, the line of code from which the call was made, the file number of the file from which the call was made
+ {my (%options) = @_;                                                           # Parameters
+
+  genHash("Zero::Emulator::CallEntry",                                          # Description of a call stack entry
+    target   => $options{target},                                               # The location of the subroutine being called
+    call     => $options{call},                                                 # The location of the call instruction making the call
+    params   => $options{params},                                               # The location at which the parameter list starts in memory. Note that there is no return area - if the subroutine returns values then they go somewhere in the parameter list at locations determined by the called subroutine.
+    line     => $options{line},                                                 # The line number from which the call was made
+    file     => $options{file},                                                 # The file number from which the call was made - this could be folded into the line number but for reasons best known to themselves people who cannot program very well often scatter projects across several files a practice that is completely pointless in this day of git and so can only lead to chaos and confusion
+   );
+ }
 
 sub instruction(%)                                                              # Create a new instruction
  {my (%options) = @_;                                                           # Parameters
 
-  genHash("Zero::Emulator::Instruction", %options);                             # Instruction details
- }
-
-sub type(%)                                                                     # Describe some data
- {my (%options) = @_;                                                           # Parameters
-
-  genHash("Zero::Emulator::Type", %options);                                    # Data type
+  genHash("Zero::Emulator::Instruction",                                        # Instruction details
+    number => undef,
+    %options);
  }
 
 sub isScalar($)                                                                 # Check whether an element is a scalar or an array
@@ -43,6 +77,7 @@ sub emulate($%)                                                                 
   my %counts;                                                                   # Instruction counts
   my $count;                                                                    # Instruction count
   my @memory;                                                                   # Memory
+  my @calls;                                                                    # Call stack of calls made
 
   my sub jumpOp($$)                                                             # Jump to the target location if the tested memory area if the condition is matched
    {my ($i, $check) = @_;                                                       # Instruction, check
@@ -67,6 +102,26 @@ sub emulate($%)                                                                 
          {$memory[$$t[$i]] = $memory[$$s1[$i]] + $memory[$$s2[$i]];
          }
        }
+     },
+    call => sub                                                                 # Call a subroutine
+     {my ($i) = @_;                                                             # Instruction
+      my $S = $i->source // 0; my $s = isScalar($S) ? $S : $memory[$S];         # Parameter list
+      my $T = $i->target;      my $t = isScalar($T) ? $T : $memory[$T];         # Target subroutine to call
+
+      push @calls,  callEntry(target=>$t, call=>$i->number, params=>$s);
+      $instructionPointer = $t;
+     },
+    parameters => sub                                                           # Locate the parameter list for the current subroutine call
+     {my ($i) = @_;                                                             # Instruction
+      @calls or confess "Not in a subroutine";
+      my $c = $calls[-1];
+      $memory[$i->target] = $c->params;
+     },
+    return => sub                                                               # Call a subroutine
+     {my ($i) = @_;                                                             # Instruction
+      @calls or confess "The call stack is empty so I do not know where to return to";
+      my $c = pop @calls;
+      $instructionPointer = $c->call+1;
      },
     compare => sub                                                              # Compare two arrays or one array and a constant and write the result as a mask
      {my ($i) = @_;                                                             # Instruction
@@ -143,13 +198,13 @@ sub emulate($%)                                                                 
       my $s  = $i->source;
       my $t  = $i->target;
 
-      if (isScalar $s)                                                          # Broadcast location of
+      if (isScalar $s)                                                          # Broadcast source value
        {for my $i(keys @$t)
          {$memory[$$t[$i]] = $s;
          }
        }
       else
-       {for my $i(keys @$t)
+       {for my $i(keys @$t)                                                     # Look up source values in memory
          {$memory[$$t[$i]] = $memory[$$s[$i]];
          }
        }
@@ -217,10 +272,12 @@ sub emulate($%)                                                                 
      },
    );
 
+# Assemble
   my %labels;                                                                   # Load labels
 
   for my $c(keys @$code)                                                        # Each instruction
    {my $i = $$code[$c];
+    $i->number = $c;
     next unless $$i{label};
     if (my $l = $i->label)                                                      # Label
      {$labels{$l} = $c;                                                         # Point label to instruction
@@ -229,7 +286,7 @@ sub emulate($%)                                                                 
 
   for my $c(keys @$code)                                                        # Each instruction
    {my $i = $$code[$c];
-    next unless $i->action =~ m(\Ajump)i;
+    next unless $i->action =~ m(\A(call|jump))i;
     if (my $l = $i->target)                                                     # Label
      {next unless isScalar($l);                                                 # Not an array
       next if $l =~ m/\A[-+]?\d+\Z/;                                            # Not an integer
@@ -237,14 +294,16 @@ sub emulate($%)                                                                 
      }
    }
 
-
-  for(;;)                                                                       # Each instruction in the code until we hit an undefined instruction
+# Execute
+  for my $j(1..maximumInstructionsToExecute)                                    # Each instruction in the code until we hit an undefined instruction
    {my $i = $$code[$instructionPointer++];
     last unless $i;
     if (my $a = $i->action)                                                     # Action
      {$counts{$a}++; $count++;                                                  # Execution counts
-      $instructions{$a}->($i);                                                  # Execute instruction
+      confess qq(Invalid instruction: "$a"\n) unless my $c = $instructions{$a};
+      $c->($i);                                                                 # Execute instruction
      }
+    confess "Out of instructions after $j" if $j >= maximumInstructionsToExecute;
    }
 
   genHash("Zero::Emulator::Results",                                            # Execution results
@@ -256,7 +315,7 @@ sub emulate($%)                                                                 
    );
  }
 
-#goto latest;
+goto latest unless &allTests;
 
 is_deeply emulate([instruction(action=>'out', source=>"hello World")])->out,    # Hello World
           ["hello World"];
@@ -379,13 +438,38 @@ if (1)                                                                          
   is_deeply $r->out, [0,0,1,3];
  }
 
-latest:;
 if (1)                                                                          # For loop with labels
  {my $r = emulate
    ([instruction(action=>'set', source =>[0..3], target=>[0..3]),               #0 Block to move
      instruction(action=>'moveBlock', source_1=>1, source_2=>2, target=>0),     #1 Shift left
      instruction(action=>'out', source =>[0..3]),                               #2 Print
    ]);
- #say STDERR "AAAA", dump($r);
   is_deeply $r->out, [1,2,2,3];
  }
+
+if (1)                                                                          # Call a subroutine and return
+ {my $r = emulate
+   ([instruction(action=>'jump',   target => "end_sub"),                        #0 Jump over subroutine
+     instruction(action=>'out',    source => "Hello World", label => "sub"),    #1 Print
+     instruction(action=>'return'),                                             #2 Return
+     instruction(action=>'nop',    label => "end_sub"),                         #3 End of subroutine
+     instruction(action=>'call',   target => "sub"),                            #4 Call subroutine
+   ]);
+  is_deeply $r->out, ["Hello World"];
+ }
+
+latest:;
+if (1)                                                                          # Call a subroutine and return
+ {my $r = emulate
+   ([instruction(action=>'set',    source =>[0..9], target=>[0..9]),            #0 Parameter list
+     instruction(action=>'jump',   target => "end_sub"),                        #1 Jump over subroutine
+     instruction(action=>'parameters', target => 0, label=>"sub"),              #2 Print
+     instruction(action=>'out',       source =>[0]),                            #3 Print
+     instruction(action=>'return'),                                             #4 Return
+     instruction(action=>'nop',    label  => "end_sub"),                        #5 End of subroutine
+     instruction(action=>'call',   source => 2, target => "sub"),               #6 Call subroutine
+   ]);
+  is_deeply $r->out, [2];
+ }
+
+sub allTests{0 and -d "/home/phil/"}
