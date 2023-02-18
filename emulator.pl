@@ -461,10 +461,10 @@ if (1)                                                                          
 latest:;
 if (1)                                                                          # Call a subroutine and return
  {my $r = emulate
-   ([instruction(action=>'set',    source =>[0..9], target=>[0..9]),            #0 Parameter list
+   ([instruction(action=>'set',    source => [0..9], target => [0..9]),         #0 Create and load some memory
      instruction(action=>'jump',   target => "end_sub"),                        #1 Jump over subroutine
-     instruction(action=>'parameters', target => 0, label=>"sub"),              #2 Print
-     instruction(action=>'out',       source =>[0]),                            #3 Print
+     instruction(action=>'parameters', target => 0, label => "sub"),            #2 Parameters
+     instruction(action=>'out',        source => [0]),                          #3 Print
      instruction(action=>'return'),                                             #4 Return
      instruction(action=>'nop',    label  => "end_sub"),                        #5 End of subroutine
      instruction(action=>'call',   source => 2, target => "sub"),               #6 Call subroutine
