@@ -193,6 +193,22 @@ sub emulate($%)                                                                 
          }
        }
      },
+    max => sub                                                                  # Maximum element in source block to target
+     {my ($i) = @_;                                                             # Instruction
+      my $s = $i->source;                                                       # Array of locations containing the values to be summed
+      my $T = $i->target; my $t = isScalar($T) ? $T : $memory[$T];              # Dereference target if necessary
+
+      my $x; $x = !defined($x) || $x < $memory[$_] ? $memory[$_] : $x for @$s;  # Maximum element
+      $memory[$t] = $x;                                                         # Save maximum
+     },
+    min => sub                                                                  # Minimum element in source block to target
+     {my ($i) = @_;                                                             # Instruction
+      my $s = $i->source;                                                       # Array of locations containing the values to be summed
+      my $T = $i->target; my $t = isScalar($T) ? $T : $memory[$T];              # Dereference target if necessary
+
+      my $x; $x = !defined($x) || $x > $memory[$_] ? $memory[$_] : $x for @$s;  # Minimum element
+      $memory[$t] = $x;                                                         # Save maximum
+     },
     move     => sub                                                             # Move data moves data from one part of memory to another - "set", by contrast, sets variables from constant values
      {my ($i) = @_;                                                             # Instruction
       my $s  = $i->source;
@@ -273,7 +289,7 @@ sub emulate($%)                                                                 
       my $s = $i->source;                                                       # Array of locations containing the values to be summed
       my $T = $i->target; my $t = isScalar($T) ? $T : $memory[$T];              # Dereference target if necessary
 
-      my $x = 0; $x += $memory[$_] for @$s;                                      # Each location whose contents are to be summed
+      my $x = 0; $x += $memory[$_] for @$s;                                     # Each location whose contents are to be summed
       $memory[$t] = $x;                                                         # Save sum
      },
    );
@@ -477,14 +493,32 @@ if (1)                                                                          
   is_deeply $r->out, [2];
  }
 
-latest:;
 if (1)                                                                          # Sum of a block
  {my $r = emulate
    ([instruction(action=>'set', source => [0..9], target => [0..9]),            #0 Create and load some memory
-     instruction(action=>'sum', source => [0..9],  target => 0),                 #1 Jump over subroutine
+     instruction(action=>'sum', source => [0..9], target => 0),                 #1 Sum
      instruction(action=>'out', source => [0]),                                 #2 Print
    ]);
   is_deeply $r->out, [45];
+ }
+
+if (1)                                                                          # Maximum of a block
+ {my $r = emulate
+   ([instruction(action=>'set', source => [0..9], target => [0..9]),            #0 Create and load some memory
+     instruction(action=>'max', source => [0..9], target => 0),                 #1 Maximum
+     instruction(action=>'out', source => [0]),                                 #2 Print
+   ]);
+  is_deeply $r->out, [9];
+ }
+
+latest:;
+if (1)                                                                          # Minimum of a block
+ {my $r = emulate
+   ([instruction(action=>'set', source => [0..9], target => [0..9]),            #0 Create and load some memory
+     instruction(action=>'min', source => [0..9], target => 0),                 #1 Minimum
+     instruction(action=>'out', source => [0]),                                 #2 Print
+   ]);
+  is_deeply $r->out, [0];
  }
 
 sub allTests{0 or !-d "/home/phil/"}
