@@ -261,14 +261,20 @@ sub emulate($%)                                                                 
      },
     shiftBlockRight => sub                                                      # Move a block of longs referenced by the target operand of length the source operand one long to the right
      {my ($i) = @_;                                                             # Instruction
-      my $S = $i->source;
-      my $s = isScalar($S) ? $S : $memory[$S];                                  # Dereference length if necessary
-      my $T = $i->target;
-      my $t = isScalar($T) ? $T : $memory[$T];                                  # Dereference target if necessary
+      my $S = $i->source; my $s = isScalar($S) ? $S : $memory[$S];              # Dereference length if necessary
+      my $T = $i->target; my $t = isScalar($T) ? $T : $memory[$T];              # Dereference target if necessary
 
       for my $i(reverse 0..$s-2)                                                # Move block
        {$memory[$t+$i+1] = $memory[$t+$i];
        }
+     },
+    sum => sub                                                                  # Sum the source block and place it in the target
+     {my ($i) = @_;                                                             # Instruction
+      my $s = $i->source;                                                       # Array of locations containing the values to be summed
+      my $T = $i->target; my $t = isScalar($T) ? $T : $memory[$T];              # Dereference target if necessary
+
+      my $x = 0; $x += $memory[$_] for @$s;                                      # Each location whose contents are to be summed
+      $memory[$t] = $x;                                                         # Save sum
      },
    );
 
@@ -458,8 +464,7 @@ if (1)                                                                          
   is_deeply $r->out, ["Hello World"];
  }
 
-latest:;
-if (1)                                                                          # Call a subroutine and return
+if (1)                                                                          # Call a subroutine passing it a parameter
  {my $r = emulate
    ([instruction(action=>'set',    source => [0..9], target => [0..9]),         #0 Create and load some memory
      instruction(action=>'jump',   target => "end_sub"),                        #1 Jump over subroutine
@@ -470,6 +475,16 @@ if (1)                                                                          
      instruction(action=>'call',   source => 2, target => "sub"),               #6 Call subroutine
    ]);
   is_deeply $r->out, [2];
+ }
+
+latest:;
+if (1)                                                                          # Sum of a block
+ {my $r = emulate
+   ([instruction(action=>'set', source => [0..9], target => [0..9]),            #0 Create and load some memory
+     instruction(action=>'sum', source => [0..9],  target => 0),                 #1 Jump over subroutine
+     instruction(action=>'out', source => [0]),                                 #2 Print
+   ]);
+  is_deeply $r->out, [45];
  }
 
 sub allTests{0 or !-d "/home/phil/"}
