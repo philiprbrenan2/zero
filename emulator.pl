@@ -60,10 +60,16 @@ sub instruction(%)                                                              
  {my (%options) = @_;                                                           # Parameters
 
   genHash("Zero::Emulator::Instruction",                                        # Instruction details
-    number => undef,
-    owner  => undef,
-    source => undef,
-    target => undef,
+    number        => undef,
+    owner         => undef,
+    source        => undef,
+    source_area   => undef,
+    source_1      => undef,
+    source_2      => undef,
+    source_1_area => undef,
+    source_2_area => undef,
+    target        => undef,
+    target_area   => undef,
     %options);
  }
 
@@ -79,60 +85,67 @@ sub emulate($%)                                                                 
   my @out;                                                                      # Output channel
   my %counts;                                                                   # Instruction counts
   my $count;                                                                    # Instruction count
-  my @memory;                                                                   # Memory
   my @calls;                                                                    # Call stack of calls made
-  my @owner;                                                                    # Who owns the privilege of writing to the corresponding block of memory. undef means that any-one can write, elotherwise the instrycutcion must have the matching owner id
+  my %memory;                                                                   # Memory
+  my %owner;                                                                    # Who owns the privilege of writing to the corresponding block of memory. undef means that any-one can write, elotherwise the instrycutcion must have the matching owner id
 
-  my sub jumpOp($$)                                                             # Jump to the target location if the tested memory area if the condition is matched
-   {my ($i, $check) = @_;                                                       # Instruction, check
-    my $T = $i->target; my $t  = isScalar($T) ? $T : $memory[$$T[0]];
-    $instructionPointer = $t if &$check;                                        # Check if condition is met
+  my sub getMemory($$)                                                          # Get a memory location from a memory arena
+   {my ($area, $at) = @_;                                                       # Memory arena, memory location
+    $memory{$area}[$at]                                                         # Value
    }
 
-  my sub setMemory($$$)                                                         # Set a memory location checking that the instruction owns the memory concerned
-   {my ($i, $at, $value) = @_;                                                  # Instruction, memory location, value to set
-    if (my $o = $owner[$at])
+  my sub setMemory($$$$)                                                        # Set a memory location checking that the instruction owns the memory concerned
+   {my ($i, $area, $at, $value) = @_;                                           # Instruction, memory arena, memory location, value to set
+    if (my $o = $owner{$area}[$at])
      {if (my $O = $i->owner)
        {if ($o == $O)
-         {$memory[$at] = $value;                                                # Memory owned by this instruction
+         {$memory{$area}[$at] = $value;                                         # Memory owned by this instruction
          }
         else
-         {confess "Owner mismatch wanted: $o, got: $O\n";
+         {confess "Owner mismatch memory: $area:$at, wanted: $o, got: $O\n";
          }
        }
       else
-       {confess "Memory owned with key: $o but no key provided\n";
+       {confess "Memory $area:$at owned with key: $o but no key provided\n";
        }
      }
     else                                                                        # Memory is open
-     {$memory[$at] = $value;                                                    # Set value
-      $owner [$at] = $i->owner // 0;                                            # Take ownership if an ownership key is supplied
+     {$memory{$area}[$at] = $value;                                             # Set value
+      $owner {$area}[$at] = $i->owner // 0;                                     # Take ownership if an ownership key is supplied
      }
+   }
+
+  my sub jumpOp($$)                                                             # Jump to the target location if the tested memory area if the condition is matched
+   {my ($i, $check) = @_;                                                       # Instruction, check
+    my $T = $i->target;
+    my $t = isScalar($T) ? $T : getMemory($i->target_area//0, $$T[0]);
+    $instructionPointer = $t if &$check;                                        # Check if condition is met
    }
 
   my %instructions =                                                            # Instruction definitions
    (add       => sub                                                            # Add two arrays to make a third array
      {my ($i) = @_;                                                             # Instruction
-      my $s1  = $i->source_1;
-      my $s2  = $i->source_2;
-      my $t   = $i->target;
+      my $s1  = $i->source_1; my $sa1 = $i->source_1_area // 0;
+      my $s2  = $i->source_2; my $sa2 = $i->source_2_area // 0;
+      my $t   = $i->target;   my $ta  = $i->target_area   // 0;
 
       if (isScalar $s2)
        {for my $j(keys @$t)
-         {setMemory($i, $$t[$j], $memory[$$s1[$j]] + $s2);
+         {setMemory($i, $ta, $$t[$j], getMemory($sa1, $$s1[$j]) + $s2);
          }
        }
       else
        {for my $j(keys @$t)
-         {setMemory($i, $$t[$j], $memory[$$s1[$j]] + $memory[$$s2[$j]]);
+         {setMemory($i, $ta, $$t[$j], getMemory($sa1, $$s1[$j]) +
+                                      getMemory($sa2, $$s2[$j]));
          }
        }
      },
 
     call => sub                                                                 # Call a subroutine
      {my ($i) = @_;                                                             # Instruction
-      my $S = $i->source // 0; my $s = isScalar($S) ? $S : $memory[$S];         # Parameter list
-      my $T = $i->target;      my $t = isScalar($T) ? $T : $memory[$T];         # Target subroutine to call
+      my $S = $i->source // 0; my $s = isScalar($S) ? $S : getMemory($i->source_area, $S); # Parameter list
+      my $T = $i->target;      my $t = isScalar($T) ? $T : getMemory($i->target_area, $T); # Target subroutine to call
 
       push @calls,  callEntry(target=>$t, call=>$i->number, params=>$s);
       $instructionPointer = $t;
@@ -142,7 +155,7 @@ sub emulate($%)                                                                 
      {my ($i)  = @_;                                                            # Instruction
       @calls or confess "Not in a subroutine";
       my $c = $calls[-1];
-      setMemory($i, $i->target, $c->params);
+      setMemory($i, $i->target_area//0, $i->target, $c->params);
      },
 
     return    => sub                                                            # Call a subroutine
@@ -154,123 +167,140 @@ sub emulate($%)                                                                 
 
     compare   => sub                                                            # Compare two arrays or one array and a constant and write the result as a mask
      {my ($i) = @_;                                                             # Instruction
-      my $s1 = $i->source_1;
-      my $s2 = $i->source_2;
-      my $t  = $i->target;
+      my $s1 = $i->source_1; my $sa1 = $i->source_1_area // 0;
+      my $s2 = $i->source_2; my $sa2 = $i->source_2_area // 0;
+      my $t  = $i->target;   my $ta  = $i->target_area   // 0;
 
       if (isScalar $s2)
        {for my $j(keys @$t)
-         {setMemory($i, $$t[$j], $memory[$$s1[$j]] <=> $s2);
+         {setMemory($i, $ta, $$t[$j], getMemory($sa1, $$s1[$j]) <=> $s2);
          }
        }
       else
        {for my $j(keys @$t)
-         {setMemory($i, $$t[$j], $memory[$$s1[$j]] <=> $memory[$$s2[$j]]);
+         {setMemory($i, $ta, $$t[$j], getMemory($sa1, $$s1[$j]) <=>
+                                      getMemory($sa2, $$s2[$j]));
          }
        }
      },
 
     inc       => sub                                                            # Increment locations in memory. The first location is incremented by 1, the next by two, etc.
      {my ($i) = @_;                                                             # Instruction
-      my $t   = $i->target;
+      my $t   = $i->target; my $ta = $i->target_area // 0;
 
       for my $j(keys @$t)
-       {setMemory($i, $$t[$j], $memory[$$t[$j]] + $j + 1);
+       {setMemory($i, $ta, $$t[$j], getMemory($ta, $$t[$j]) + $j + 1);
        }
      },
 
     jump      => sub                                                            # Jump to the target location
      {my ($i) = @_;                                                             # Instruction
-      my $t   = $i->target;
+      my $t   = $i->target; my $ta  = $i->target_area // 0;
       if (isScalar($t))
        {$instructionPointer = $t;
        }
       else
-       {$instructionPointer = $memory[$$t[0]];
+       {$instructionPointer = getMemory($ta, $$t[0]);
        }
      },
 
     jumpEq    => sub                                                            # Conditional jumps
      {my ($i) = @_;
-      jumpOp($i, sub{$memory[$i->source] == 0});
+      jumpOp($i, sub{getMemory($i->source_area//0, $i->source) == 0});
      },
     jumpNe    => sub
      {my ($i) = @_;
-      jumpOp($i, sub{$memory[$i->source] != 0});
+      jumpOp($i, sub{getMemory($i->source_area//0, $i->source) != 0});
      },
     jumpLe    => sub
      {my ($i) = @_;
-      jumpOp($i, sub{$memory[$i->source] <= 0});
+      jumpOp($i, sub{getMemory($i->source_area//0, $i->source) <= 0});
      },
     jumpLt    => sub
      {my ($i) = @_;
-      jumpOp($i, sub{$memory[$i->source] <  0});
+      jumpOp($i, sub{getMemory($i->source_area//0, $i->source) <  0});
      },
     jumpGe    => sub
      {my ($i) = @_;
-      jumpOp($i, sub{$memory[$i->source] <= 0});
+      jumpOp($i, sub{getMemory($i->source_area//0, $i->source) <= 0});
      },
     jumpGt    => sub
      {my ($i) = @_;
-      jumpOp($i, sub{$memory[$i->source] <  0});
+      jumpOp($i, sub{getMemory($i->source_area//0, $i->source) <  0});
      },
 
     load      => sub                                                            # Load data from the locations addressed by the source array into the target array
      {my ($i) = @_;                                                             # Instruction
-      my $s  = $i->source;
-      my $t  = $i->target;
+      my $s = $i->source; my $sa = $i->source_area // 0;
+      my $t = $i->target; my $ta = $i->target_area // 0;
 
       if (!isScalar $s)                                                         # Load from specified locations
        {for my $j(keys @$t)
-         {setMemory($i, $$t[$j], $memory[$memory[$$s[$j]]]);
+         {setMemory($i, $ta, $$t[$j], getMemory($sa, getMemory($sa, $$s[$j])));
          }
        }
      },
 
     max => sub                                                                  # Maximum element in source block to target
      {my ($i) = @_;                                                             # Instruction
-      my $s = $i->source;                                                       # Array of locations containing the values to be summed
-      my $T = $i->target; my $t = isScalar($T) ? $T : $memory[$T];              # Dereference target if necessary
+      my $s  = $i->source; my $sa = $i->source_area//0;                         # Array of locations containing the values to be summed
+      my $T  = $i->target;
+      my $ta = $i->target_area//0;                                              # Target area
+      my $t  = isScalar($T) ? $T : getMemory($i->target_area//0, $T);           # Dereference target if necessary
 
-      my $x; $x = !defined($x) || $x < $memory[$_] ? $memory[$_] : $x for @$s;  # Maximum element
-      setMemory($i, $t, $x);                                                    # Save maximum
+      my $x;                                                                    # Maximum element
+      for my $a(@$s)
+       {my $S = getMemory($sa, $a);
+        if (!defined($x) || $x < $S)
+         {$x = $S;
+         }
+       }
+      setMemory($i, $ta, $t, $x);                                               # Save maximum
      },
 
     min => sub                                                                  # Minimum element in source block to target
      {my ($i) = @_;                                                             # Instruction
-      my $s = $i->source;                                                       # Array of locations containing the values to be summed
-      my $T = $i->target; my $t = isScalar($T) ? $T : $memory[$T];              # Dereference target if necessary
+      my $s  = $i->source; my $sa = $i->source_area//0;                            # Array of locations containing the values to be summed
+      my $T  = $i->target;
+      my $ta = $i->target_area//0;                                              # Target area
+      my $t  = isScalar($T) ? $T : getMemory($i->target_area//0, $T);           # Dereference target if necessary
 
-      my $x; $x = !defined($x) || $x > $memory[$_] ? $memory[$_] : $x for @$s;  # Minimum element
-      setMemory($i, $t, $x);                                                    # Save maximum
+      my $x;                                                                    # Minimum element
+      for my $a(@$s)
+       {my $S = getMemory($sa, $a);
+        if (!defined($x) || $x > $S)
+         {$x = $S;
+         }
+       }
+      setMemory($i, $ta, $t, $x);                                               # Save minimum
      },
 
     move     => sub                                                             # Move data moves data from one part of memory to another - "set", by contrast, sets variables from constant values
      {my ($i) = @_;                                                             # Instruction
-      my $s  = $i->source;
-      my $t  = $i->target;
+      my $s = $i->source; my $sa = $i->source_area // 0;
+      my $t = $i->target; my $ta = $i->target_area // 0;
 
       if (isScalar $s)                                                          # Broadcast source value
        {for my $i(keys @$t)
-         {setMemory($i, $$t[$i], $s);
+         {setMemory($i, $ta, $$t[$i], $s);
          }
        }
       else
        {for my $j(keys @$t)                                                     # Look up source values in memory
-         {setMemory($i, $$t[$j], $memory[$$s[$j]]);
+         {setMemory($i, $ta, $$t[$j], getMemory($sa, $$s[$j]));
          }
        }
      },
 
     moveBlock => sub                                                            # Move a block of data from the first source operand to the target operand.  The length of the move is determined by the second source operand.  The source block and the target block may overlap.
      {my ($i) = @_;                                                             # Instruction
-      my $S1 = $i->source_1; my $s1 = isScalar($S1) ? $S1 : $memory[$S1];
-      my $S2 = $i->source_2; my $s2 = isScalar($S2) ? $S2 : $memory[$S2];
-      my $T  = $i->target;   my $t  = isScalar($T)  ? $T  : $memory[$T];
+      my $S1 = $i->source_1; my $sa1 = $i->source_1_area // 0; my $s1 = isScalar($S1) ? $S1 : getMemory($sa1, $S1);
+      my $S2 = $i->source_2; my $sa2 = $i->source_2_area // 0; my $s2 = isScalar($S2) ? $S2 : getMemory($sa2, $S2);
+      my $T  = $i->target;   my $ta  = $i->target_area   // 0; my $t  = isScalar($T)  ? $T  : getMemory($ta,  $T);
 
       my @b;                                                                    # Buffer the data being moved to avoid overwrites
-      push @b, $memory[$s1+$_] for 0..$s2-1;
-      setMemory($i, $t+$_, $b[$_]) for 0..$s2-1;
+      push @b, getMemory($sa1, $s1+$_)  for 0..$s2-1;
+      setMemory($i, $ta, $t+$_, $b[$_]) for 0..$s2-1;
      },
 
     nop       => sub                                                            # No operation
@@ -285,64 +315,64 @@ sub emulate($%)                                                                 
        }
       else                                                                      # Write memory locations
        {for my $j(keys @$s)
-         {push @out, $memory[$$s[$j]];
+         {push @out, getMemory($i->source_area//0, $$s[$j]);
          }
        }
      },
 
     ownerClear => sub                                                           # Clear ownership for a range of memory. The target designates the location at which to start, source gives th length of the clear.  The ownership of the memory in this range is reset to zero so that any-one can claim it.
      {my ($i) = @_;                                                             # Instruction
-      my $S = $i->source; my $s = isScalar($S) ? $S : $memory[$S];              # Length of clear
-      my $T = $i->target; my $t = isScalar($T) ? $T : $memory[$T];              # Target of clear
+      my $S = $i->source; my $sa = $i->source_area // 0; my $s = isScalar($S) ? $S : getMemory($sa, $S); # Length of clear
+      my $T = $i->target; my $ta = $i->target_area // 0; my $t = isScalar($T) ? $T : getMemory($ta, $T); # Target of clear
       for my $j(0..$s-1)                                                        # Move block
-       {$owner[$t + $j] = 0;                                                    # Zero the ownership of the memory in the range
+       {$owner{$ta}[$t + $j] = 0;                                               # Zero the ownership of the memory in the range
        }
      },
 
     set     => sub                                                              # Place constant data into memory
      {my ($i) = @_;                                                             # Instruction
-      my $s  = $i->source;
-      my $t  = $i->target;
+      my $s = $i->source;
+      my $t = $i->target; my $ta = $i->target_area // 0;                        # Target of set
 
       if (isScalar $s)                                                          # Broadcast one value
        {for my $j(keys @$t)
-         {setMemory($i, $$t[$j], $s);
+         {setMemory($i, $ta, $$t[$j], $s);
          }
        }
       else                                                                      # Set multiple values
        {for my $j(keys @$t)
-         {setMemory($i, $$t[$j], $$s[$j]);
+         {setMemory($i, $ta, $$t[$j], $$s[$j]);
          }
        }
      },
 
     shiftBlockLeft => sub                                                       # Move a block of longs referenced by the target operand of length the source operand one long to the left
      {my ($i) = @_;                                                             # Instruction
-      my $S = $i->source; my $s = isScalar($S) ? $S : $memory[$S];              # Dereference length if necessary
-      my $T = $i->target; my $t = isScalar($T) ? $T : $memory[$T];              # Dereference target if necessary
+      my $S = $i->source; my $sa = $i->source_area // 0; my $s = isScalar($S) ? $S : getMemory($sa, $S);
+      my $T = $i->target; my $ta = $i->target_area // 0; my $t = isScalar($T) ? $T : getMemory($ta, $T);
 
       for my $j(0..$s-2)                                                        # Move block
-       {setMemory($i, $t+$j, $memory[$t+$j+1]);
+       {setMemory($i, $ta, $t+$j, getMemory($ta, $t+$j+1));
        }
      },
 
-    shiftBlockRight => sub                                                      # Move a block of longs referenced by the target operand of length the source operand one long to the right
+    shiftBlockRight => sub                                                      # Move a block of longs referenced by the target operand of length the source operand one long to the left
      {my ($i) = @_;                                                             # Instruction
-      my $S = $i->source; my $s = isScalar($S) ? $S : $memory[$S];              # Dereference length if necessary
-      my $T = $i->target; my $t = isScalar($T) ? $T : $memory[$T];              # Dereference target if necessary
+      my $S = $i->source; my $sa = $i->source_area // 0; my $s = isScalar($S) ? $S : getMemory($sa, $S);
+      my $T = $i->target; my $ta = $i->target_area // 0; my $t = isScalar($T) ? $T : getMemory($ta, $T);
 
       for my $j(reverse 0..$s-2)                                                # Move block
-       {setMemory($i, $t+$j+1, $memory[$t+$j]);
+       {setMemory($i, $ta, $t+$j+1, getMemory($ta, $t+$j));
        }
      },
 
     sum => sub                                                                  # Sum the source block and place it in the target
      {my ($i) = @_;                                                             # Instruction
-      my $s = $i->source;                                                       # Array of locations containing the values to be summed
-      my $T = $i->target; my $t = isScalar($T) ? $T : $memory[$T];              # Dereference target if necessary
+      my $s = $i->source; my $sa = $i->source_area // 0;
+      my $T = $i->target; my $ta = $i->target_area // 0; my $t = isScalar($T) ? $T : getMemory($ta, $T);
 
-      my $x = 0; $x += $memory[$_] for @$s;                                     # Each location whose contents are to be summed
-      setMemory($i, $t, $x);                                                    # Save sum
+      my $x = 0; $x += getMemory($sa, $_) for @$s;                              # Each location whose contents are to be summed
+      setMemory($i, $ta, $t, $x);                                               # Save sum
      },
    );
 
@@ -384,9 +414,9 @@ sub emulate($%)                                                                 
     count  => $count,                                                           # Executed instructions count
     counts => {%counts},                                                        # Executed instructions by name counts
     labels => {%labels},                                                        # Labels into code
-    memory => [@memory],                                                        # Memory contents at the end of execution
+    memory => {%memory},                                                        # Memory contents at the end of execution
     out    => [@out],                                                           # The out channel
-    owner  => [@owner],                                                         # Memory ownership
+    owner  => {%owner},                                                         # Memory ownership
    );
  }
 
@@ -426,9 +456,9 @@ if (1)                                                                          
 
 if (1)                                                                          # Inc
  {my $r = emulate
-   ([instruction(action=>'set',     source=>0, target=>[0..2]),
-     instruction(action=>'inc',     target=>[0..2]),
-     instruction(action=>'out',     source=>[0..2]),
+   ([instruction(action=>'set', source=>0, target=>[0..2]),
+     instruction(action=>'inc', target=>[0..2]),
+     instruction(action=>'out', source=>[0..2]),
    ]);
   is_deeply $r->out, [1,2,3];
   is_deeply $r->count,    3;
@@ -436,9 +466,9 @@ if (1)                                                                          
 
 if (1)                                                                          # 1+2 -> 3
  {my $r = emulate
-   ([instruction(action=>'set',  source=>[1,2], target=>[0,1]),
-     instruction(action=>'add',  source_1=>[0], source_2=>[1], target=>[0]),
-     instruction(action=>'out',  source=>[0]),
+   ([instruction(action=>'set', source=>[1,2], target=>[0,1]),
+     instruction(action=>'add', source_1=>[0], source_2=>[1], target=>[0]),
+     instruction(action=>'out', source=>[0]),
    ]);
   is_deeply $r->out->[0], 3;
   is_deeply $r->count,    3;
@@ -498,18 +528,18 @@ if (1)                                                                          
 
 if (1)                                                                          # For loop with labels
  {my $r = emulate
-   ([instruction(action=>'set', source =>[0..3], target=>[0..3]),               #0 Block to move
-     instruction(action=>'shiftBlockLeft', source=>3, target =>0),              #1 Shift left
-     instruction(action=>'out', source =>[0..3]),                               #2 Print
+   ([instruction(action=>'set',            source =>[0..3], target=>[0..3]),    #0 Block to move
+     instruction(action=>'shiftBlockLeft', source => 3,     target=>0),         #1 Shift left
+     instruction(action=>'out',            source =>[0..3]),                    #2 Print
    ]);
   is_deeply $r->out, [1,2,2,3];
  }
 
 if (1)                                                                          # For loop with labels
  {my $r = emulate
-   ([instruction(action=>'set', source =>[0..3], target=>[0..3]),               #0 Block to move
-     instruction(action=>'shiftBlockRight', source=>3, target =>0),             #1 Shift left
-     instruction(action=>'out', source =>[0..3]),                               #2 Print
+   ([instruction(action=>'set',             source =>[0..3], target=>[0..3]),   #0 Block to move
+     instruction(action=>'shiftBlockRight', source => 3,     target=>0),        #1 Shift left
+     instruction(action=>'out',             source =>[0..3]),                   #2 Print
    ]);
   is_deeply $r->out, [0,0,1,3];
  }
@@ -579,7 +609,7 @@ if (1)                                                                          
    ([instruction(action=>'set', source => [10..19], owner=>1, target => [0..9]),#0 Create and load some memory with for one owner
      instruction(action=>'min', source => [0..9],   owner=>2, target => 0),     #1 Minimum but with different owner
    ])};
-  ok $@ =~ m(Owner mismatch wanted: 1, got: 2);
+  ok $@ =~ m(Owner mismatch memory: 0:0, wanted: 1, got: 2);
  }
 
 #latest:;
@@ -588,5 +618,5 @@ if (1)                                                                          
    ([instruction(action=>'set',        source => [0..9], owner=>1, target => [0..9]),  #0 Create and load some memory with for one owner
      instruction(action=>'ownerClear', source => 5,     target => 0),           #1 Clear owner ship of some of the memory
    ])};
-  is_deeply $r->owner, [0, 0, 0, 0, 0, 1, 1, 1, 1, 1];
+  is_deeply $r->owner, { "0" => [0, 0, 0, 0, 0, 1, 1, 1, 1, 1] };
  }
