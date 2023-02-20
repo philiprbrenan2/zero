@@ -253,9 +253,16 @@ sub emulate($%)                                                                 
       setMemory($i, $ta, $t, $x);                                               # Save maximum
      },
 
+    memorySize => sub                                                           # Set the target location to the size of the memory area described by the source operand.
+     {my ($i) = @_;                                                             # Instruction
+      my ($s)      = sourceValue($i);                                           # Number of memory area
+      my ($t, $ta) = targetValue($i);                                           # Set target to length of memory area
+      setMemory($i, $ta, $t, scalar $memory{$s}->@*);
+     },
+
     min => sub                                                                  # Minimum element in source block to target
      {my ($i) = @_;                                                             # Instruction
-      my $s  = $i->source; my $sa = $i->source_area//0;                            # Array of locations containing the values to be summed
+      my $s  = $i->source; my $sa = $i->source_area//0;                         # Array of locations containing the values to be summed
       my ($t, $ta) = targetValue($i);
 
       my $x;                                                                    # Minimum element
@@ -605,11 +612,20 @@ if (1)                                                                          
   ok $@ =~ m(Owner mismatch memory: 0:0, wanted: 1, got: 2);
  }
 
-#latest:;
 if (1)                                                                          # Clear ownership of memory
  {my $r = eval {emulate
    ([instruction(action=>'set',        source => [0..9], owner=>1, target => [0..9]),  #0 Create and load some memory with for one owner
      instruction(action=>'ownerClear', source => 5,     target => 0),           #1 Clear owner ship of some of the memory
    ])};
   is_deeply $r->owner, { "0" => [0, 0, 0, 0, 0, 1, 1, 1, 1, 1] };
+ }
+
+latest:;
+if (1)                                                                          # Clear ownership of memory
+ {my $r = eval {emulate
+   ([instruction(action=>'set', source=>1, target=>[0..9], target_area=>22),    #0 Create and load some memory with for one owner
+     instruction(action=>'memorySize', source=>22, target=>0),                  #1 Memory area size
+   ])};
+# lll "AAAA", dump($r->memory);
+  is_deeply $r->memory->{0}, [10];
  }
