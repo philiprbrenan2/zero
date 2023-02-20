@@ -6,11 +6,14 @@
 use v5.30;
 use warnings FATAL => qw(all);
 use strict;
-use Carp;
-use Data::Dump qw(dump);
-use Data::Table::Text qw(:all);
+use Zero::Emulator;
 use Test::More qw(no_plan);
 
-my $home   = currentDirectory;                                                  # Home folder
-my $input  = fpe $home, qw(input txt);                                          # Input file
-my $output = fpe $home, qw(output txt);                                         # Output file
+package Zero::Emulator;
+
+my $r = emulate
+ ([instruction(action=>'set', source=>[10..19], target=>[0..9]),                #0 Create and load some memory
+   instruction(action=>'min', source=>[0..9],   target=>0),                     #1 Minimum
+   instruction(action=>'out', source=>[0]),                                     #2 Print
+ ]);
+Test::More::is_deeply $r->out, [10];
