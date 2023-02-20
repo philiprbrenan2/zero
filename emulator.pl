@@ -218,13 +218,13 @@ sub emulate($%)                                                                 
        {$instructionPointer = getMemory($ta, $t);
        }
      },
-                                                                                # Conditional jumps
-    jumpEq    => sub {my ($i) = @_; jumpOp($i, sub{(sourceValue($i))[0] == 0})},
-    jumpNe    => sub {my ($i) = @_; jumpOp($i, sub{(sourceValue($i))[0] != 0})},
-    jumpLe    => sub {my ($i) = @_; jumpOp($i, sub{(sourceValue($i))[0] <= 0})},
-    jumpLt    => sub {my ($i) = @_; jumpOp($i, sub{(sourceValue($i))[0] <  0})},
-    jumpGe    => sub {my ($i) = @_; jumpOp($i, sub{(sourceValue($i))[0] <= 0})},
-    jumpGt    => sub {my ($i) = @_; jumpOp($i, sub{(sourceValue($i))[0] <  0})},
+
+    jumpEq => sub {my ($i) = @_; jumpOp($i, sub{(sourceValue($i))[0] == 0})},   # Conditional jumps
+    jumpNe => sub {my ($i) = @_; jumpOp($i, sub{(sourceValue($i))[0] != 0})},
+    jumpLe => sub {my ($i) = @_; jumpOp($i, sub{(sourceValue($i))[0] <= 0})},
+    jumpLt => sub {my ($i) = @_; jumpOp($i, sub{(sourceValue($i))[0] <  0})},
+    jumpGe => sub {my ($i) = @_; jumpOp($i, sub{(sourceValue($i))[0] <= 0})},
+    jumpGt => sub {my ($i) = @_; jumpOp($i, sub{(sourceValue($i))[0] <  0})},
 
     load      => sub                                                            # Load data from the locations addressed by the source array into the target array
      {my ($i) = @_;                                                             # Instruction
