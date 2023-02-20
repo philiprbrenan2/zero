@@ -19,7 +19,7 @@ my $wf   = q(.github/workflows/main.yml);                                       
 expandWellKnownWordsInMarkDownFile                                              # Documentation
   fpe($home, qw(README md2)), fpe $home, qw(README md);
 
-push my @files, searchDirectoryTreesForMatchingFiles($home, qw(.pl .md));       # Files
+push my @files, searchDirectoryTreesForMatchingFiles($home, qw(.pm .pl .md));   # Files
 
 for my $s(@files)                                                               # Upload each selected file
  {my $c = readFile($s);                                                         # Load file
