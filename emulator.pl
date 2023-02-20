@@ -270,7 +270,7 @@ sub Zero::Emulator::Code::execute($%)                                           
         my $t = $c->target;
         my $L = $t->label // '';
         my $N = $t->number;
-        push @out, sprintf "%4d %4d->%4d  %12s->%12s", $j+1, $n, $N, $l, $L;
+        push @out, sprintf "%4d %4d %12s", $j+1, $N, $L;
        }
       $instructionPointer = @$code;                                             # Execution terminates as soon as undefined instuction is encountered
      },
@@ -705,9 +705,10 @@ if (1)                                                                          
      instruction(action=>'confess', label =>"sub2"),                            #2 Print call stack
     ];
 
+# say STDERR dump($r->out);
   is_deeply $r->out,
-   ["Stack trace",
-    "   2    1->   2          sub1->        sub2",
-    "   1    0->   1              ->        sub1",
-   ];
+["Stack trace",
+ "   2    2         sub2",
+ "   1    1         sub1",
+];
  }
