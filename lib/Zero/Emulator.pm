@@ -10,7 +10,7 @@ use strict;
 use Carp;
 use Data::Dump qw(dump);
 use Data::Table::Text qw(:all);
-eval {use Test::More qw(no_plan)} unless caller;
+eval "use Test::More qw(no_plan)" unless caller;
 
 makeDieConfess;
 
@@ -476,6 +476,8 @@ sub Zero::Emulator::Code::execute($%)                                           
 return 1 if caller;
 
 eval {goto latest};
+sub is_deeply;
+sub ok($;$);
 
 is_deeply emulate([instruction(action=>'out', source=>"hello World")])->out,    # Hello World
           ["hello World"];
