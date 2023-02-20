@@ -78,8 +78,61 @@ sub isScalar($)                                                                 
   ! ref $value;
  }
 
+sub code(%)                                                                     # A block of code
+ {my (%options) = @_;                                                           # Parameters
+
+  genHash("Zero::Emulator::Code",                                               # Description of a call stack entry
+    assembled => undef,                                                         # Needs to be assembled unless this field is true
+    code      => [],                                                            # An array of instructions
+    labels    => {},                                                            # Label to instruction
+    files     => [],                                                            # File number to file name
+    %options,
+   );
+ }
+
+
 sub emulate($%)                                                                 # Emulate an array of code
- {my ($code, %options) = @_;                                                    # Parameters
+ {my ($code, %options) = @_;                                                    # Block of code, options
+
+  my $c = code(code => $code);
+  my $r = $c->execute;
+  $r
+ }
+
+sub Zero::Emulator::Code::assemble($%)                                          # Assemble a block of code to prepare it for execution
+ {my ($Code, %options) = @_;                                                    # Code block, assembly options
+  return $Code if $Code->assembled;                                             # Already assembled
+
+  my $code = $Code->code;                                                       # The code to be assembled
+  my %labels;                                                                   # Load labels
+
+  for my $c(keys @$code)                                                        # Each instruction
+   {my $i = $$code[$c];
+    $i->number = $c;
+    next unless $$i{label};
+    if (my $l = $i->label)                                                      # Label
+     {$labels{$l} = $c;                                                         # Point label to instruction
+     }
+   }
+
+  for my $c(keys @$code)                                                        # Each instruction
+   {my $i = $$code[$c];
+    next unless $i->action =~ m(\A(call|jump))i;
+    if (my $l = $i->target)                                                     # Label
+     {next unless isScalar($l);                                                 # Not an array
+      next if $l =~ m/\A[-+]?\d+\Z/;                                            # Not an integer
+      $i->target = $labels{$l};                                                 # Point target keyword to target instruction
+     }
+   }
+  $Code->labels = {%labels};                                                    # Labels created during assembly
+  $Code->assembled = time;                                                      # Time of assembly
+  $Code
+ }
+
+sub Zero::Emulator::Code::execute($%)                                           # Execute a block of code
+ {my ($Code, %options) = @_;                                                    # Block of code, execution options
+  $Code->assemble;                                                              # Assemble if necessary
+  my $code = $Code->code;
 
   my $instructionPointer = 0;                                                   # Instruction pointer
   my @out;                                                                      # Output channel
@@ -376,29 +429,6 @@ sub emulate($%)                                                                 
      },
    );
 
-# Assemble
-  my %labels;                                                                   # Load labels
-
-  for my $c(keys @$code)                                                        # Each instruction
-   {my $i = $$code[$c];
-    $i->number = $c;
-    next unless $$i{label};
-    if (my $l = $i->label)                                                      # Label
-     {$labels{$l} = $c;                                                         # Point label to instruction
-     }
-   }
-
-  for my $c(keys @$code)                                                        # Each instruction
-   {my $i = $$code[$c];
-    next unless $i->action =~ m(\A(call|jump))i;
-    if (my $l = $i->target)                                                     # Label
-     {next unless isScalar($l);                                                 # Not an array
-      next if $l =~ m/\A[-+]?\d+\Z/;                                            # Not an integer
-      $i->target = $labels{$l};                                                 # Point target keyword to target instruction
-     }
-   }
-
-# Execute
   for my $j(1..maximumInstructionsToExecute)                                    # Each instruction in the code until we hit an undefined instruction
    {my $i = $$code[$instructionPointer++];
     last unless $i;
@@ -410,10 +440,10 @@ sub emulate($%)                                                                 
     confess "Out of instructions after $j" if $j >= maximumInstructionsToExecute;
    }
 
-  genHash("Zero::Emulator::Results",                                            # Execution results
+  genHash("Zero::Emulator::Execution",                                          # Execution results
+    code   => $code,                                                            # Code executed
     count  => $count,                                                           # Executed instructions count
     counts => {%counts},                                                        # Executed instructions by name counts
-    labels => {%labels},                                                        # Labels into code
     memory => {%memory},                                                        # Memory contents at the end of execution
     out    => [@out],                                                           # The out channel
     owner  => {%owner},                                                         # Memory ownership
