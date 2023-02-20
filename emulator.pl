@@ -620,7 +620,7 @@ if (1)                                                                          
   is_deeply $r->owner, { "0" => [0, 0, 0, 0, 0, 1, 1, 1, 1, 1] };
  }
 
-latest:;
+#latest:;
 if (1)                                                                          # Clear ownership of memory
  {my $r = eval {emulate
    ([instruction(action=>'set', source=>1, target=>[0..9], target_area=>22),    #0 Create and load some memory with for one owner
