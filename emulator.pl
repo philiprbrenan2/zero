@@ -700,15 +700,16 @@ if (1)                                                                          
 #latest:;
 if (1)                                                                          # Confess
  {my $r = emulate
-    [instruction(action=>'call',    target=>"sub1"),                            #0 Call subroutine
-     instruction(action=>'call',    label =>"sub1", target => "sub2"),          #1 Call subroutine
-     instruction(action=>'confess', label =>"sub2"),                            #2 Print call stack
+    [instruction(action=>'nop'),                                                #0 Do nothing
+     instruction(action=>'call',    target=>"sub1"),                            #1 Call subroutine
+     instruction(action=>'call',    label =>"sub1", target => "sub2"),          #2 Call subroutine
+     instruction(action=>'confess', label =>"sub2"),                            #3 Print call stack
     ];
 
 # say STDERR dump($r->out);
   is_deeply $r->out,
 ["Stack trace",
- "   2    2         sub2",
- "   1    1         sub1",
+ "   2    3         sub2",
+ "   1    2         sub1",
 ];
  }
