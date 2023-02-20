@@ -20,4 +20,4 @@ jobs:
 
     - name: Zero
       run: |
-        perl emulator.pl
+        perl lib/Zero/Emulator.pm
