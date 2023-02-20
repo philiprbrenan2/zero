@@ -14,7 +14,7 @@ use Test::More qw(no_plan);
 
 makeDieConfess;
 
-sub maximumInstructionsToExecute {100}                                          # Maximum number of subroutines to execute
+sub maximumInstructionsToExecute {20}                                           # Maximum number of subroutines to execute
 
 sub dataStructure(@)                                                            # Describe a data structure
  {my ($name, @fields) = @_;                                                     # Structure name, fields names
@@ -95,7 +95,7 @@ sub emulate($%)                                                                 
  {my ($code, %options) = @_;                                                    # Block of code, options
 
   my $c = code(code => $code);
-  my $r = $c->execute;
+  my $r = $c->execute(%options);
   $r
  }
 
@@ -120,8 +120,7 @@ sub Zero::Emulator::Code::assemble($%)                                          
     next unless $i->action =~ m(\A(call|jump))i;
     if (my $l = $i->target)                                                     # Label
      {next unless isScalar($l);                                                 # Not an array
-      next if $l =~ m/\A[-+]?\d+\Z/;                                            # Not an integer
-      $i->target = $labels{$l};                                                 # Point target keyword to target instruction
+      $i->target = $labels{$l} - $c;                                            # Relative jump
      }
    }
   $Code->labels = {%labels};                                                    # Labels created during assembly
@@ -153,6 +152,7 @@ sub Zero::Emulator::Code::execute($%)                                           
      {if (my $O = $i->owner)
        {if ($o == $O)
          {$memory{$area}[$at] = $value;                                         # Memory owned by this instruction
+          say STDERR sprintf "%4d:%4d = %d", $area, $at, $value if $options{trace};
          }
         else
          {confess "Owner mismatch memory: $area:$at, wanted: $o, got: $O\n";
@@ -163,8 +163,9 @@ sub Zero::Emulator::Code::execute($%)                                           
        }
      }
     else                                                                        # Memory is open
-     {$memory{$area}[$at] = $value;                                             # Set value
-      $owner {$area}[$at] = $i->owner // 0;                                     # Take ownership if an ownership key is supplied
+     {my $v = $memory{$area}[$at] = $value;                                     # Set value
+      my $o = $owner {$area}[$at] = $i->owner // 0;                             # Take ownership if an ownership key is supplied
+      say STDERR sprintf "%4d:%4d:%4d = %d", $o, $area, $at, $v if $options{trace};
      }
    }
 
@@ -187,7 +188,7 @@ sub Zero::Emulator::Code::execute($%)                                           
   my sub jumpOp($$)                                                             # Jump to the target location if the tested memory area if the condition is matched
    {my ($i, $check) = @_;                                                       # Instruction, check
     my ($t, $ta) = targetValue($i);
-    $instructionPointer = $t if &$check;                                        # Check if condition is met
+    $instructionPointer = $i->number + $t if &$check;                           # Check if condition is met
    }
 
   my %instructions =                                                            # Instruction definitions
@@ -212,11 +213,16 @@ sub Zero::Emulator::Code::execute($%)                                           
 
     call => sub                                                                 # Call a subroutine
      {my ($i) = @_;                                                             # Instruction
-      my ($s) = sourceValue($i);
-      my ($t) = targetValue($i);
+      my ($s) = sourceValue($i);                                                # Parameter list location
+      my ($t) = targetValue($i);                                                # Subroutine to call
 
-      push @calls,  callEntry(target=>$t, call=>$i->number, params=>$s);
-      $instructionPointer = $t;
+      push @calls, callEntry(target=>$t, call=>$i->number, params=>$s);
+      if (isScalar($i->target))
+       {$instructionPointer = $i->number + $t;                                  # Relative call if we know where the subroutine is relative to the call instruction
+       }
+      else
+       {$instructionPointer = $t;                                               # Absolute call
+       }
      },
 
     parameters => sub                                                           # Locate the parameter list for the current subroutine call
@@ -265,7 +271,7 @@ sub Zero::Emulator::Code::execute($%)                                           
      {my ($i) = @_;                                                             # Instruction
       my ($t, $ta) = targetValue($i);
       if (isScalar($t))
-       {$instructionPointer = $t;
+       {$instructionPointer = $i->number + $t;
        }
       else
        {$instructionPointer = getMemory($ta, $t);
@@ -435,6 +441,7 @@ sub Zero::Emulator::Code::execute($%)                                           
     if (my $a = $i->action)                                                     # Action
      {$counts{$a}++; $count++;                                                  # Execution counts
       confess qq(Invalid instruction: "$a"\n) unless my $c = $instructions{$a};
+      say STDERR sprintf "%4d  %4d  %12s", $j, $i->number, $i->action if $options{trace};
       $c->($i);                                                                 # Execute instruction
      }
     confess "Out of instructions after $j" if $j >= maximumInstructionsToExecute;
@@ -506,26 +513,28 @@ if (1)                                                                          
 
 if (1)                                                                          # For loop with direct jump targets
  {my $r = emulate                             #0 1 2 3
-   ([instruction(action=>'set',     source  =>[0,1,3,0],       target=>[0..3]), #0 Count 1,2,3
-     instruction(action=>'add',     source_1=>[0], source_2=>[1], target=>[0]), #1 Increment at start of loop
-     instruction(action=>'out',     source  =>[0]),                             #2 Print
-     instruction(action=>'compare', source_1=>[0], source_2=>[2], target=>[3]), #3 Compare result to m[3]
-     instruction(action=>'jumpEq',  source  =>[3],                target=> 6),  #4 Goto end of loop
-     instruction(action=>'jump',                                  target=> 1),  #5 Restart loop
+   ([instruction(action=>'set',     source  =>[0,1,3,0], target=>[0..3]),       #0 Count 1,2,3
+     instruction(action=>'nop',     label=>'start'),                            #1 Start of loop
+     instruction(action=>'add',     source_1=>[0], source_2=>[1], target=>[0]), #2 Increment at start of loop
+     instruction(action=>'out',     source  =>[0]),                             #3 Print
+     instruction(action=>'compare', source_1=>[0], source_2=>[2], target=>[3]), #4 Compare result to m[3]
+     instruction(action=>'jumpEq',  source  =>[3], target=>"end"),              #5 Goto end of loop
+     instruction(action=>'jump',                   target=>"start"),            #6 Restart loop
+     instruction(action=>'nop',     label=>'end'),                              #7 End
    ]);
   is_deeply $r->out, [1,2,3];
-  is_deeply $r->count,   15;
+  is_deeply $r->count,   19;
  }
 
 if (1)                                                                          # For loop with indirect jump targets
  {my $r = emulate                             #0 1 2 3 4 5 6
-   ([instruction(action=>'set',     source  =>[0,1,3,0,1,6],   target=>[0..6]), #0 Count 1,2,3
+   ([instruction(action=>'set',     source  =>[0,1,3,0,-4,+2],    target=>[0..5]), #0 Count 1,2,3
      instruction(action=>'add',     source_1=>[0], source_2=>[1], target=>[0]), #1 Increment at start of loop
      instruction(action=>'out',     source  =>[0]),                             #2 Print
      instruction(action=>'compare', source_1=>[0], source_2=>[2], target=>[3]), #3 Compare result to m[3]
      instruction(action=>'jumpEq',  source  =>[3],                target=>[5]), #4 m[5] contains location of end of loop
      instruction(action=>'jump',                                  target=>[4]), #5 m[4] contains location of start of loop
-   ]);
+   ], trace=>0);
   is_deeply $r->out, [1,2,3];
   is_deeply $r->count,   15;
  }
@@ -603,6 +612,19 @@ if (1)                                                                          
      instruction(action=>'return'),                                             #4 Return
      instruction(action=>'nop',    label  => "end_sub"),                        #5 End of subroutine
      instruction(action=>'call',   source => 2, target => "sub"),               #6 Call subroutine
+   ]);
+  is_deeply $r->out, [2];
+ }
+
+if (1)                                                                          # Indirect call to an absolute address
+ {my $r = emulate
+   ([instruction(action=>'set',    source => [0..9], target => [0..9]),         #0 Create and load some memory
+     instruction(action=>'jump',   target => "end_sub"),                        #1 Jump over subroutine
+     instruction(action=>'parameters', target => 0, label => "sub"),            #2 Parameters
+     instruction(action=>'out',        source => [0]),                          #3 Print
+     instruction(action=>'return'),                                             #4 Return
+     instruction(action=>'nop',    label  => "end_sub"),                        #5 End of subroutine
+     instruction(action=>'call',   source => 2, target => [2]),                 #6 Call subroutine  indirectly
    ]);
   is_deeply $r->out, [2];
  }
