@@ -53,7 +53,7 @@ jobs:
 
     - name: Zero
       run: |
-        perl emulator.pl
+        perl lib/Zero/Emulator.pm
 END
 
 lll "Ubuntu work flow for $repo ", writeFileUsingSavedToken($user, $repo, $wf, $y);
