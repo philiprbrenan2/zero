@@ -84,7 +84,7 @@ sub code(%)                                                                     
   genHash("Zero::Emulator::Code",                                               # Description of a call stack entry
     assembled => undef,                                                         # Needs to be assembled unless this field is true
     code      => [],                                                            # An array of instructions
-    labels    => {},                                                            # Label to instruction
+    labels    => {},                                                            # Label name to instruction
     files     => [],                                                            # File number to file name
     %options,
    );
@@ -216,13 +216,14 @@ sub Zero::Emulator::Code::execute($%)                                           
       my ($s) = sourceValue($i);                                                # Parameter list location
       my ($t) = targetValue($i);                                                # Subroutine to call
 
-      push @calls, callEntry(target=>$t, call=>$i->number, params=>$s);
       if (isScalar($i->target))
        {$instructionPointer = $i->number + $t;                                  # Relative call if we know where the subroutine is relative to the call instruction
        }
       else
        {$instructionPointer = $t;                                               # Absolute call
        }
+      my $ti = $code->[$instructionPointer];
+      push @calls, callEntry(target=>$ti, call=>$i, params=>$s);
      },
 
     parameters => sub                                                           # Locate the parameter list for the current subroutine call
@@ -256,6 +257,22 @@ sub Zero::Emulator::Code::execute($%)                                           
                                       getMemory($sa2, $$s2[$j]));
          }
        }
+     },
+
+    confess => sub                                                              # Print the current call stack and stop
+     {my ($i) = @_;                                                             # Instruction
+      push @out, "Stack trace";
+      for my $j(reverse keys @calls)
+       {my $c = $calls[$j];
+        my $i = $c->call;
+        my $l = $i->label // '';
+        my $n = $i->number;
+        my $t = $c->target;
+        my $L = $t->label // '';
+        my $N = $t->number;
+        push @out, sprintf "%4d %4d->%4d  %12s->%12s", $j+1, $n, $N, $l, $L;
+       }
+      $instructionPointer = @$code;                                             # Execution terminates as soon as undefined instuction is encountered
      },
 
     inc       => sub                                                            # Increment locations in memory. The first location is incremented by 1, the next by two, etc.
@@ -672,12 +689,25 @@ if (1)                                                                          
   is_deeply $r->owner, { "0" => [0, 0, 0, 0, 0, 1, 1, 1, 1, 1] };
  }
 
-#latest:;
 if (1)                                                                          # Clear ownership of memory
  {my $r = eval {emulate
    ([instruction(action=>'set', source=>1, target=>[0..9], target_area=>22),    #0 Create and load some memory with for one owner
      instruction(action=>'memorySize', source=>22, target=>0),                  #1 Memory area size
    ])};
-# lll "AAAA", dump($r->memory);
   is_deeply $r->memory->{0}, [10];
+ }
+
+#latest:;
+if (1)                                                                          # Indirect call to an absolute address
+ {my $r = emulate
+    [instruction(action=>'call',    target=>"sub1"),                            #2 Call subroutine
+     instruction(action=>'call',    label =>"sub1", target => "sub2"),          #1 Call subroutine
+     instruction(action=>'confess', label =>"sub2"),                            #0 Print call stack
+    ];
+
+  is_deeply $r->out,
+   ["Stack trace",
+    "   2    1->   2          sub1->        sub2",
+    "   1    0->   1              ->        sub1",
+   ];
  }
