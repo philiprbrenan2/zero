@@ -270,7 +270,8 @@ sub Zero::Emulator::Code::execute($%)                                           
         my $t = $c->target;
         my $L = $t->label // '';
         my $N = $t->number;
-        push @out, sprintf "%4d %4d %12s", $j+1, $N, $L;
+        my $P = $c->params // 0;
+        push @out, sprintf "%4d %4d %12s  %4d", $j+1, $N, $L, $P;
        }
       $instructionPointer = @$code;                                             # Execution terminates as soon as undefined instuction is encountered
      },
@@ -327,6 +328,12 @@ sub Zero::Emulator::Code::execute($%)                                           
          }
        }
       setMemory($i, $ta, $t, $x);                                               # Save maximum
+     },
+
+    memoryClear => sub                                                          # Clear the memory area specified by the target operand
+     {my ($i) = @_;                                                             # Instruction
+      my ($t, $ta) = targetValue($i);                                           # Set target to length of memory area
+      $memory{$ta} = undef;
      },
 
     memorySize => sub                                                           # Set the target location to the size of the memory area described by the source operand.
@@ -713,15 +720,15 @@ if (1)                                                                          
 if (1)                                                                          # Confess
  {my $r = emulate
     [instruction(action=>'nop'),                                                #0 Do nothing
-     instruction(action=>'call',    target=>"sub1"),                            #1 Call subroutine
-     instruction(action=>'call',    label =>"sub1", target => "sub2"),          #2 Call subroutine
+     instruction(action=>'call',    target=>"sub1", source=>[4]),               #1 Call subroutine
+     instruction(action=>'call',    label =>"sub1", source=>[3], target => "sub2"),          #2 Call subroutine
      instruction(action=>'confess', label =>"sub2"),                            #3 Print call stack
     ];
 
 # say STDERR dump($r->out);
   is_deeply $r->out,
 ["Stack trace",
- "   2    3         sub2",
- "   1    2         sub1",
+ "   2    3         sub2     0",
+ "   1    2         sub1     0",
 ];
  }
