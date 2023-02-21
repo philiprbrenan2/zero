@@ -473,6 +473,15 @@ sub Zero::Emulator::Code::execute($%)                                           
     owner  => {%owner},                                                         # Memory ownership
    );
  }
+
+use Exporter qw(import);
+use vars qw(@ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
+
+@ISA         = qw(Exporter);
+@EXPORT      = qw();
+@EXPORT_OK   = qw(emulate instruction);
+%EXPORT_TAGS = (all=>[@EXPORT, @EXPORT_OK]);
+
 return 1 if caller;
 
 eval {goto latest};
