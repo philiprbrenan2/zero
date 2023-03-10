@@ -166,7 +166,7 @@ sub Zero::Emulator::Code::execute($%)                                           
      {$memory{&stackArea}[$at]                                                  # Direct
      }
     else
-     {$memory{&stackArea}[$memory{&stackArea}[$at]]                             # Indirect
+     {$memory{&stackArea}[$memory{&stackArea}[$$at]]                            # Indirect
      }
    }
 
@@ -503,7 +503,7 @@ sub Out($)                                                                      
  }
 
 sub OutString($)                                                                # Output a string
- {my ($source) = @_;                                                            # Source sstring
+ {my ($source) = @_;                                                            # Source string
   $assembly->instruction(action=>"outString", source=>$source);
  }
 
@@ -512,8 +512,14 @@ sub Set($$)                                                                     
   $assembly->instruction(action=>"set", target=>$target, source=>$source);
  }
 
-sub execute()                                                                   # Execute the current assembly
- {$assembly->execute;                                                           # Execute the cod inm the current assembly
+sub execute(%)                                                                  # Execute the current assembly
+ {my (%options) = @_;                                                           # Options
+  my $r = $assembly->execute;                                                   # Execute the code in the current assembly
+  if (my $out = $options{out})
+   {my $c = compareArraysAndExplain $r->out, $out;
+    lll $c if $c;
+    return !$c;
+   }
  }
 
 use Exporter qw(import);
@@ -530,29 +536,37 @@ eval {goto latest};
 sub is_deeply;
 sub ok($;$);
 
+latest:;
 if (1)
  {start;
   OutString "hello World";
-  is_deeply execute->out, ["hello World"];
+  ok execute(out=>["hello World"]);
  }
-
-latest:;
 
 if (1)
  {start;
   Set 1, 2;
   Out 1;
-  is_deeply execute->out, [2];
+  ok execute(out=>[2]);
+ }
+
+if (1)
+ {start;
+  Set  2, 1;
+  Set \2, 2;
+  Out \2;
+  ok execute(out=>[2]);
  }
 exit;
 
-if (0)                                                                          # Move
+if (1)                                                                          # Move
  {my $r = emulate
    ([instruction(action=>'move', source=>1, target=>[0..2]),
      instruction(action=>'out',  source=>[0..1]),
    ]);
   is_deeply $r->out, [1,1];
  }
+exit;
 
 if (1)                                                                          # Move
  {my $r = emulate
