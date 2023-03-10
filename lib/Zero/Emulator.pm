@@ -12,14 +12,26 @@ use Data::Dump qw(dump);
 use Data::Table::Text qw(:all);
 eval "use Test::More qw(no_plan)" unless caller;
 
+=pod
+
+All instructions except "move" operate on the local stack segment target=>1
+means location 1. \1 means the location addressed by location 1
+
+Memory is addressed in areas.  Each method has its own current stack area,
+parameter area and return results area.  Each area can grow a much as is needed
+to hold data. Memory areas can be sparse.  Additional memory areas can be
+allocated and freed as necessary.
+
+=cut
+
 makeDieConfess;
 
 sub maximumInstructionsToExecute {20}                                           # Maximum number of subroutines to execute
 
-sub dataStructure(@)                                                            # Describe a data structure
+sub AreaStructure(@)                                                            # Describe a data structure mapping a memory area
  {my ($name, @fields) = @_;                                                     # Structure name, fields names
 
-  my $d = genHash("Zero::Emulator::DataStructure",                              # Description of a data structure
+  my $d = genHash("Zero::Emulator::AreaStructure",                              # Description of a data structure mapping a memory area
     name  => $name,                                                             # Name of the structure
     order => [],                                                                # Order of the elements in the structure, in effect, giving the offset of each element in the data structure
     names => {},                                                                # Maps the names of the fields to their offsets in the structure
@@ -28,7 +40,7 @@ sub dataStructure(@)                                                            
   $d
  }
 
-sub Zero::Emulator::DataStructure::field($$)                                    # Add a field to a data structure
+sub Zero::Emulator::AreaStructure::field($$)                                    # Add a field to a data structure
  {my ($d, $name) = @_;                                                          # Parameters
   if (!$d->names->{$name})
    {$d->names->{$name} = $d->order->@*;
@@ -39,7 +51,7 @@ sub Zero::Emulator::DataStructure::field($$)                                    
    }
  }
 
-sub Zero::Emulator::DataStructure::offset($$)                                   # Offset of a field
+sub Zero::Emulator::AreaStructure::offset($$)                                   # Offset of a field
  {my ($d, $name) = @_;                                                          # Parameters
   $d->names->{$name}
  }
@@ -50,27 +62,28 @@ sub callEntry(%)                                                                
   genHash("Zero::Emulator::CallEntry",                                          # Description of a call stack entry
     target   => $options{target},                                               # The location of the subroutine being called
     call     => $options{call},                                                 # The location of the call instruction making the call
-    params   => $options{params},                                               # The location at which the parameter list starts in memory. Note that there is no return area - if the subroutine returns values then they go somewhere in the parameter list at locations determined by the called subroutine.
+    data     => $options{data},                                                 # Memory area containing data for this method
+    params   => $options{params},                                               # Memory area containing paramter list
+    return   => $options{return},                                               # Memory area conmtaining returned result
     line     => $options{line},                                                 # The line number from which the call was made
     file     => $options{file},                                                 # The file number from which the call was made - this could be folded into the line number but for reasons best known to themselves people who cannot program very well often scatter projects across several files a practice that is completely pointless in this day of git and so can only lead to chaos and confusion
-   );
+  );
  }
 
-sub instruction(%)                                                              # Create a new instruction
- {my (%options) = @_;                                                           # Parameters
+sub Zero::Emulator::Code::instruction(%)                                        # Create a new instruction
+ {my ($code, %options) = @_;                                                    # Code, options
 
-  genHash("Zero::Emulator::Instruction",                                        # Instruction details
-    number        => undef,
-    owner         => undef,
-    source        => undef,
-    source_area   => undef,
-    source_1      => undef,
-    source_2      => undef,
-    source_1_area => undef,
-    source_2_area => undef,
-    target        => undef,
-    target_area   => undef,
-    %options);
+  push $code->code->@*, genHash("Zero::Emulator::Instruction",                  # Instruction details
+    action        => $options{action       },                                   # Instruction name
+    number        => $options{number       },                                   # Instruction sequence number
+    owner         => $options{owner        },
+    source        => $options{source       },                                   # Source memory location
+    source2       => $options{source2      },                                   # Secondary source memory location
+    target        => $options{target       },                                   # Target memory location
+    source_area   => $options{source_area  },
+    source2_area  => $options{source2_area },
+    target_area   => $options{target_area  },
+  );
  }
 
 sub isScalar($)                                                                 # Check whether an element is a scalar or an array
@@ -90,7 +103,6 @@ sub code(%)                                                                     
    );
  }
 
-
 sub emulate($%)                                                                 # Emulate an array of code
  {my ($code, %options) = @_;                                                    # Block of code, options
 
@@ -102,7 +114,6 @@ sub emulate($%)                                                                 
 sub Zero::Emulator::Code::assemble($%)                                          # Assemble a block of code to prepare it for execution
  {my ($Code, %options) = @_;                                                    # Code block, assembly options
   return $Code if $Code->assembled;                                             # Already assembled
-
   my $code = $Code->code;                                                       # The code to be assembled
   my %labels;                                                                   # Load labels
 
@@ -141,31 +152,32 @@ sub Zero::Emulator::Code::execute($%)                                           
   my %memory;                                                                   # Memory
   my %owner;                                                                    # Who owns the privilege of writing to the corresponding block of memory. undef means that any-one can write, otherwise the instruction must have the matching owner id
 
-  my sub getMemory($$)                                                          # Get a memory location from a memory arena
-   {my ($area, $at) = @_;                                                       # Memory arena, memory location
-    $memory{$area}[$at]                                                         # Value
+  my sub stackArea()                                                            # Memory area associated with this method invocation
+   {$calls[-1]->data;                                                           # Stack area
    }
 
-  my sub setMemory($$$$)                                                        # Set a memory location checking that the instruction owns the memory concerned
-   {my ($i, $area, $at, $value) = @_;                                           # Instruction, memory arena, memory location, value to set
-    if (my $o = $owner{$area}[$at])
-     {if (my $O = $i->owner)
-       {if ($o == $O)
-         {$memory{$area}[$at] = $value;                                         # Memory owned by this instruction
-          say STDERR sprintf "%4d:%4d = %d", $area, $at, $value if $options{trace};
-         }
-        else
-         {confess "Owner mismatch memory: $area:$at, wanted: $o, got: $O\n";
-         }
-       }
-      else
-       {confess "Memory $area:$at owned with key: $o but no key provided\n";
-       }
+  my sub allocMemory()                                                          # Create the name of a new memory area
+   {keys %memory
+   }
+
+  my sub getMemory($)                                                           # Get a memory location
+   {my ($at) = @_;                                                              # Location
+    if (isScalar($at))
+     {$memory{&stackArea}[$at]                                                  # Direct
      }
-    else                                                                        # Memory is open
-     {my $v = $memory{$area}[$at] = $value;                                     # Set value
-      my $o = $owner {$area}[$at] = $i->owner // 0;                             # Take ownership if an ownership key is supplied
-      say STDERR sprintf "%4d:%4d:%4d = %d", $o, $area, $at, $v if $options{trace};
+    else
+     {$memory{&stackArea}[$memory{&stackArea}[$at]]                             # Indirect
+     }
+   }
+
+  my sub setMemory($$)                                                          # Set a memory location to a specified value
+   {my ($t, $value) = @_;                                                       # Target, value
+    my $area = stackArea;
+    if (isScalar($t))
+     {$memory{$area}[$t] = $value;                                              # Set memory directly
+     }
+    else
+     {$memory{$area}[getMemory($$t)]= $value;                                   # Set memory indirectly
      }
    }
 
@@ -174,15 +186,18 @@ sub Zero::Emulator::Code::execute($%)                                           
     my $s = $i->source;
     my $a = $i->source_area // 0;
     return ($s, $a) if isScalar $s;                                             # (value, memory block)
-    (getMemory($a, $$s[0]), $a);
+#    (getMemory($a, $$s[0]), $a);
+undef
    }
 
   my sub targetValue($)                                                         # The value of the target operand interpreting a scalar as a direct reference and an array reference as an indirect reference
    {my ($i) = @_;                                                               # Instruction
     my $t = $i->target;
-    my $a = $i->target_area // 0;
-    return ($t, $a) if isScalar $t;                                             # (value, memory block)
-    (getMemory($a, $$t[0]), $a);
+    my $A = $i->target_area // 0;
+#    my $a = isScalar($A) ? $A : getMemory(0, $$A[0]);
+#    return ($t, $a) if isScalar $t;                                             # (value, memory block)
+#    (getMemory($a, $$t[0]), $a);
+undef
    }
 
   my sub jumpOp($$)                                                             # Jump to the target location if the tested memory area if the condition is matched
@@ -200,13 +215,13 @@ sub Zero::Emulator::Code::execute($%)                                           
 
       if (isScalar $s2)
        {for my $j(keys @$t)
-         {setMemory($i, $ta, $$t[$j], getMemory($sa1, $$s1[$j]) + $s2);
+         {#setMemory($i, $ta, $$t[$j], getMemory($sa1, $$s1[$j]) + $s2);
          }
        }
       else
        {for my $j(keys @$t)
-         {setMemory($i, $ta, $$t[$j], getMemory($sa1, $$s1[$j]) +
-                                      getMemory($sa2, $$s2[$j]));
+         {#setMemory($i, $ta, $$t[$j], getMemory($sa1, $$s1[$j]) +
+          #                            getMemory($sa2, $$s2[$j]));
          }
        }
      },
@@ -230,7 +245,7 @@ sub Zero::Emulator::Code::execute($%)                                           
      {my ($i)  = @_;                                                            # Instruction
       @calls or confess "Not in a subroutine";
       my $c = $calls[-1];
-      setMemory($i, $i->target_area//0, $i->target, $c->params);
+      #setMemory($i, $i->target_area//0, $i->target, $c->params);
      },
 
     return    => sub                                                            # Call a subroutine
@@ -248,13 +263,13 @@ sub Zero::Emulator::Code::execute($%)                                           
 
       if (isScalar $s2)
        {for my $j(keys @$t)
-         {setMemory($i, $ta, $$t[$j], getMemory($sa1, $$s1[$j]) <=> $s2);
+         {#setMemory($i, $ta, $$t[$j], getMemory($sa1, $$s1[$j]) <=> $s2);
          }
        }
       else
        {for my $j(keys @$t)
-         {setMemory($i, $ta, $$t[$j], getMemory($sa1, $$s1[$j]) <=>
-                                      getMemory($sa2, $$s2[$j]));
+         {#setMemory($i, $ta, $$t[$j], getMemory($sa1, $$s1[$j]) <=>
+          #                            getMemory($sa2, $$s2[$j]));
          }
        }
      },
@@ -281,7 +296,7 @@ sub Zero::Emulator::Code::execute($%)                                           
       my $t   = $i->target; my $ta = $i->target_area // 0;
 
       for my $j(keys @$t)
-       {setMemory($i, $ta, $$t[$j], getMemory($ta, $$t[$j]) + $j + 1);
+       {#setMemory($i, $ta, $$t[$j], getMemory($ta, $$t[$j]) + $j + 1);
        }
      },
 
@@ -292,7 +307,7 @@ sub Zero::Emulator::Code::execute($%)                                           
        {$instructionPointer = $i->number + $t;
        }
       else
-       {$instructionPointer = getMemory($ta, $t);
+       {#$instructionPointer = getMemory($ta, $t);
        }
      },
 
@@ -310,7 +325,7 @@ sub Zero::Emulator::Code::execute($%)                                           
 
       if (!isScalar $s)                                                         # Load from specified locations
        {for my $j(keys @$t)
-         {setMemory($i, $ta, $$t[$j], getMemory($sa, getMemory($sa, $$s[$j])));
+         {#setMemory($i, $ta, $$t[$j], getMemory($sa, getMemory($sa, $$s[$j])));
          }
        }
      },
@@ -322,15 +337,21 @@ sub Zero::Emulator::Code::execute($%)                                           
 
       my $x;                                                                    # Maximum element
       for my $a(@$s)
-       {my $S = getMemory($sa, $a);
-        if (!defined($x) || $x < $S)
-         {$x = $S;
-         }
+       {#my $S = getMemory($sa, $a);
+        #if (!defined($x) || $x < $S)
+        # {$x = $S;
+        # }
        }
-      setMemory($i, $ta, $t, $x);                                               # Save maximum
+      #setMemory($i, $ta, $t, $x);                                               # Save maximum
      },
 
-    memoryClear => sub                                                          # Clear the memory area specified by the target operand
+    memoryAllocate => sub                                                       # Allocate a new block of memory and write its key to the specified target
+     {my ($i) = @_;                                                             # Instruction
+      my ($t, $ta) = targetValue($i);                                           # Set target to length of memory area
+      $memory{$ta}[$t] = 1e6 + keys %memory;                                    # Keys below 1e6 are "well known", above that they are automatically generated
+     },
+
+    memoryFree => sub                                                           # Free the memory area specified by the target operand
      {my ($i) = @_;                                                             # Instruction
       my ($t, $ta) = targetValue($i);                                           # Set target to length of memory area
       $memory{$ta} = undef;
@@ -340,7 +361,7 @@ sub Zero::Emulator::Code::execute($%)                                           
      {my ($i) = @_;                                                             # Instruction
       my ($s)      = sourceValue($i);                                           # Number of memory area
       my ($t, $ta) = targetValue($i);                                           # Set target to length of memory area
-      setMemory($i, $ta, $t, scalar $memory{$s}->@*);
+      #setMemory($i, $ta, $t, scalar $memory{$s}->@*);
      },
 
     min => sub                                                                  # Minimum element in source block to target
@@ -350,12 +371,12 @@ sub Zero::Emulator::Code::execute($%)                                           
 
       my $x;                                                                    # Minimum element
       for my $a(@$s)
-       {my $S = getMemory($sa, $a);
-        if (!defined($x) || $x > $S)
-         {$x = $S;
-         }
+       {#my $S = getMemory($sa, $a);
+        #if (!defined($x) || $x > $S)
+        # {$x = $S;
+        # }
        }
-      setMemory($i, $ta, $t, $x);                                               # Save minimum
+      #setMemory($i, $ta, $t, $x);                                               # Save minimum
      },
 
     move     => sub                                                             # Move data moves data from one part of memory to another - "set", by contrast, sets variables from constant values
@@ -365,25 +386,25 @@ sub Zero::Emulator::Code::execute($%)                                           
 
       if (isScalar $s)                                                          # Broadcast source value
        {for my $i(keys @$t)
-         {setMemory($i, $ta, $$t[$i], $s);
+         {#setMemory($i, $ta, $$t[$i], $s);
          }
        }
       else
        {for my $j(keys @$t)                                                     # Look up source values in memory
-         {setMemory($i, $ta, $$t[$j], getMemory($sa, $$s[$j]));
+         {#setMemory($i, $ta, $$t[$j], getMemory($sa, $$s[$j]));
          }
        }
      },
 
     moveBlock => sub                                                            # Move a block of data from the first source operand to the target operand.  The length of the move is determined by the second source operand.  The source block and the target block may overlap.
      {my ($i) = @_;                                                             # Instruction
-      my $S1 = $i->source_1; my $sa1 = $i->source_1_area // 0; my $s1 = isScalar($S1) ? $S1 : getMemory($sa1, $S1);
-      my $S2 = $i->source_2; my $sa2 = $i->source_2_area // 0; my $s2 = isScalar($S2) ? $S2 : getMemory($sa2, $S2);
-      my ($t, $ta) = targetValue($i);
+      #my $S1 = $i->source_1; my $sa1 = $i->source_1_area // 0; my $s1 = isScalar($S1) ? $S1 : getMemory($sa1, $S1);
+      #my $S2 = $i->source_2; my $sa2 = $i->source_2_area // 0; my $s2 = isScalar($S2) ? $S2 : getMemory($sa2, $S2);
+      #my ($t, $ta) = targetValue($i);
 
-      my @b;                                                                    # Buffer the data being moved to avoid overwrites
-      push @b, getMemory($sa1, $s1+$_)  for 0..$s2-1;
-      setMemory($i, $ta, $t+$_, $b[$_]) for 0..$s2-1;
+      #my @b;                                                                    # Buffer the data being moved to avoid overwrites
+      #push @b, getMemory($sa1, $s1+$_)  for 0..$s2-1;
+      #setMemory($i, $ta, $t+$_, $b[$_]) for 0..$s2-1;
      },
 
     nop       => sub                                                            # No operation
@@ -392,15 +413,12 @@ sub Zero::Emulator::Code::execute($%)                                           
 
     out     => sub                                                              # Write source as output to an array of words
      {my ($i) = @_;                                                             # Instruction
-      my $s = $i->source;
-      if (isScalar $s)                                                          # Write a string
-       {push @out, $i->source;
-       }
-      else                                                                      # Write memory locations
-       {for my $j(keys @$s)
-         {push @out, getMemory($i->source_area//0, $$s[$j]);
-         }
-       }
+      push @out, getMemory($i->source);
+     },
+
+    outString => sub                                                            # Write a string to output
+     {my ($i) = @_;                                                             # Instruction
+      push @out, $i->source;
      },
 
     ownerClear => sub                                                           # Clear ownership for a range of memory. The target designates the location at which to start, source gives th length of the clear.  The ownership of the memory in this range is reset to zero so that any-one can claim it.
@@ -414,38 +432,26 @@ sub Zero::Emulator::Code::execute($%)                                           
 
     set     => sub                                                              # Place constant data into memory
      {my ($i) = @_;                                                             # Instruction
-      my $s = $i->source;
-      my $t = $i->target; my $ta = $i->target_area // 0;                        # Target of set
-
-      if (isScalar $s)                                                          # Broadcast one value
-       {for my $j(keys @$t)
-         {setMemory($i, $ta, $$t[$j], $s);
-         }
-       }
-      else                                                                      # Set multiple values
-       {for my $j(keys @$t)
-         {setMemory($i, $ta, $$t[$j], $$s[$j]);
-         }
-       }
+      setMemory($i->target, $i->source);
      },
 
     shiftBlockLeft => sub                                                       # Move a block of longs referenced by the target operand of length the source operand one long to the left
      {my ($i) = @_;                                                             # Instruction
       my ($s) = sourceValue($i);
-      my $T = $i->target; my $ta = $i->target_area // 0; my $t = isScalar($T) ? $T : getMemory($ta, $T);
+      #my $T = $i->target; my $ta = $i->target_area // 0; my $t = isScalar($T) ? $T : getMemory($ta, $T);
 
       for my $j(0..$s-2)                                                        # Move block
-       {setMemory($i, $ta, $t+$j, getMemory($ta, $t+$j+1));
+       {#setMemory($i, $ta, $t+$j, getMemory($ta, $t+$j+1));
        }
      },
 
     shiftBlockRight => sub                                                      # Move a block of longs referenced by the target operand of length the source operand one long to the left
      {my ($i) = @_;                                                             # Instruction
       my ($s) = sourceValue($i);
-      my $T = $i->target; my $ta = $i->target_area // 0; my $t = isScalar($T) ? $T : getMemory($ta, $T);
+      #my $T = $i->target; my $ta = $i->target_area // 0; my $t = isScalar($T) ? $T : getMemory($ta, $T);
 
       for my $j(reverse 0..$s-2)                                                # Move block
-       {setMemory($i, $ta, $t+$j+1, getMemory($ta, $t+$j));
+       {#setMemory($i, $ta, $t+$j+1, getMemory($ta, $t+$j));
        }
      },
 
@@ -454,10 +460,14 @@ sub Zero::Emulator::Code::execute($%)                                           
       my $s = $i->source; my $sa = $i->source_area // 0;
       my ($t, $ta) = targetValue($i);
 
-      my $x = 0; $x += getMemory($sa, $_) for @$s;                              # Each location whose contents are to be summed
-      setMemory($i, $ta, $t, $x);                                               # Save sum
+      #my $x = 0; $x += getMemory($sa, $_) for @$s;                              # Each location whose contents are to be summed
+      #setMemory($i, $ta, $t, $x);                                               # Save sum
      },
    );
+
+  push @calls, callEntry(                                                       # Initial stack entry
+    data => scalar allocMemory,                                                 # Allocate data segment for current method
+  );
 
   for my $j(1..maximumInstructionsToExecute)                                    # Each instruction in the code until we hit an undefined instruction
    {my $i = $$code[$instructionPointer++];
@@ -481,6 +491,31 @@ sub Zero::Emulator::Code::execute($%)                                           
    );
  }
 
+my $assembly = code;                                                            # The current assembly
+
+sub start()                                                                     # Start the current assembly
+ {$assembly = code;                                                             # The current assembly
+ }
+
+sub Out($)                                                                      # Write memory contents to out
+ {my ($source) = @_;                                                            # Memory location to output
+  $assembly->instruction(action=>"out", source=>$source);
+ }
+
+sub OutString($)                                                                # Output a string
+ {my ($source) = @_;                                                            # Source sstring
+  $assembly->instruction(action=>"outString", source=>$source);
+ }
+
+sub Set($$)                                                                     # Set the contents of the target from source constants
+ {my ($target, $source) = @_;                                                   # Target locations, source constants
+  $assembly->instruction(action=>"set", target=>$target, source=>$source);
+ }
+
+sub execute()                                                                   # Execute the current assembly
+ {$assembly->execute;                                                           # Execute the cod inm the current assembly
+ }
+
 use Exporter qw(import);
 use vars qw(@ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
 
@@ -495,8 +530,21 @@ eval {goto latest};
 sub is_deeply;
 sub ok($;$);
 
-is_deeply emulate([instruction(action=>'out', source=>"hello World")])->out,    # Hello World
-          ["hello World"];
+if (1)
+ {start;
+  OutString "hello World";
+  is_deeply execute->out, ["hello World"];
+ }
+
+latest:;
+
+if (1)
+ {start;
+  Set 1, 2;
+  Out 1;
+  is_deeply execute->out, [2];
+ }
+exit;
 
 if (0)                                                                          # Move
  {my $r = emulate
@@ -716,7 +764,6 @@ if (1)                                                                          
   is_deeply $r->memory->{0}, [10];
  }
 
-#latest:;
 if (1)                                                                          # Confess
  {my $r = emulate
     [instruction(action=>'nop'),                                                #0 Do nothing
@@ -731,4 +778,15 @@ if (1)                                                                          
  "   2    3         sub2     0",
  "   1    2         sub1     0",
 ];
+ }
+
+if (1)                                                                          # Allocate and free memory
+ {my $r = emulate
+   ([instruction(action=>'memoryAllocate', target=>0),                           #0 Allocate
+     instruction(action=>'set', source=>1, target_area=>[0], target=>[0..9]),   #1 Set the memory
+     instruction(action=>'out', source=>[0..9], source_area=>[0]),              #2 Print
+#     instruction(action=>'memoryFree', source=>[0]),                            #3 Call subroutine
+    ]);
+  say STDERR dump($r->out);
+  say STDERR dump($r->memory);
  }
