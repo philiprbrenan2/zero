@@ -381,19 +381,7 @@ undef
 
     move     => sub                                                             # Move data moves data from one part of memory to another - "set", by contrast, sets variables from constant values
      {my ($i) = @_;                                                             # Instruction
-      my $s = $i->source; my $sa = $i->source_area // 0;
-      my $t = $i->target; my $ta = $i->target_area // 0;
-
-      if (isScalar $s)                                                          # Broadcast source value
-       {for my $i(keys @$t)
-         {#setMemory($i, $ta, $$t[$i], $s);
-         }
-       }
-      else
-       {for my $j(keys @$t)                                                     # Look up source values in memory
-         {#setMemory($i, $ta, $$t[$j], getMemory($sa, $$s[$j]));
-         }
-       }
+      setMemory($i->target, getMemory($i->source));
      },
 
     moveBlock => sub                                                            # Move a block of data from the first source operand to the target operand.  The length of the move is determined by the second source operand.  The source block and the target block may overlap.
@@ -497,6 +485,11 @@ sub start()                                                                     
  {$assembly = code;                                                             # The current assembly
  }
 
+sub Move($$)                                                                    # Copy the contents of the source location to the target location
+ {my ($target, $source) = @_;                                                   # Target locations, source constants
+  $assembly->instruction(action=>"move", target=>$target, source=>$source);
+ }
+
 sub Out($)                                                                      # Write memory contents to out
  {my ($source) = @_;                                                            # Memory location to output
   $assembly->instruction(action=>"out", source=>$source);
@@ -555,7 +548,16 @@ if (1)
   Set  2, 1;
   Set \2, 2;
   Out \2;
-  ok execute(out=>[2]);
+  Out  1;
+  ok execute(out=>[2, 2]);
+ }
+
+if (1)
+ {start;
+  Set  1, 1;
+  Move 2, 1;
+  Out  2;
+  ok execute(out=>[1]);
  }
 exit;
 
