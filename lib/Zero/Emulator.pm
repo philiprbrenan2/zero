@@ -279,11 +279,7 @@ undef
 
     inc       => sub                                                            # Increment locations in memory. The first location is incremented by 1, the next by two, etc.
      {my ($i) = @_;                                                             # Instruction
-      my $t   = $i->target; my $ta = $i->target_area // 0;
-
-      for my $j(keys @$t)
-       {#setMemory($i, $ta, $$t[$j], getMemory($ta, $$t[$j]) + $j + 1);
-       }
+      setMemory($i->target, getMemory($i->target) + 1);
      },
 
     jump      => sub                                                            # Jump to the target location
@@ -477,6 +473,11 @@ sub Add($$$)                                                                    
     target=>$target, source=>$s1, source2=>$s2);
  }
 
+sub Inc($)                                                                      # Increment the target
+ {my ($target) = @_;                                                            # Target
+  $assembly->instruction(action=>"inc", target=>$target);
+ }
+
 sub Move($$)                                                                    # Copy the contents of the source location to the target location
  {my ($target, $source) = @_;                                                   # Target locations, source constants
   $assembly->instruction(action=>"move", target=>$target, source=>$source);
@@ -561,6 +562,15 @@ if (1)
   Add  \4, \1, \2;
   Out  3;
   ok execute(out=>[3]);
+ }
+
+if (1)
+ {start;
+  Set  1, 1;
+  Set  2, 1;
+  Inc \2;
+  Out  1;
+  ok execute(out=>[2]);
  }
 exit;
 
