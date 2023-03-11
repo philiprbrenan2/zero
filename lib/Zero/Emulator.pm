@@ -209,21 +209,7 @@ undef
   my %instructions =                                                            # Instruction definitions
    (add       => sub                                                            # Add two arrays to make a third array
      {my ($i) = @_;                                                             # Instruction
-      my $s1  = $i->source_1; my $sa1 = $i->source_1_area // 0;
-      my $s2  = $i->source_2; my $sa2 = $i->source_2_area // 0;
-      my $t   = $i->target;   my $ta  = $i->target_area   // 0;
-
-      if (isScalar $s2)
-       {for my $j(keys @$t)
-         {#setMemory($i, $ta, $$t[$j], getMemory($sa1, $$s1[$j]) + $s2);
-         }
-       }
-      else
-       {for my $j(keys @$t)
-         {#setMemory($i, $ta, $$t[$j], getMemory($sa1, $$s1[$j]) +
-          #                            getMemory($sa2, $$s2[$j]));
-         }
-       }
+      setMemory($i->target, getMemory($i->source) + getMemory($i->source2));
      },
 
     call => sub                                                                 # Call a subroutine
@@ -485,6 +471,12 @@ sub start()                                                                     
  {$assembly = code;                                                             # The current assembly
  }
 
+sub Add($$$)                                                                    # Copy the contents of the source location to the target location
+ {my ($target, $s1, $s2) = @_;                                                  # Target location, source one, source two
+  $assembly->instruction(action=>"add",
+    target=>$target, source=>$s1, source2=>$s2);
+ }
+
 sub Move($$)                                                                    # Copy the contents of the source location to the target location
  {my ($target, $source) = @_;                                                   # Target locations, source constants
   $assembly->instruction(action=>"move", target=>$target, source=>$source);
@@ -559,37 +551,18 @@ if (1)
   Out  2;
   ok execute(out=>[1]);
  }
-exit;
 
-if (1)                                                                          # Move
- {my $r = emulate
-   ([instruction(action=>'move', source=>1, target=>[0..2]),
-     instruction(action=>'out',  source=>[0..1]),
-   ]);
-  is_deeply $r->out, [1,1];
+if (1)
+ {start;
+  Set  1, 1;
+  Set  2, 2;
+  Set  3, 0;
+  Set  4, 3;
+  Add  \4, \1, \2;
+  Out  3;
+  ok execute(out=>[3]);
  }
 exit;
-
-if (1)                                                                          # Move
- {my $r = emulate
-   ([instruction(action=>'set',  source=>[1,2], target=>[0,1]),
-     instruction(action=>'move', source=>[1],   target=>[0]),
-     instruction(action=>'out',  source=>[0]),
-   ]);
-  is_deeply $r->out->[0], 2;
-  is_deeply $r->count,    3;
- }
-
-if (1)                                                                          # Load
- {my $r = emulate
-   ([instruction(action=>'set',  source=>[1..4], target=>[1..4]),
-     instruction(action=>'load', source=>[4],    target=>[3]),
-     instruction(action=>'load', source=>[3..4], target=>[1..2]),
-     instruction(action=>'out',  source=>[1..4]),
-   ]);
-  is_deeply $r->out, [(4) x 4];
-  is_deeply $r->count,    4;
- }
 
 if (1)                                                                          # Inc
  {my $r = emulate
