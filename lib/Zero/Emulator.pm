@@ -162,22 +162,29 @@ sub Zero::Emulator::Code::execute($%)                                           
 
   my sub getMemory($)                                                           # Get a memory location
    {my ($at) = @_;                                                              # Location
+    my $s = stackArea;
     if (isScalar($at))
-     {$memory{&stackArea}[$at]                                                  # Direct
+     {$memory{$s}[$at]                                                          # Direct
+     }
+    elsif (isScalar($$at))
+     {$memory{$s}[$memory{$s}[$$at]]                                            # Indirect 1
      }
     else
-     {$memory{&stackArea}[$memory{&stackArea}[$$at]]                            # Indirect
+     {$memory{$s}[$memory{$s}[$$at[$memory{$s}[$$at]]]]                         # Indirect 2
      }
    }
 
   my sub setMemory($$)                                                          # Set a memory location to a specified value
    {my ($t, $value) = @_;                                                       # Target, value
-    my $area = stackArea;
+    my $s = stackArea;
     if (isScalar($t))
-     {$memory{$area}[$t] = $value;                                              # Set memory directly
+     {$memory{$s}[$t] = $value;                                                 # Set memory directly
+     }
+    elsif (isScalar($$t))
+     {$memory{$s}[getMemory($$t)]= $value;                                      # Set memory indirectly 1
      }
     else
-     {$memory{$area}[getMemory($$t)]= $value;                                   # Set memory indirectly
+     {$memory{$s}[$memory{$s}[getMemory($$t)]]= $value;                         # Set memory indirectly 2
      }
    }
 
