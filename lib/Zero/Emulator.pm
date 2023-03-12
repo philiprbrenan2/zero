@@ -120,18 +120,20 @@ sub Zero::Emulator::Code::assemble($%)                                          
   for my $c(keys @$code)                                                        # Each instruction
    {my $i = $$code[$c];
     $i->number = $c;
-    next unless $$i{label};
-    if (my $l = $i->label)                                                      # Label
-     {$labels{$l} = $c;                                                         # Point label to instruction
-     }
+    next unless $i->action eq "label";
+    $labels{$i->source} = $i;                                                   # Point label to instruction
    }
 
-  for my $c(keys @$code)                                                        # Each instruction
+  for my $c(keys @$code)                                                        # Each jump instruction
    {my $i = $$code[$c];
-    next unless $i->action =~ m(\A(call|jump))i;
+    next unless $i->action =~ m(\Aj);
     if (my $l = $i->target)                                                     # Label
-     {next unless isScalar($l);                                                 # Not an array
-      $i->target = $labels{$l} - $c;                                            # Relative jump
+     {if (my $t = $labels{$l})                                                  # Found label
+       {$i->target = $t->number - $c;                                           # Relative jump
+       }
+      else
+       {confess "No target for jump to label: $l";
+       }
      }
    }
   $Code->labels = {%labels};                                                    # Labels created during assembly
@@ -190,8 +192,7 @@ sub Zero::Emulator::Code::execute($%)                                           
 
   my sub jumpOp($$)                                                             # Jump to the target location if the tested memory area if the condition is matched
    {my ($i, $check) = @_;                                                       # Instruction, check
-    my ($t, $ta) = targetValue($i);
-    $instructionPointer = $i->number + $t if &$check;                           # Check if condition is met
+    $instructionPointer = $i->number + right($i->target) if &$check;            # Check if condition is met
    }
 
   my %instructions =                                                            # Instruction definitions
@@ -252,23 +253,21 @@ sub Zero::Emulator::Code::execute($%)                                           
       setMemory($i->target, right($i->target) + 1);
      },
 
-    jump      => sub                                                            # Jump to the target location
+    jmp       => sub                                                            # Jump to the target location
      {my ($i) = @_;                                                             # Instruction
-      my ($t, $ta) = targetValue($i);
-      if (isScalar($t))
-       {$instructionPointer = $i->number + $t;
-       }
-      else
-       {#$instructionPointer = right($ta, $t);
-       }
+      $instructionPointer = $i->number + right($i->target);
      },
 
-    jumpEq => sub {my ($i) = @_; jumpOp($i, sub{(sourceValue($i))[0] == 0})},   # Conditional jumps
-    jumpNe => sub {my ($i) = @_; jumpOp($i, sub{(sourceValue($i))[0] != 0})},
-    jumpLe => sub {my ($i) = @_; jumpOp($i, sub{(sourceValue($i))[0] <= 0})},
-    jumpLt => sub {my ($i) = @_; jumpOp($i, sub{(sourceValue($i))[0] <  0})},
-    jumpGe => sub {my ($i) = @_; jumpOp($i, sub{(sourceValue($i))[0] <= 0})},
-    jumpGt => sub {my ($i) = @_; jumpOp($i, sub{(sourceValue($i))[0] <  0})},
+    jEq => sub {my ($i) = @_; jumpOp($i, sub{right($i->source) == 0})},         # Conditional jumps
+    jNe => sub {my ($i) = @_; jumpOp($i, sub{right($i->source) != 0})},
+    jLe => sub {my ($i) = @_; jumpOp($i, sub{right($i->source) <= 1})},
+    jLt => sub {my ($i) = @_; jumpOp($i, sub{right($i->source) == 1})},
+    jGe => sub {my ($i) = @_; jumpOp($i, sub{right($i->source) != 1})},
+    jGt => sub {my ($i) = @_; jumpOp($i, sub{right($i->source) == 2})},
+
+    label     => sub                                                            # Label  - no operation
+     {my ($i) = @_;                                                             # Instruction
+     },
 
     load      => sub                                                            # Load data from the locations addressed by the source array into the target array
      {my ($i) = @_;                                                             # Instruction
@@ -328,10 +327,10 @@ sub Zero::Emulator::Code::execute($%)                                           
         # {$x = $S;
         # }
        }
-      #setMemory($i, $ta, $t, $x);                                               # Save minimum
+      #setMemory($i, $ta, $t, $x);                                              # Save minimum
      },
 
-    move     => sub                                                             # Move data moves data from one part of memory to another - "set", by contrast, sets variables from constant values
+    mov       => sub                                                            # Move data moves data from one part of memory to another - "set", by contrast, sets variables from constant values
      {my ($i) = @_;                                                             # Instruction
       setMemory($i->target, right($i->source));
      },
@@ -462,9 +461,19 @@ sub Inc($)                                                                      
   $assembly->instruction(action=>"inc", target=>$target);
  }
 
+sub Jmp($)                                                                      # Jump to a label
+ {my ($target) = @_;                                                            # Target
+  $assembly->instruction(action=>"jmp", target=>$target);
+ }
+
+sub Label($)                                                                    # Create a lable
+ {my ($source) = @_;                                                            # Name of label
+  $assembly->instruction(action=>"label", source=>$source);
+ }
+
 sub Mov($$)                                                                     # Copy a constant or memory location to the target location
  {my ($target, $source) = @_;                                                   # Target locations, source constants
-  $assembly->instruction(action=>"move", target=>$target, source=>$source);
+  $assembly->instruction(action=>"mov", target=>$target, source=>$source);
  }
 
 sub Nop()                                                                       # Do nothing (but do it well!)
@@ -575,6 +584,17 @@ if (1)                                                                          
   Small 3, \1, \2;
   Out  \3;
   ok execute(out=>[1]);
+ }
+
+if (1)                                                                          # Jmp
+ {start;
+  Jmp 'a';
+  Out  1;
+  Jmp 'b';
+  Label 'a';
+  Out  2;
+  Label 'b';
+  ok execute(out=>[2]);
  }
 exit;
 
