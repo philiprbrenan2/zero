@@ -160,7 +160,7 @@ sub Zero::Emulator::Code::execute($%)                                           
    {keys %memory
    }
 
-  my sub getConstant($)                                                         # Get a memory location
+  my sub right($)                                                               # Get a constant or a memory location
    {my ($at) = @_;                                                              # Location
     my $s = stackArea;
     if (isScalar($at))                                                          # Constant
@@ -174,20 +174,6 @@ sub Zero::Emulator::Code::execute($%)                                           
      }
    }
 
-  my sub getMemory($)                                                           # Get a memory location
-   {my ($at) = @_;                                                              # Location
-    my $s = stackArea;
-    if (isScalar($at))
-     {$memory{$s}[$at]                                                          # Direct
-     }
-    elsif (isScalar($$at))
-     {$memory{$s}[$memory{$s}[$$at]]                                            # Indirect 1
-     }
-    else
-     {$memory{$s}[$memory{$s}[$$at[$memory{$s}[$$at]]]]                         # Indirect 2
-     }
-   }
-
   my sub setMemory($$)                                                          # Set a memory location to a specified value
    {my ($t, $value) = @_;                                                       # Target, value
     my $s = stackArea;
@@ -195,30 +181,11 @@ sub Zero::Emulator::Code::execute($%)                                           
      {$memory{$s}[$t] = $value;                                                 # Set memory directly
      }
     elsif (isScalar($$t))
-     {$memory{$s}[getMemory($$t)]= $value;                                      # Set memory indirectly 1
+     {$memory{$s}[right($$t)]= $value;                                          # Set memory indirectly 1
      }
     else
-     {$memory{$s}[$memory{$s}[getMemory($$t)]]= $value;                         # Set memory indirectly 2
+     {$memory{$s}[$memory{$s}[right($$t)]]= $value;                             # Set memory indirectly 2
      }
-   }
-
-  my sub sourceValue($)                                                         # The value of the source operand interpreting a scalar as a direct reference and an array reference as an indirect reference
-   {my ($i) = @_;                                                               # Instruction
-    my $s = $i->source;
-    my $a = $i->source_area // 0;
-    return ($s, $a) if isScalar $s;                                             # (value, memory block)
-#    (getMemory($a, $$s[0]), $a);
-undef
-   }
-
-  my sub targetValue($)                                                         # The value of the target operand interpreting a scalar as a direct reference and an array reference as an indirect reference
-   {my ($i) = @_;                                                               # Instruction
-    my $t = $i->target;
-    my $A = $i->target_area // 0;
-#    my $a = isScalar($A) ? $A : getMemory(0, $$A[0]);
-#    return ($t, $a) if isScalar $t;                                             # (value, memory block)
-#    (getMemory($a, $$t[0]), $a);
-undef
    }
 
   my sub jumpOp($$)                                                             # Jump to the target location if the tested memory area if the condition is matched
@@ -230,7 +197,7 @@ undef
   my %instructions =                                                            # Instruction definitions
    (add       => sub                                                            # Add two arrays to make a third array
      {my ($i) = @_;                                                             # Instruction
-      setMemory($i->target, getMemory($i->source) + getMemory($i->source2));
+      setMemory($i->target, right($i->source) + right($i->source2));
      },
 
     call => sub                                                                 # Call a subroutine
@@ -282,7 +249,7 @@ undef
 
     inc       => sub                                                            # Increment locations in memory. The first location is incremented by 1, the next by two, etc.
      {my ($i) = @_;                                                             # Instruction
-      setMemory($i->target, getMemory($i->target) + 1);
+      setMemory($i->target, right($i->target) + 1);
      },
 
     jump      => sub                                                            # Jump to the target location
@@ -292,7 +259,7 @@ undef
        {$instructionPointer = $i->number + $t;
        }
       else
-       {#$instructionPointer = getMemory($ta, $t);
+       {#$instructionPointer = right($ta, $t);
        }
      },
 
@@ -310,7 +277,7 @@ undef
 
       if (!isScalar $s)                                                         # Load from specified locations
        {for my $j(keys @$t)
-         {#setMemory($i, $ta, $$t[$j], getMemory($sa, getMemory($sa, $$s[$j])));
+         {#setMemory($i, $ta, $$t[$j], right($sa, right($sa, $$s[$j])));
          }
        }
      },
@@ -322,7 +289,7 @@ undef
 
       my $x;                                                                    # Maximum element
       for my $a(@$s)
-       {#my $S = getMemory($sa, $a);
+       {#my $S = right($sa, $a);
         #if (!defined($x) || $x < $S)
         # {$x = $S;
         # }
@@ -356,7 +323,7 @@ undef
 
       my $x;                                                                    # Minimum element
       for my $a(@$s)
-       {#my $S = getMemory($sa, $a);
+       {#my $S = right($sa, $a);
         #if (!defined($x) || $x > $S)
         # {$x = $S;
         # }
@@ -366,17 +333,17 @@ undef
 
     move     => sub                                                             # Move data moves data from one part of memory to another - "set", by contrast, sets variables from constant values
      {my ($i) = @_;                                                             # Instruction
-      setMemory($i->target, getMemory($i->source));
+      setMemory($i->target, right($i->source));
      },
 
     moveBlock => sub                                                            # Move a block of data from the first source operand to the target operand.  The length of the move is determined by the second source operand.  The source block and the target block may overlap.
      {my ($i) = @_;                                                             # Instruction
-      #my $S1 = $i->source_1; my $sa1 = $i->source_1_area // 0; my $s1 = isScalar($S1) ? $S1 : getMemory($sa1, $S1);
-      #my $S2 = $i->source_2; my $sa2 = $i->source_2_area // 0; my $s2 = isScalar($S2) ? $S2 : getMemory($sa2, $S2);
+      #my $S1 = $i->source_1; my $sa1 = $i->source_1_area // 0; my $s1 = isScalar($S1) ? $S1 : right($sa1, $S1);
+      #my $S2 = $i->source_2; my $sa2 = $i->source_2_area // 0; my $s2 = isScalar($S2) ? $S2 : right($sa2, $S2);
       #my ($t, $ta) = targetValue($i);
 
       #my @b;                                                                    # Buffer the data being moved to avoid overwrites
-      #push @b, getMemory($sa1, $s1+$_)  for 0..$s2-1;
+      #push @b, right($sa1, $s1+$_)  for 0..$s2-1;
       #setMemory($i, $ta, $t+$_, $b[$_]) for 0..$s2-1;
      },
 
@@ -386,7 +353,7 @@ undef
 
     out     => sub                                                              # Write source as output to an array of words
      {my ($i) = @_;                                                             # Instruction
-      push @out, getMemory($i->source);
+      push @out, right($i->source);
      },
 
     outString => sub                                                            # Write a string to output
@@ -411,27 +378,27 @@ undef
     shiftBlockLeft => sub                                                       # Move a block of longs referenced by the target operand of length the source operand one long to the left
      {my ($i) = @_;                                                             # Instruction
       my ($s) = sourceValue($i);
-      #my $T = $i->target; my $ta = $i->target_area // 0; my $t = isScalar($T) ? $T : getMemory($ta, $T);
+      #my $T = $i->target; my $ta = $i->target_area // 0; my $t = isScalar($T) ? $T : right($ta, $T);
 
       for my $j(0..$s-2)                                                        # Move block
-       {#setMemory($i, $ta, $t+$j, getMemory($ta, $t+$j+1));
+       {#setMemory($i, $ta, $t+$j, right($ta, $t+$j+1));
        }
      },
 
     shiftBlockRight => sub                                                      # Move a block of longs referenced by the target operand of length the source operand one long to the left
      {my ($i) = @_;                                                             # Instruction
       my ($s) = sourceValue($i);
-      #my $T = $i->target; my $ta = $i->target_area // 0; my $t = isScalar($T) ? $T : getMemory($ta, $T);
+      #my $T = $i->target; my $ta = $i->target_area // 0; my $t = isScalar($T) ? $T : right($ta, $T);
 
       for my $j(reverse 0..$s-2)                                                # Move block
-       {#setMemory($i, $ta, $t+$j+1, getMemory($ta, $t+$j));
+       {#setMemory($i, $ta, $t+$j+1, right($ta, $t+$j));
        }
      },
 
     small => sub                                                                # Compare two constants or variables
      {my ($i) = @_;                                                             # Instruction
-      my $s1 = getConstant($i->source);
-      my $s2 = getConstant($i->source2);
+      my $s1 = right($i->source);
+      my $s2 = right($i->source2);
       my $t  = $i->target;
 
       if (isScalar $t)
@@ -447,7 +414,7 @@ undef
       my $s = $i->source; my $sa = $i->source_area // 0;
       my ($t, $ta) = targetValue($i);
 
-      #my $x = 0; $x += getMemory($sa, $_) for @$s;                              # Each location whose contents are to be summed
+      #my $x = 0; $x += right($sa, $_) for @$s;                              # Each location whose contents are to be summed
       #setMemory($i, $ta, $t, $x);                                               # Save sum
      },
    );
@@ -495,7 +462,7 @@ sub Inc($)                                                                      
   $assembly->instruction(action=>"inc", target=>$target);
  }
 
-sub Move($$)                                                                    # Copy the contents of the source location to the target location
+sub Mov($$)                                                                     # Copy a constant or memory location to the target location
  {my ($target, $source) = @_;                                                   # Target locations, source constants
   $assembly->instruction(action=>"move", target=>$target, source=>$source);
  }
@@ -507,16 +474,6 @@ sub Nop()                                                                       
 sub Out($)                                                                      # Write memory contents to out
  {my ($source) = @_;                                                            # Memory location to output
   $assembly->instruction(action=>"out", source=>$source);
- }
-
-sub OutString($)                                                                # Output a string
- {my ($source) = @_;                                                            # Source string
-  $assembly->instruction(action=>"outString", source=>$source);
- }
-
-sub Set($$)                                                                     # Set the contents of the target from source constants
- {my ($target, $source) = @_;                                                   # Target locations, source constants
-  $assembly->instruction(action=>"set", target=>$target, source=>$source);
  }
 
 sub Small($$$)                                                                  # Compare the source operands and put 0 in the target if the operands are equal, 1 if the first operand is the smaller, or 2 if the second operand is the smaller
@@ -552,7 +509,7 @@ sub ok($;$);
 latest:;
 if (1)
  {start;
-  OutString "hello World";
+  Out "hello World";
   ok execute(out=>["hello World"]);
  }
 
@@ -564,34 +521,33 @@ if (1)                                                                          
 
 if (1)                                                                          # Out
  {start;
-  Set 1, 2;
-  Out 1;
+  Mov 1, 2;
+  Out \1;
   ok execute(out=>[2]);
  }
 
 if (1)
- {start;                                                                        # Set
-  Set  2, 1;
-  Set \2, 2;
-  Out \2;
-  Out  1;
-  ok execute(out=>[2, 2]);
+ {start;                                                                        # Mov
+  Mov  1, 3;
+  Mov  2, 1;
+  Mov  3, \\2;
+  Out \3;
+  ok execute(out=>[3]);
  }
 
-if (1)                                                                          # Move
+if (1)                                                                          # Add constants
  {start;
-  Set  1, 1;
-  Move 2, 1;
-  Out  2;
-  ok execute(out=>[1]);
+  Add  \1, 3, 2;
+  Out  \1;
+  ok execute(out=>[5]);
  }
 
 if (1)                                                                          # Add
  {start;
-  Set  1, 1;
-  Set  2, 2;
-  Set  3, 0;
-  Set  4, 3;
+  Mov   1, 1;
+  Mov   2, 2;
+  Mov   3, 0;
+  Mov   4, 3;
   Add  \4, \1, \2;
   Out  3;
   ok execute(out=>[3]);
@@ -599,10 +555,9 @@ if (1)                                                                          
 
 if (1)                                                                          # Inc
  {start;
-  Set  1, 1;
-  Set  2, 1;
-  Inc \2;
-  Out  1;
+  Mov  1, 1;
+  Inc  1;
+  Out \1;
   ok execute(out=>[2]);
  }
 
@@ -613,12 +568,12 @@ if (1)                                                                          
   ok execute(out=>[1]);
  }
 
-if (1)                                                                          # Small - constants
+if (1)                                                                          # Small - variables
  {start;
-  Set   1, 1;
-  Set   2, 2;
+  Mov   1, 1;
+  Mov   2, 2;
   Small 3, \1, \2;
-  Out   3;
+  Out  \3;
   ok execute(out=>[1]);
  }
 exit;
