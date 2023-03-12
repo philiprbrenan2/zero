@@ -160,6 +160,20 @@ sub Zero::Emulator::Code::execute($%)                                           
    {keys %memory
    }
 
+  my sub getConstant($)                                                         # Get a memory location
+   {my ($at) = @_;                                                              # Location
+    my $s = stackArea;
+    if (isScalar($at))                                                          # Constant
+     {$at
+     }
+    elsif (isScalar($$at))                                                      # Direct
+     {$memory{$s}[$$at]
+     }
+    else                                                                        # Indirect
+     {$memory{$s}[$memory{$s}[$$$at]]
+     }
+   }
+
   my sub getMemory($)                                                           # Get a memory location
    {my ($at) = @_;                                                              # Location
     my $s = stackArea;
@@ -248,24 +262,6 @@ undef
       $instructionPointer = $c->call+1;
      },
 
-    compare   => sub                                                            # Compare two arrays or one array and a constant and write the result as a mask
-     {my ($i) = @_;                                                             # Instruction
-      my $s1 = $i->source_1; my $sa1 = $i->source_1_area // 0;
-      my $s2 = $i->source_2; my $sa2 = $i->source_2_area // 0;
-      my $t  = $i->target;   my $ta  = $i->target_area   // 0;
-
-      if (isScalar $s2)
-       {for my $j(keys @$t)
-         {#setMemory($i, $ta, $$t[$j], getMemory($sa1, $$s1[$j]) <=> $s2);
-         }
-       }
-      else
-       {for my $j(keys @$t)
-         {#setMemory($i, $ta, $$t[$j], getMemory($sa1, $$s1[$j]) <=>
-          #                            getMemory($sa2, $$s2[$j]));
-         }
-       }
-     },
 
     confess => sub                                                              # Print the current call stack and stop
      {my ($i) = @_;                                                             # Instruction
@@ -432,6 +428,20 @@ undef
        }
      },
 
+    small => sub                                                                # Compare two constants or variables
+     {my ($i) = @_;                                                             # Instruction
+      my $s1 = getConstant($i->source);
+      my $s2 = getConstant($i->source2);
+      my $t  = $i->target;
+
+      if (isScalar $t)
+       {setMemory($t, $s1 == $s2 ? 0 : $s1 < $s2 ? 1 : 2);
+       }
+      else
+       {setMemory($$t, $s1 == $s2 ? 0 : $s1 < $s2 ? 1 : 2);
+       }
+     },
+
     sum => sub                                                                  # Sum the source block and place it in the target
      {my ($i) = @_;                                                             # Instruction
       my $s = $i->source; my $sa = $i->source_area // 0;
@@ -490,6 +500,10 @@ sub Move($$)                                                                    
   $assembly->instruction(action=>"move", target=>$target, source=>$source);
  }
 
+sub Nop()                                                                       # Do nothing (but do it well!)
+ {$assembly->instruction(action=>"nop");
+ }
+
 sub Out($)                                                                      # Write memory contents to out
  {my ($source) = @_;                                                            # Memory location to output
   $assembly->instruction(action=>"out", source=>$source);
@@ -503,6 +517,12 @@ sub OutString($)                                                                
 sub Set($$)                                                                     # Set the contents of the target from source constants
  {my ($target, $source) = @_;                                                   # Target locations, source constants
   $assembly->instruction(action=>"set", target=>$target, source=>$source);
+ }
+
+sub Small($$$)                                                                  # Compare the source operands and put 0 in the target if the operands are equal, 1 if the first operand is the smaller, or 2 if the second operand is the smaller
+ {my ($target, $s1, $s2) = @_;                                                  # Target location, source one, source two
+  $assembly->instruction(action=>"small",
+    target=>$target, source=>$s1, source2=>$s2);
  }
 
 sub execute(%)                                                                  # Execute the current assembly
@@ -536,7 +556,13 @@ if (1)
   ok execute(out=>["hello World"]);
  }
 
-if (1)
+if (1)                                                                          # Nop
+ {start;
+  Nop;
+  ok execute(out=>[]);
+ }
+
+if (1)                                                                          # Out
  {start;
   Set 1, 2;
   Out 1;
@@ -544,7 +570,7 @@ if (1)
  }
 
 if (1)
- {start;
+ {start;                                                                        # Set
   Set  2, 1;
   Set \2, 2;
   Out \2;
@@ -552,7 +578,7 @@ if (1)
   ok execute(out=>[2, 2]);
  }
 
-if (1)
+if (1)                                                                          # Move
  {start;
   Set  1, 1;
   Move 2, 1;
@@ -560,7 +586,7 @@ if (1)
   ok execute(out=>[1]);
  }
 
-if (1)
+if (1)                                                                          # Add
  {start;
   Set  1, 1;
   Set  2, 2;
@@ -571,7 +597,7 @@ if (1)
   ok execute(out=>[3]);
  }
 
-if (1)
+if (1)                                                                          # Inc
  {start;
   Set  1, 1;
   Set  2, 1;
@@ -579,27 +605,24 @@ if (1)
   Out  1;
   ok execute(out=>[2]);
  }
+
+if (1)                                                                          # Small - constants
+ {start;
+  Small 1, 1, 2;
+  Out   1;
+  ok execute(out=>[1]);
+ }
+
+if (1)                                                                          # Small - constants
+ {start;
+  Set   1, 1;
+  Set   2, 2;
+  Small 3, \1, \2;
+  Out   3;
+  ok execute(out=>[1]);
+ }
 exit;
 
-if (1)                                                                          # Inc
- {my $r = emulate
-   ([instruction(action=>'set', source=>0, target=>[0..2]),
-     instruction(action=>'inc', target=>[0..2]),
-     instruction(action=>'out', source=>[0..2]),
-   ]);
-  is_deeply $r->out, [1,2,3];
-  is_deeply $r->count,    3;
- }
-
-if (1)                                                                          # 1+2 -> 3
- {my $r = emulate
-   ([instruction(action=>'set', source=>[1,2], target=>[0,1]),
-     instruction(action=>'add', source_1=>[0], source_2=>[1], target=>[0]),
-     instruction(action=>'out', source=>[0]),
-   ]);
-  is_deeply $r->out->[0], 3;
-  is_deeply $r->count,    3;
- }
 
 if (1)                                                                          # For loop with direct jump targets
  {my $r = emulate                             #0 1 2 3
