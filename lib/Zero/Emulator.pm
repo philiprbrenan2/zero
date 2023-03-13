@@ -26,7 +26,7 @@ allocated and freed as necessary.
 
 makeDieConfess;
 
-sub maximumInstructionsToExecute {20}                                           # Maximum number of subroutines to execute
+sub maximumInstructionsToExecute {100}                                           # Maximum number of subroutines to execute
 
 sub AreaStructure(@)                                                            # Describe a data structure mapping a memory area
  {my ($name, @fields) = @_;                                                     # Structure name, fields names
@@ -257,13 +257,13 @@ sub Zero::Emulator::Code::execute($%)                                           
      {my ($i) = @_;                                                             # Instruction
       $instructionPointer = $i->number + right($i->target);
      },
-
-    jEq => sub {my ($i) = @_; jumpOp($i, sub{right($i->source) == 0})},         # Conditional jumps
-    jNe => sub {my ($i) = @_; jumpOp($i, sub{right($i->source) != 0})},
-    jLe => sub {my ($i) = @_; jumpOp($i, sub{right($i->source) <= 1})},
-    jLt => sub {my ($i) = @_; jumpOp($i, sub{right($i->source) == 1})},
-    jGe => sub {my ($i) = @_; jumpOp($i, sub{right($i->source) != 1})},
-    jGt => sub {my ($i) = @_; jumpOp($i, sub{right($i->source) == 2})},
+                                                                                # Conditional jumps
+    jEq => sub {my ($i) = @_; jumpOp($i, sub{right($i->source) == right($i->source2)})},
+    jNe => sub {my ($i) = @_; jumpOp($i, sub{right($i->source) != right($i->source2)})},
+    jLe => sub {my ($i) = @_; jumpOp($i, sub{right($i->source) <= right($i->source2)})},
+    jLt => sub {my ($i) = @_; jumpOp($i, sub{right($i->source) <  right($i->source2)})},
+    jGe => sub {my ($i) = @_; jumpOp($i, sub{right($i->source) >= right($i->source2)})},
+    jGt => sub {my ($i) = @_; jumpOp($i, sub{right($i->source) >  right($i->source2)})},
 
     label     => sub                                                            # Label  - no operation
      {my ($i) = @_;                                                             # Instruction
@@ -466,14 +466,34 @@ sub Jmp($)                                                                      
   $assembly->instruction(action=>"jmp", target=>$target);
  }
 
-sub JLt($$)                                                                     # Jump to a target label if the source field indicates less than
- {my ($target, $source) = @_;                                                   # Target label, source to test
-  $assembly->instruction(action=>"jLt", target=>$target, source=>$source);
+sub JLe($$$)                                                                    # Jump to a target label if the first source field is less than or equal to the second source field
+ {my ($target, $source, $source2) = @_;                                         # Target label, source to test
+  $assembly->instruction(action=>"jLe", target=>$target, source=>$source, source2=>$source2);
  }
 
-sub JGt($$)                                                                     # Jump to a target label if the source field indicates greater than
- {my ($target, $source) = @_;                                                   # Target label, source to test
-  $assembly->instruction(action=>"jGt", target=>$target, source=>$source);
+sub JLt($$$)                                                                    # Jump to a target label if the first source field is less than the second source field
+ {my ($target, $source, $source2) = @_;                                         # Target label, source to test
+  $assembly->instruction(action=>"jLt", target=>$target, source=>$source, source2=>$source2);
+ }
+
+sub JGe($$$)                                                                    # Jump to a target label if the first source field is greater than or equal to the second source field
+ {my ($target, $source, $source2) = @_;                                         # Target label, source to test
+  $assembly->instruction(action=>"jGe", target=>$target, source=>$source, source2=>$source2);
+ }
+
+sub JGt($$$)                                                                    # Jump to a target label if the first source field is greater than the second source field
+ {my ($target, $source, $source2) = @_;                                         # Target label, source to test
+  $assembly->instruction(action=>"jGt", target=>$target, source=>$source, source2=>$source2);
+ }
+
+sub JEq($$$)                                                                    # Jump to a target label if the first source field is equal to the second source field
+ {my ($target, $source, $source2) = @_;                                         # Target label, source to test
+  $assembly->instruction(action=>"jEq", target=>$target, source=>$source, source2=>$source2);
+ }
+
+sub JNe($$$)                                                                    # Jump to a target label if the first source field is not equal to the second source field
+ {my ($target, $source, $source2) = @_;                                         # Target label, source to test
+  $assembly->instruction(action=>"jNe", target=>$target, source=>$source, source2=>$source2);
  }
 
 sub Label($)                                                                    # Create a lable
@@ -527,6 +547,7 @@ sub is_deeply;
 sub ok($;$);
 
 latest:;
+
 if (1)
  {start;
   Out "hello World";
@@ -611,20 +632,30 @@ if (1)                                                                          
 if (1)                                                                          # Jump less than
  {start;
   Mov 0, 1;
-  JLt 'a', \0;
+  JLt 'a', \0, 2;
     Out  1;
     Jmp 'b';
   Label 'a';
     Out  2;
   Label 'b';
 
-  JGt 'c', \0;
+  JGt 'c', \0, 3;
     Out  1;
     Jmp 'd';
   Label 'c';
     Out  2;
   Label 'd';
   ok execute(out=>[2,1]);
+ }
+
+if (1)                                                                          # For loop
+ {start;
+  Mov 0, 0;
+  Label 'a';
+    Out \0;
+    Inc \0;
+  JLt 'a', \0, 10;
+  ok execute(out=>[0..9]);
  }
 exit;
 
