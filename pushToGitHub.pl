@@ -41,7 +41,6 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    permissions: write-all
 
     steps:
     - uses: actions/checkout@v2
