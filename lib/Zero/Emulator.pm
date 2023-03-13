@@ -466,6 +466,16 @@ sub Jmp($)                                                                      
   $assembly->instruction(action=>"jmp", target=>$target);
  }
 
+sub JLt($$)                                                                     # Jump to a target label if the source field indicates less than
+ {my ($target, $source) = @_;                                                   # Target label, source to test
+  $assembly->instruction(action=>"jLt", target=>$target, source=>$source);
+ }
+
+sub JGt($$)                                                                     # Jump to a target label if the source field indicates greater than
+ {my ($target, $source) = @_;                                                   # Target label, source to test
+  $assembly->instruction(action=>"jGt", target=>$target, source=>$source);
+ }
+
 sub Label($)                                                                    # Create a lable
  {my ($source) = @_;                                                            # Name of label
   $assembly->instruction(action=>"label", source=>$source);
@@ -499,6 +509,7 @@ sub execute(%)                                                                  
     lll $c if $c;
     return !$c;
    }
+  return $r;
  }
 
 use Exporter qw(import);
@@ -586,15 +597,34 @@ if (1)                                                                          
   ok execute(out=>[1]);
  }
 
-if (1)                                                                          # Jmp
+if (1)                                                                          # Jump
  {start;
   Jmp 'a';
-  Out  1;
-  Jmp 'b';
+    Out  1;
+    Jmp 'b';
   Label 'a';
-  Out  2;
+    Out  2;
   Label 'b';
   ok execute(out=>[2]);
+ }
+
+if (1)                                                                          # Jump less than
+ {start;
+  Mov 0, 1;
+  JLt 'a', \0;
+    Out  1;
+    Jmp 'b';
+  Label 'a';
+    Out  2;
+  Label 'b';
+
+  JGt 'c', \0;
+    Out  1;
+    Jmp 'd';
+  Label 'c';
+    Out  2;
+  Label 'd';
+  ok execute(out=>[2,1]);
  }
 exit;
 
