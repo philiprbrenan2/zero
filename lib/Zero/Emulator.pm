@@ -27,7 +27,7 @@ allocated and freed as necessary.
 makeDieConfess;
 
 sub maximumInstructionsToExecute {100}                                          # Maximum number of subroutines to execute
-sub wellKnownMemoryAreas         {1e6}                                          # Memory areas with a number less than this are well known. They can be used glbally but cannot be freed
+sub wellKnownMemoryAreas         {1e6}                                          # Memory areas with a number less than this are well known. They can be used globally but cannot be freed
 
 sub AreaStructure(@)                                                            # Describe a data structure mapping a memory area
  {my ($name, @fields) = @_;                                                     # Structure name, fields names
@@ -160,7 +160,7 @@ sub Zero::Emulator::Code::execute($%)                                           
    }
 
   my sub allocMemory()                                                          # Create the name of a new memory area
-   {keys %memory
+   {wellKnownMemoryAreas + keys %memory
    }
 
   my sub right($)                                                               # Get a constant or a memory location
@@ -433,7 +433,6 @@ sub Zero::Emulator::Code::execute($%)                                           
   push @calls, callEntry(                                                       # Initial stack entry
     data => scalar allocMemory,                                                 # Allocate data segment for current method
   );
-
   for my $j(1..maximumInstructionsToExecute)                                    # Each instruction in the code until we hit an undefined instruction
    {my $i = $$code[$instructionPointer++];
     last unless $i;
