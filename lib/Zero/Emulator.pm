@@ -26,7 +26,8 @@ allocated and freed as necessary.
 
 makeDieConfess;
 
-sub maximumInstructionsToExecute {100}                                           # Maximum number of subroutines to execute
+sub maximumInstructionsToExecute {100}                                          # Maximum number of subroutines to execute
+sub wellKnownMemoryAreas         {1e6}                                          # Memory areas with a number less than this are well known. They can be used glbally but cannot be freed
 
 sub AreaStructure(@)                                                            # Describe a data structure mapping a memory area
  {my ($name, @fields) = @_;                                                     # Structure name, fields names
@@ -265,7 +266,7 @@ sub Zero::Emulator::Code::execute($%)                                           
     jGe => sub {my ($i) = @_; jumpOp($i, sub{right($i->source) >= right($i->source2)})},
     jGt => sub {my ($i) = @_; jumpOp($i, sub{right($i->source) >  right($i->source2)})},
 
-    label     => sub                                                            # Label  - no operation
+    label     => sub                                                            # Label - no operation
      {my ($i) = @_;                                                             # Instruction
      },
 
@@ -299,12 +300,13 @@ sub Zero::Emulator::Code::execute($%)                                           
     memoryAllocate => sub                                                       # Allocate a new block of memory and write its key to the specified target
      {my ($i) = @_;                                                             # Instruction
       my ($t, $ta) = targetValue($i);                                           # Set target to length of memory area
-      $memory{$ta}[$t] = 1e6 + keys %memory;                                    # Keys below 1e6 are "well known", above that they are automatically generated
+      $memory{$ta}[$t] = wellKnownMemoryAreas + keys %memory;                   # Create the area above the well known areas
      },
 
     memoryFree => sub                                                           # Free the memory area specified by the target operand
      {my ($i) = @_;                                                             # Instruction
       my ($t, $ta) = targetValue($i);                                           # Set target to length of memory area
+      $ta > wellKnownMemoryAreas or confess "Cannot free global area $ta";
       $memory{$ta} = undef;
      },
 
@@ -333,6 +335,16 @@ sub Zero::Emulator::Code::execute($%)                                           
     mov       => sub                                                            # Move data moves data from one part of memory to another - "set", by contrast, sets variables from constant values
      {my ($i) = @_;                                                             # Instruction
       setMemory($i->target, right($i->source));
+     },
+
+    get       => sub                                                            # Move one word from the area identified by the first source operand at the location identified by the second source operand to the target location on the current area.
+     {my ($i) = @_;                                                             # Instruction
+      setMemory($i->target, $memory{right($i->source)}[right($i->source2)]);
+     },
+
+    put       => sub                                                            # Move one word from the current arae to the area identified by the first source operand at the location identified by the second source operand to the target location on the current area.
+     {my ($i) = @_;                                                             # Instruction
+      $memory{right($i->source)}[right($i->source2)] = right($i->target);
      },
 
     moveBlock => sub                                                            # Move a block of data from the first source operand to the target operand.  The length of the move is determined by the second source operand.  The source block and the target block may overlap.
@@ -458,6 +470,7 @@ sub Add($$$)                                                                    
 
 sub Inc($)                                                                      # Increment the target
  {my ($target) = @_;                                                            # Target
+  confess "Reference required for Inc" if isScalar $target;
   $assembly->instruction(action=>"inc", target=>$target);
  }
 
@@ -518,6 +531,18 @@ sub Out($)                                                                      
 sub Small($$$)                                                                  # Compare the source operands and put 0 in the target if the operands are equal, 1 if the first operand is the smaller, or 2 if the second operand is the smaller
  {my ($target, $s1, $s2) = @_;                                                  # Target location, source one, source two
   $assembly->instruction(action=>"small",
+    target=>$target, source=>$s1, source2=>$s2);
+ }
+
+sub Get($$$)                                                                    # Move one word from the area identified by the first source operand at the location identified by the second source operand to the target location on the current area.
+ {my ($target, $s1, $s2) = @_;                                                  # Target location, source one, source two
+  $assembly->instruction(action=>"get",
+    target=>$target, source=>$s1, source2=>$s2);
+ }
+
+sub Put($$$)                                                                    # Move one word from the current arae to the area identified by the first source operand at the location identified by the second source operand to the target location on the current area.
+ {my ($target, $s1, $s2) = @_;                                                  # Target location, source one, source two
+  $assembly->instruction(action=>"put",
     target=>$target, source=>$s1, source2=>$s2);
  }
 
@@ -597,7 +622,7 @@ if (1)                                                                          
 if (1)                                                                          # Inc
  {start;
   Mov  1, 1;
-  Inc  1;
+  Inc \1;
   Out \1;
   ok execute(out=>[2]);
  }
@@ -656,6 +681,14 @@ if (1)                                                                          
     Inc \0;
   JLt 'a', \0, 10;
   ok execute(out=>[0..9]);
+ }
+
+if (1)                                                                          # Move between areas
+ {start;
+  Put  1, 0, 0;
+  Get \0, 0, 0;
+  Out \0;
+  ok execute(out=>[1]);
  }
 exit;
 
