@@ -57,10 +57,10 @@ sub Zero::Emulator::AreaStructure::offset($$)                                   
   $d->names->{$name}
  }
 
-sub callEntry(%)                                                                # Describe an entry on the call stack: the return address, the parameter list length, the parameter list location, the line of code from which the call was made, the file number of the file from which the call was made
+sub stackFrame(%)                                                               # Describe an entry on the call stack: the return address, the parameter list length, the parameter list location, the line of code from which the call was made, the file number of the file from which the call was made
  {my (%options) = @_;                                                           # Parameters
 
-  genHash("Zero::Emulator::CallEntry",                                          # Description of a call stack entry
+  genHash("Zero::Emulator::StackFrame",                                         # Description of a stack frame. A stack frame provides the context in which a method runs.
     target    => $options{target},                                              # The location of the subroutine being called
     call      => $options{call},                                                # The location of the call instruction making the call
     stackArea => $options{stackArea},                                           # Memory area containing data for this method
@@ -216,15 +216,8 @@ sub Zero::Emulator::Code::execute($%)                                           
       else
        {$instructionPointer = $t;                                               # Absolute call
        }
-      push @calls, callEntry(target=>$code->[$instructionPointer], call=>$i,    # Create a new call stack entry
+      push @calls, stackFrame(target=>$code->[$instructionPointer], call=>$i,    # Create a new call stack entry
         stackArea=>allocMemory, params=>allocMemory, return=>allocMemory);
-     },
-
-    parameters => sub                                                           # Locate the parameter list for the current subroutine call
-     {my ($i)  = @_;                                                            # Instruction
-      @calls or confess "Not in a subroutine";
-      my $c = $calls[-1];
-      #setMemory($i, $i->target_area//0, $i->target, $c->params);
      },
 
     return    => sub                                                            # Return from a subrotuine call via the call stack
@@ -240,14 +233,12 @@ sub Zero::Emulator::Code::execute($%)                                           
       push @out, "Stack trace";
       for my $j(reverse keys @calls)
        {my $c = $calls[$j];
-        my $i = $c->call;
-        my $l = $i->label // '';
-        my $n = $i->number;
-        my $t = $c->target;
-        my $L = $t->label // '';
-        my $N = $t->number;
-        my $P = $c->params // 0;
-        push @out, sprintf "%4d %4d %12s  %4d", $j+1, $N, $L, $P;
+        if (my $I = $c->call)
+         {push @out, sprintf "%4d Call", $j+1;
+         }
+        else
+         {push @out, sprintf "%4d ????", $j+1;
+         }
        }
       $instructionPointer = @$code;                                             # Execution terminates as soon as undefined instuction is encountered
      },
@@ -273,33 +264,6 @@ sub Zero::Emulator::Code::execute($%)                                           
      {my ($i) = @_;                                                             # Instruction
      },
 
-    load      => sub                                                            # Load data from the locations addressed by the source array into the target array
-     {my ($i) = @_;                                                             # Instruction
-      my $s = $i->source; my $sa = $i->source_area // 0;
-      my $t = $i->target; my $ta = $i->target_area // 0;
-
-      if (!isScalar $s)                                                         # Load from specified locations
-       {for my $j(keys @$t)
-         {#setMemory($i, $ta, $$t[$j], right($sa, right($sa, $$s[$j])));
-         }
-       }
-     },
-
-    max => sub                                                                  # Maximum element in source block to target
-     {my ($i) = @_;                                                             # Instruction
-      my $s  = $i->source; my $sa = $i->source_area//0;                         # Array of locations containing the values to be summed
-      my ($t, $ta) = targetValue($i);
-
-      my $x;                                                                    # Maximum element
-      for my $a(@$s)
-       {#my $S = right($sa, $a);
-        #if (!defined($x) || $x < $S)
-        # {$x = $S;
-        # }
-       }
-      #setMemory($i, $ta, $t, $x);                                               # Save maximum
-     },
-
     memoryAllocate => sub                                                       # Allocate a new block of memory and write its key to the specified target
      {my ($i) = @_;                                                             # Instruction
       my ($t, $ta) = targetValue($i);                                           # Set target to length of memory area
@@ -318,21 +282,6 @@ sub Zero::Emulator::Code::execute($%)                                           
       my ($s)      = sourceValue($i);                                           # Number of memory area
       my ($t, $ta) = targetValue($i);                                           # Set target to length of memory area
       #setMemory($i, $ta, $t, scalar $memory{$s}->@*);
-     },
-
-    min => sub                                                                  # Minimum element in source block to target
-     {my ($i) = @_;                                                             # Instruction
-      my $s  = $i->source; my $sa = $i->source_area//0;                         # Array of locations containing the values to be summed
-      my ($t, $ta) = targetValue($i);
-
-      my $x;                                                                    # Minimum element
-      for my $a(@$s)
-       {#my $S = right($sa, $a);
-        #if (!defined($x) || $x > $S)
-        # {$x = $S;
-        # }
-       }
-      #setMemory($i, $ta, $t, $x);                                              # Save minimum
      },
 
     mov       => sub                                                            # Move data moves data from one part of memory to another - "set", by contrast, sets variables from constant values
@@ -374,17 +323,6 @@ sub Zero::Emulator::Code::execute($%)                                           
       $memory{$p}[right($i->target)] = right($i->source);
      },
 
-    moveBlock => sub                                                            # Move a block of data from the first source operand to the target operand.  The length of the move is determined by the second source operand.  The source block and the target block may overlap.
-     {my ($i) = @_;                                                             # Instruction
-      #my $S1 = $i->source_1; my $sa1 = $i->source_1_area // 0; my $s1 = isScalar($S1) ? $S1 : right($sa1, $S1);
-      #my $S2 = $i->source_2; my $sa2 = $i->source_2_area // 0; my $s2 = isScalar($S2) ? $S2 : right($sa2, $S2);
-      #my ($t, $ta) = targetValue($i);
-
-      #my @b;                                                                    # Buffer the data being moved to avoid overwrites
-      #push @b, right($sa1, $s1+$_)  for 0..$s2-1;
-      #setMemory($i, $ta, $t+$_, $b[$_]) for 0..$s2-1;
-     },
-
     nop       => sub                                                            # No operation
      {my ($i) = @_;                                                             # Instruction
      },
@@ -394,46 +332,7 @@ sub Zero::Emulator::Code::execute($%)                                           
       push @out, right($i->source);
      },
 
-    outString => sub                                                            # Write a string to output
-     {my ($i) = @_;                                                             # Instruction
-      push @out, $i->source;
-     },
-
-    ownerClear => sub                                                           # Clear ownership for a range of memory. The target designates the location at which to start, source gives th length of the clear.  The ownership of the memory in this range is reset to zero so that any-one can claim it.
-     {my ($i) = @_;                                                             # Instruction
-      my ($s) = sourceValue($i);
-      my ($t, $ta) = targetValue($i);
-      for my $j(0..$s-1)                                                        # Move block
-       {$owner{$ta}[$t + $j] = 0;                                               # Zero the ownership of the memory in the range
-       }
-     },
-
-    set     => sub                                                              # Place constant data into memory
-     {my ($i) = @_;                                                             # Instruction
-      setMemory $i->target, $i->source;
-     },
-
-    shiftBlockLeft => sub                                                       # Move a block of longs referenced by the target operand of length the source operand one long to the left
-     {my ($i) = @_;                                                             # Instruction
-      my ($s) = sourceValue($i);
-      #my $T = $i->target; my $ta = $i->target_area // 0; my $t = isScalar($T) ? $T : right($ta, $T);
-
-      for my $j(0..$s-2)                                                        # Move block
-       {#setMemory($i, $ta, $t+$j, right($ta, $t+$j+1));
-       }
-     },
-
-    shiftBlockRight => sub                                                      # Move a block of longs referenced by the target operand of length the source operand one long to the left
-     {my ($i) = @_;                                                             # Instruction
-      my ($s) = sourceValue($i);
-      #my $T = $i->target; my $ta = $i->target_area // 0; my $t = isScalar($T) ? $T : right($ta, $T);
-
-      for my $j(reverse 0..$s-2)                                                # Move block
-       {#setMemory($i, $ta, $t+$j+1, right($ta, $t+$j));
-       }
-     },
-
-    small => sub                                                                # Compare two constants or variables
+    smaller => sub                                                              # Compare two constants or variables then indicate which is smaller: 0 - they are both qual, 1- the first one is smaller, 2 - the second one is smaller
      {my ($i) = @_;                                                             # Instruction
       my $s1 = right($i->source);
       my $s2 = right($i->source2);
@@ -446,18 +345,9 @@ sub Zero::Emulator::Code::execute($%)                                           
        {setMemory $$t, $s1 == $s2 ? 0 : $s1 < $s2 ? 1 : 2;
        }
      },
-
-    sum => sub                                                                  # Sum the source block and place it in the target
-     {my ($i) = @_;                                                             # Instruction
-      my $s = $i->source; my $sa = $i->source_area // 0;
-      my ($t, $ta) = targetValue($i);
-
-      #my $x = 0; $x += right($sa, $_) for @$s;                                 # Each location whose contents are to be summed
-      #setMemory($i, $ta, $t, $x);                                              # Save sum
-     },
    );
 
-  push @calls, callEntry(                                                       # Initial stack entries
+  push @calls, stackFrame(                                                       # Initial stack entries
     stackArea => allocMemory,                                                      # Allocate data segment for current method
     params    => allocMemory,
     return    => allocMemory,
@@ -500,6 +390,10 @@ sub Add($$$)                                                                    
 sub Call($)                                                                     # Call the subroutine at the target address
  {my ($target) = @_;                                                            # Target
   $assembly->instruction(action=>"call", target=>$target);
+ }
+
+sub Confess()                                                                   # Confess
+ {$assembly->instruction(action=>"confess");
  }
 
 sub Inc($)                                                                      # Increment the target
@@ -586,9 +480,9 @@ sub ReturnPut($$)                                                               
   $assembly->instruction(action=>"returnPut", target=>$target, source=>$source);
  }
 
-sub Small($$$)                                                                  # Compare the source operands and put 0 in the target if the operands are equal, 1 if the first operand is the smaller, or 2 if the second operand is the smaller
+sub Smaller($$$)                                                                # Compare the source operands and put 0 in the target if the operands are equal, 1 if the first operand is the smaller, or 2 if the second operand is the smaller
  {my ($target, $s1, $s2) = @_;                                                  # Target location, source one, source two
-  $assembly->instruction(action=>"small",
+  $assembly->instruction(action=>"smaller",
     target=>$target, source=>$s1, source2=>$s2);
  }
 
@@ -687,7 +581,7 @@ if (1)                                                                          
 
 if (1)                                                                          # Small - constants
  {start;
-  Small 1, 1, 2;
+  Smaller 1, 1, 2;
   Out   1;
   ok execute(out=>[1]);
  }
@@ -696,7 +590,7 @@ if (1)                                                                          
  {start;
   Mov   1, 1;
   Mov   2, 2;
-  Small 3, \1, \2;
+  Smaller 3, \1, \2;
   Out  \3;
   ok execute(out=>[1]);
  }
@@ -786,201 +680,13 @@ if (1)                                                                          
   ok execute(out=>['ccc']);
  }
 
-exit;
-
-
-if (1)                                                                          # For loop with direct jump targets
- {my $r = emulate                             #0 1 2 3
-   ([instruction(action=>'set',     source  =>[0,1,3,0], target=>[0..3]),       #0 Count 1,2,3
-     instruction(action=>'nop',     label=>'start'),                            #1 Start of loop
-     instruction(action=>'add',     source_1=>[0], source_2=>[1], target=>[0]), #2 Increment at start of loop
-     instruction(action=>'out',     source  =>[0]),                             #3 Print
-     instruction(action=>'compare', source_1=>[0], source_2=>[2], target=>[3]), #4 Compare result to m[3]
-     instruction(action=>'jumpEq',  source  =>[3], target=>"end"),              #5 Goto end of loop
-     instruction(action=>'jump',                   target=>"start"),            #6 Restart loop
-     instruction(action=>'nop',     label=>'end'),                              #7 End
-   ]);
-  is_deeply $r->out, [1,2,3];
-  is_deeply $r->count,   19;
- }
-
-if (1)                                                                          # For loop with indirect jump targets
- {my $r = emulate                             #0 1 2 3 4 5 6
-   ([instruction(action=>'set',     source  =>[0,1,3,0,-4,+2],    target=>[0..5]), #0 Count 1,2,3
-     instruction(action=>'add',     source_1=>[0], source_2=>[1], target=>[0]), #1 Increment at start of loop
-     instruction(action=>'out',     source  =>[0]),                             #2 Print
-     instruction(action=>'compare', source_1=>[0], source_2=>[2], target=>[3]), #3 Compare result to m[3]
-     instruction(action=>'jumpEq',  source  =>[3],                target=>[5]), #4 m[5] contains location of end of loop
-     instruction(action=>'jump',                                  target=>[4]), #5 m[4] contains location of start of loop
-   ], trace=>0);
-  is_deeply $r->out, [1,2,3];
-  is_deeply $r->count,   15;
- }
-
-if (1)                                                                          # For loop with labels
- {my $r = emulate                             #0 1 2 3
-   ([instruction(action=>'set',     source  =>[0,1,3,0],   target=>[0..4]),     #0 Count 1,2,3
-     instruction(action=>'inc',     target  =>[0], label=>"loop"),              #1 Increment at start of loop
-     instruction(action=>'out',     source  =>[0]),                             #2 Print
-     instruction(action=>'compare', source_1=>[0], source_2=>[2], target=>[3]), #3 Compare result into m[3]
-     instruction(action=>'jumpEq',  source  =>[3], target=>"loopEnd"),          #4 Jump to end of loop at end of loop
-     instruction(action=>'jump',                   target=>"loop"),             #5 Restart loop
-     instruction(action=>'nop',                    label =>"loopEnd"),          #6 End of loop
-   ]);
-  is_deeply $r->out, [1,2,3];
-  is_deeply $r->count,   16;
- }
-
-if (1)                                                                          # For loop with labels
- {my $r = emulate                             #0 1 2
-   ([instruction(action=>'set',     source  =>[0,3,0], target=>[0..2]),         #0 Index, limit, compare
-     instruction(action=>'inc',     target  =>[0], label=>"loop"),              #1 Increment at start of loop
-     instruction(action=>'out',     source  =>[0]),                             #2 Print
-     instruction(action=>'compare', source_1=>[0], source_2=>[1], target=>[2]), #3 Compare result into m[3]
-     instruction(action=>'jumpLt',  source  =>[2],  target=>"loop"),            #4 Iterate
-   ]);
-  is_deeply $r->out, [1,2,3];
-  is_deeply $r->count,   13;
- }
-
-if (1)                                                                          # For loop with labels
- {my $r = emulate
-   ([instruction(action=>'set',            source =>[0..3], target=>[0..3]),    #0 Block to move
-     instruction(action=>'shiftBlockLeft', source => 3,     target=>0),         #1 Shift left
-     instruction(action=>'out',            source =>[0..3]),                    #2 Print
-   ]);
-  is_deeply $r->out, [1,2,2,3];
- }
-
-if (1)                                                                          # For loop with labels
- {my $r = emulate
-   ([instruction(action=>'set',             source =>[0..3], target=>[0..3]),   #0 Block to move
-     instruction(action=>'shiftBlockRight', source => 3,     target=>0),        #1 Shift left
-     instruction(action=>'out',             source =>[0..3]),                   #2 Print
-   ]);
-  is_deeply $r->out, [0,0,1,3];
- }
-
-if (1)                                                                          # For loop with labels
- {my $r = emulate
-   ([instruction(action=>'set', source =>[0..3], target=>[0..3]),               #0 Block to move
-     instruction(action=>'moveBlock', source_1=>1, source_2=>2, target=>0),     #1 Shift left
-     instruction(action=>'out', source =>[0..3]),                               #2 Print
-   ]);
-  is_deeply $r->out, [1,2,2,3];
- }
-
-if (1)                                                                          # Call a subroutine and return
- {my $r = emulate
-   ([instruction(action=>'jump',   target => "end_sub"),                        #0 Jump over subroutine
-     instruction(action=>'out',    source => "Hello World", label => "sub"),    #1 Print
-     instruction(action=>'return'),                                             #2 Return
-     instruction(action=>'nop',    label => "end_sub"),                         #3 End of subroutine
-     instruction(action=>'call',   target => "sub"),                            #4 Call subroutine
-   ]);
-  is_deeply $r->out, ["Hello World"];
- }
-
-if (1)                                                                          # Call a subroutine passing it a parameter
- {my $r = emulate
-   ([instruction(action=>'set',    source => [0..9], target => [0..9]),         #0 Create and load some memory
-     instruction(action=>'jump',   target => "end_sub"),                        #1 Jump over subroutine
-     instruction(action=>'parameters', target => 0, label => "sub"),            #2 Parameters
-     instruction(action=>'out',        source => [0]),                          #3 Print
-     instruction(action=>'return'),                                             #4 Return
-     instruction(action=>'nop',    label  => "end_sub"),                        #5 End of subroutine
-     instruction(action=>'call',   source => 2, target => "sub"),               #6 Call subroutine
-   ]);
-  is_deeply $r->out, [2];
- }
-
-if (1)                                                                          # Indirect call to an absolute address
- {my $r = emulate
-   ([instruction(action=>'set',    source => [0..9], target => [0..9]),         #0 Create and load some memory
-     instruction(action=>'jump',   target => "end_sub"),                        #1 Jump over subroutine
-     instruction(action=>'parameters', target => 0, label => "sub"),            #2 Parameters
-     instruction(action=>'out',        source => [0]),                          #3 Print
-     instruction(action=>'return'),                                             #4 Return
-     instruction(action=>'nop',    label  => "end_sub"),                        #5 End of subroutine
-     instruction(action=>'call',   source => 2, target => [2]),                 #6 Call subroutine  indirectly
-   ]);
-  is_deeply $r->out, [2];
- }
-
-if (1)                                                                          # Sum of a block
- {my $r = emulate
-   ([instruction(action=>'set', source => [0..9], target => [0..9]),            #0 Create and load some memory
-     instruction(action=>'sum', source => [0..9], target => 0),                 #1 Sum
-     instruction(action=>'out', source => [0]),                                 #2 Print
-   ]);
-  is_deeply $r->out, [45];
- }
-
-if (1)                                                                          # Maximum of a block
- {my $r = emulate
-   ([instruction(action=>'set', source => [0..9], target => [0..9]),            #0 Create and load some memory
-     instruction(action=>'max', source => [0..9], target => 0),                 #1 Maximum
-     instruction(action=>'out', source => [0]),                                 #2 Print
-   ]);
-  is_deeply $r->out, [9];
- }
-
-if (1)                                                                          # Minimum of a block
- {my $r = emulate
-   ([instruction(action=>'set', source => [10..19], target => [0..9]),          #0 Create and load some memory
-     instruction(action=>'min', source => [0..9],   target => 0),               #1 Minimum
-     instruction(action=>'out', source => [0]),                                 #2 Print
-   ]);
-  is_deeply $r->out, [10];
- }
-
-if (1)                                                                          # Ownership of memory
- {my $r = eval {emulate
-   ([instruction(action=>'set', source => [10..19], owner=>1, target => [0..9]),#0 Create and load some memory with for one owner
-     instruction(action=>'min', source => [0..9],   owner=>2, target => 0),     #1 Minimum but with different owner
-   ])};
-  ok $@ =~ m(Owner mismatch memory: 0:0, wanted: 1, got: 2);
- }
-
-if (1)                                                                          # Clear ownership of memory
- {my $r = eval {emulate
-   ([instruction(action=>'set',        source => [0..9], owner=>1, target => [0..9]),  #0 Create and load some memory with for one owner
-     instruction(action=>'ownerClear', source => 5,     target => 0),           #1 Clear owner ship of some of the memory
-   ])};
-  is_deeply $r->owner, { "0" => [0, 0, 0, 0, 0, 1, 1, 1, 1, 1] };
- }
-
-if (1)                                                                          # Clear ownership of memory
- {my $r = eval {emulate
-   ([instruction(action=>'set', source=>1, target=>[0..9], target_area=>22),    #0 Create and load some memory with for one owner
-     instruction(action=>'memorySize', source=>22, target=>0),                  #1 Memory area size
-   ])};
-  is_deeply $r->memory->{0}, [10];
- }
-
-if (1)                                                                          # Confess
- {my $r = emulate
-    [instruction(action=>'nop'),                                                #0 Do nothing
-     instruction(action=>'call',    target=>"sub1", source=>[4]),               #1 Call subroutine
-     instruction(action=>'call',    label =>"sub1", source=>[3], target => "sub2"),          #2 Call subroutine
-     instruction(action=>'confess', label =>"sub2"),                            #3 Print call stack
-    ];
-
-# say STDERR dump($r->out);
-  is_deeply $r->out,
-["Stack trace",
- "   2    3         sub2     0",
- "   1    2         sub1     0",
-];
- }
-
-if (1)                                                                          # Allocate and free memory
- {my $r = emulate
-   ([instruction(action=>'memoryAllocate', target=>0),                           #0 Allocate
-     instruction(action=>'set', source=>1, target_area=>[0], target=>[0..9]),   #1 Set the memory
-     instruction(action=>'out', source=>[0..9], source_area=>[0]),              #2 Print
-#     instruction(action=>'memoryFree', source=>[0]),                            #3 Call subroutine
-    ]);
-  say STDERR dump($r->out);
-  say STDERR dump($r->memory);
+if (1)                                                                          # Call a subroutine which confesses
+ {start;
+  Jmp 'start';
+  Label 'ccc';
+    Confess;
+  Return;
+  Label 'start';
+    Call 'ccc';
+  ok execute(out=>["Stack trace", "   3 Call", "   2 ????", "   1 ????"]);
  }
