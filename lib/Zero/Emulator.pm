@@ -26,8 +26,8 @@ allocated and freed as necessary.
 
 makeDieConfess;
 
-sub maximumInstructionsToExecute {100}                                          # Maximum number of subroutines to execute
-sub wellKnownMemoryAreas         {1e6}                                          # Memory areas with a number less than this are well known. They can be used globally but cannot be freed
+sub maximumInstructionsToExecute (){100}                                        # Maximum number of subroutines to execute
+sub wellKnownMemoryAreas         (){1e6}                                        # Memory areas with a number less than this are well known. They can be used globally but cannot be freed
 
 sub AreaStructure(@)                                                            # Describe a data structure mapping a memory area
  {my ($name, @fields) = @_;                                                     # Structure name, fields names
@@ -61,13 +61,13 @@ sub callEntry(%)                                                                
  {my (%options) = @_;                                                           # Parameters
 
   genHash("Zero::Emulator::CallEntry",                                          # Description of a call stack entry
-    target   => $options{target},                                               # The location of the subroutine being called
-    call     => $options{call},                                                 # The location of the call instruction making the call
-    data     => $options{data},                                                 # Memory area containing data for this method
-    params   => $options{params},                                               # Memory area containing paramter list
-    return   => $options{return},                                               # Memory area conmtaining returned result
-    line     => $options{line},                                                 # The line number from which the call was made
-    file     => $options{file},                                                 # The file number from which the call was made - this could be folded into the line number but for reasons best known to themselves people who cannot program very well often scatter projects across several files a practice that is completely pointless in this day of git and so can only lead to chaos and confusion
+    target    => $options{target},                                              # The location of the subroutine being called
+    call      => $options{call},                                                # The location of the call instruction making the call
+    stackArea => $options{stackArea},                                           # Memory area containing data for this method
+    params    => $options{params},                                              # Memory area containing paramter list
+    return    => $options{return},                                              # Memory area conmtaining returned result
+    line      => $options{line},                                                # The line number from which the call was made
+    file      => $options{file},                                                # The file number from which the call was made - this could be folded into the line number but for reasons best known to themselves people who cannot program very well often scatter projects across several files a practice that is completely pointless in this day of git and so can only lead to chaos and confusion
   );
  }
 
@@ -125,15 +125,16 @@ sub Zero::Emulator::Code::assemble($%)                                          
     $labels{$i->source} = $i;                                                   # Point label to instruction
    }
 
-  for my $c(keys @$code)                                                        # Each jump instruction
+  for my $c(keys @$code)                                                        # Each jump or call instruction
    {my $i = $$code[$c];
-    next unless $i->action =~ m(\Aj);
+    next unless $i->action =~ m(\Aj|\Acall);
     if (my $l = $i->target)                                                     # Label
      {if (my $t = $labels{$l})                                                  # Found label
        {$i->target = $t->number - $c;                                           # Relative jump
        }
       else
-       {confess "No target for jump to label: $l";
+       {my $a = $i->action;
+         confess "No target for $a to label: $l";
        }
      }
    }
@@ -156,16 +157,19 @@ sub Zero::Emulator::Code::execute($%)                                           
   my %owner;                                                                    # Who owns the privilege of writing to the corresponding block of memory. undef means that any-one can write, otherwise the instruction must have the matching owner id
 
   my sub stackArea()                                                            # Memory area associated with this method invocation
-   {$calls[-1]->data;                                                           # Stack area
+   {$calls[-1]->stackArea;                                                      # Stack area
    }
 
   my sub allocMemory()                                                          # Create the name of a new memory area
-   {wellKnownMemoryAreas + keys %memory
+   {my $a = &wellKnownMemoryAreas + scalar(keys %memory);
+    $memory{$a} = [];
+    $a
    }
 
   my sub right($)                                                               # Get a constant or a memory location
    {my ($at) = @_;                                                              # Location
     my $s = stackArea;
+
     if (isScalar($at))                                                          # Constant
      {$at
      }
@@ -199,22 +203,21 @@ sub Zero::Emulator::Code::execute($%)                                           
   my %instructions =                                                            # Instruction definitions
    (add       => sub                                                            # Add two arrays to make a third array
      {my ($i) = @_;                                                             # Instruction
-      setMemory($i->target, right($i->source) + right($i->source2));
+      setMemory $i->target, right($i->source) + right($i->source2);
      },
 
     call => sub                                                                 # Call a subroutine
      {my ($i) = @_;                                                             # Instruction
-      my ($s) = sourceValue($i);                                                # Parameter list location
-      my ($t) = targetValue($i);                                                # Subroutine to call
+      my $t = $i->target;                                                       # Subroutine to call
 
-      if (isScalar($i->target))
+      if (isScalar($t))
        {$instructionPointer = $i->number + $t;                                  # Relative call if we know where the subroutine is relative to the call instruction
        }
       else
        {$instructionPointer = $t;                                               # Absolute call
        }
-      my $ti = $code->[$instructionPointer];
-      push @calls, callEntry(target=>$ti, call=>$i, params=>$s);
+      push @calls, callEntry(target=>$code->[$instructionPointer], call=>$i,    # Create a new call stack entry
+        stackArea=>allocMemory, params=>allocMemory, return=>allocMemory);
      },
 
     parameters => sub                                                           # Locate the parameter list for the current subroutine call
@@ -224,13 +227,13 @@ sub Zero::Emulator::Code::execute($%)                                           
       #setMemory($i, $i->target_area//0, $i->target, $c->params);
      },
 
-    return    => sub                                                            # Call a subroutine
+    return    => sub                                                            # Return from a subrotuine call via the call stack
      {my ($i) = @_;                                                             # Instruction
       @calls or confess "The call stack is empty so I do not know where to return to";
       my $c = pop @calls;
       $instructionPointer = $c->call+1;
+      $c->params = $c->return = undef;
      },
-
 
     confess => sub                                                              # Print the current call stack and stop
      {my ($i) = @_;                                                             # Instruction
@@ -251,7 +254,7 @@ sub Zero::Emulator::Code::execute($%)                                           
 
     inc       => sub                                                            # Increment locations in memory. The first location is incremented by 1, the next by two, etc.
      {my ($i) = @_;                                                             # Instruction
-      setMemory($i->target, right($i->target) + 1);
+      setMemory $i->target, right($i->target) + 1;
      },
 
     jmp       => sub                                                            # Jump to the target location
@@ -334,17 +337,29 @@ sub Zero::Emulator::Code::execute($%)                                           
 
     mov       => sub                                                            # Move data moves data from one part of memory to another - "set", by contrast, sets variables from constant values
      {my ($i) = @_;                                                             # Instruction
-      setMemory($i->target, right($i->source));
+      setMemory $i->target, right($i->source);
      },
 
     get       => sub                                                            # Move one word from the area identified by the first source operand at the location identified by the second source operand to the target location on the current area.
      {my ($i) = @_;                                                             # Instruction
-      setMemory($i->target, $memory{right($i->source)}[right($i->source2)]);
+      setMemory $i->target, $memory{right($i->source)}[right($i->source2)];
      },
 
-    put       => sub                                                            # Move one word from the current arae to the area identified by the first source operand at the location identified by the second source operand to the target location on the current area.
+    put       => sub                                                            # Move one word from the current area to the area identified by the first source operand at the location identified by the second source operand to the target location on the current area.
      {my ($i) = @_;                                                             # Instruction
       $memory{right($i->source)}[right($i->source2)] = right($i->target);
+     },
+
+    paramsGet => sub                                                            # Get a parameter from the previous parameter block - this means that we must always have two entries on teh call stack - one representing the caller of the program, the second representing the current context of the program
+     {my ($i) = @_;                                                             # Instruction
+      my $p = $calls[-2]->params;
+      setMemory ${$i->target}, $memory{$p}[right($i->source)];
+     },
+
+    paramsPut => sub                                                            # Place a parameter in the current parameter block
+     {my ($i) = @_;                                                             # Instruction
+      my $p = $calls[-1]->params;
+      $memory{$p}[right($i->target)] = right($i->source);
      },
 
     moveBlock => sub                                                            # Move a block of data from the first source operand to the target operand.  The length of the move is determined by the second source operand.  The source block and the target block may overlap.
@@ -383,7 +398,7 @@ sub Zero::Emulator::Code::execute($%)                                           
 
     set     => sub                                                              # Place constant data into memory
      {my ($i) = @_;                                                             # Instruction
-      setMemory($i->target, $i->source);
+      setMemory $i->target, $i->source;
      },
 
     shiftBlockLeft => sub                                                       # Move a block of longs referenced by the target operand of length the source operand one long to the left
@@ -413,10 +428,10 @@ sub Zero::Emulator::Code::execute($%)                                           
       my $t  = $i->target;
 
       if (isScalar $t)
-       {setMemory($t, $s1 == $s2 ? 0 : $s1 < $s2 ? 1 : 2);
+       {setMemory $t,  $s1 == $s2 ? 0 : $s1 < $s2 ? 1 : 2;
        }
       else
-       {setMemory($$t, $s1 == $s2 ? 0 : $s1 < $s2 ? 1 : 2);
+       {setMemory $$t, $s1 == $s2 ? 0 : $s1 < $s2 ? 1 : 2;
        }
      },
 
@@ -425,14 +440,17 @@ sub Zero::Emulator::Code::execute($%)                                           
       my $s = $i->source; my $sa = $i->source_area // 0;
       my ($t, $ta) = targetValue($i);
 
-      #my $x = 0; $x += right($sa, $_) for @$s;                              # Each location whose contents are to be summed
-      #setMemory($i, $ta, $t, $x);                                               # Save sum
+      #my $x = 0; $x += right($sa, $_) for @$s;                                 # Each location whose contents are to be summed
+      #setMemory($i, $ta, $t, $x);                                              # Save sum
      },
    );
 
-  push @calls, callEntry(                                                       # Initial stack entry
-    data => scalar allocMemory,                                                 # Allocate data segment for current method
-  );
+  push @calls, callEntry(                                                       # Initial stack entries
+    stackArea => allocMemory,                                                      # Allocate data segment for current method
+    params    => allocMemory,
+    return    => allocMemory,
+  ) for 1..2;
+
   for my $j(1..maximumInstructionsToExecute)                                    # Each instruction in the code until we hit an undefined instruction
    {my $i = $$code[$instructionPointer++];
     last unless $i;
@@ -465,6 +483,11 @@ sub Add($$$)                                                                    
  {my ($target, $s1, $s2) = @_;                                                  # Target location, source one, source two
   $assembly->instruction(action=>"add",
     target=>$target, source=>$s1, source2=>$s2);
+ }
+
+sub Call($)                                                                     # Call the subroutine at the target address
+ {my ($target) = @_;                                                            # Target
+  $assembly->instruction(action=>"call", target=>$target);
  }
 
 sub Inc($)                                                                      # Increment the target
@@ -522,9 +545,23 @@ sub Nop()                                                                       
  {$assembly->instruction(action=>"nop");
  }
 
+sub ParamsGet($$)                                                               # Get a word from the parameters in the previous frame and store it in the local stack frame
+ {my ($target, $source) = @_;                                                   # Memory location to place results in, parameter to get
+  $assembly->instruction(action=>"paramsGet", target=>$target, source=>$source);
+ }
+
+sub ParamsPut($$)                                                               # Put a paremeter into the current frame
+ {my ($target, $source) = @_;                                                   # Memory location to output
+  $assembly->instruction(action=>"paramsPut", target=>$target, source=>$source);
+ }
+
 sub Out($)                                                                      # Write memory contents to out
  {my ($source) = @_;                                                            # Memory location to output
   $assembly->instruction(action=>"out", source=>$source);
+ }
+
+sub Return()                                                                    # Return from a procedure via the call stack
+ {$assembly->instruction(action=>"return");
  }
 
 sub Small($$$)                                                                  # Compare the source operands and put 0 in the target if the operands are equal, 1 if the first operand is the smaller, or 2 if the second operand is the smaller
@@ -539,7 +576,7 @@ sub Get($$$)                                                                    
     target=>$target, source=>$s1, source2=>$s2);
  }
 
-sub Put($$$)                                                                    # Move one word from the current arae to the area identified by the first source operand at the location identified by the second source operand to the target location on the current area.
+sub Put($$$)                                                                    # Move one word from the current area to the area identified by the first source operand at the location identified by the second source operand to the target location on the current area.
  {my ($target, $s1, $s2) = @_;                                                  # Target location, source one, source two
   $assembly->instruction(action=>"put",
     target=>$target, source=>$s1, source2=>$s2);
@@ -689,6 +726,31 @@ if (1)                                                                          
   Out \0;
   ok execute(out=>[1]);
  }
+
+if (1)                                                                          # Call a subroutine with no parmeters
+ {start;
+  Jmp 'start';
+  Label 'write';
+    Out 'aaa';
+  Return;
+  Label 'start';
+    Call 'write';
+  ok execute(out=>['aaa']);
+ }
+
+if (1)                                                                          # Call a subroutine with one parmeter
+ {start;
+  Jmp 'start';
+  Label 'write';
+    ParamsGet \0, 0;
+    Out \0;
+  Return;
+  Label 'start';
+    ParamsPut 0, 'bbb';
+    Call 'write';
+  ok execute(out=>['bbb']);
+ }
+
 exit;
 
 
