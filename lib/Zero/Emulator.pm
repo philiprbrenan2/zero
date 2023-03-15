@@ -231,7 +231,7 @@ sub Zero::Emulator::Code::execute($%)                                           
      {my ($i) = @_;                                                             # Instruction
       @calls or confess "The call stack is empty so I do not know where to return to";
       my $c = pop @calls;
-      $instructionPointer = $c->call+1;
+      $instructionPointer = $c->call->number+1;
       $c->params = $c->return = undef;
      },
 
@@ -359,6 +359,18 @@ sub Zero::Emulator::Code::execute($%)                                           
     paramsPut => sub                                                            # Place a parameter in the current parameter block
      {my ($i) = @_;                                                             # Instruction
       my $p = $calls[-1]->params;
+      $memory{$p}[right($i->target)] = right($i->source);
+     },
+
+    returnGet => sub                                                            # Get a word from the return area
+     {my ($i) = @_;                                                             # Instruction
+      my $p = $calls[-1]->return;
+      setMemory ${$i->target}, $memory{$p}[right($i->source)];
+     },
+
+    returnPut => sub                                                            # Put a word ino the return area
+     {my ($i) = @_;                                                             # Instruction
+      my $p = $calls[-2]->return;
       $memory{$p}[right($i->target)] = right($i->source);
      },
 
@@ -546,12 +558,12 @@ sub Nop()                                                                       
  }
 
 sub ParamsGet($$)                                                               # Get a word from the parameters in the previous frame and store it in the local stack frame
- {my ($target, $source) = @_;                                                   # Memory location to place results in, parameter to get
+ {my ($target, $source) = @_;                                                   # Memory location to place parameter in, parameter to get
   $assembly->instruction(action=>"paramsGet", target=>$target, source=>$source);
  }
 
-sub ParamsPut($$)                                                               # Put a paremeter into the current frame
- {my ($target, $source) = @_;                                                   # Memory location to output
+sub ParamsPut($$)                                                               # Put a parameter into the current frame
+ {my ($target, $source) = @_;                                                   # Offset in parameter area to write to, memory location whose contents are to be used as a parameter
   $assembly->instruction(action=>"paramsPut", target=>$target, source=>$source);
  }
 
@@ -562,6 +574,16 @@ sub Out($)                                                                      
 
 sub Return()                                                                    # Return from a procedure via the call stack
  {$assembly->instruction(action=>"return");
+ }
+
+sub ReturnGet($$)                                                               # Get a word from the return area
+ {my ($target, $source) = @_;                                                   # Memory location to place return value in, return value to get
+  $assembly->instruction(action=>"returnGet", target=>$target, source=>$source);
+ }
+
+sub ReturnPut($$)                                                               # Put a word ino the return area
+ {my ($target, $source) = @_;                                                   # Offset in return area to write to, memory location whose contents are to be placed in the return area
+  $assembly->instruction(action=>"returnPut", target=>$target, source=>$source);
  }
 
 sub Small($$$)                                                                  # Compare the source operands and put 0 in the target if the operands are equal, 1 if the first operand is the smaller, or 2 if the second operand is the smaller
@@ -749,6 +771,19 @@ if (1)                                                                          
     ParamsPut 0, 'bbb';
     Call 'write';
   ok execute(out=>['bbb']);
+ }
+
+if (1)                                                                          # Call a subroutine returning one value
+ {start;
+  Jmp 'start';
+  Label 'load';
+    ReturnPut 0, "ccc";
+  Return;
+  Label 'start';
+    Call 'load';
+    ReturnGet \0, 0;
+    Out \0;
+  ok execute(out=>['ccc']);
  }
 
 exit;
