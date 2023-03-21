@@ -9,10 +9,10 @@ use strict;
 use Zero::Emulator qw(:all);
 use Test::More qw(no_plan);
 
-my $r = emulate
- ([instruction(action=>'set', source=>[10..19], target=>[0..9]),                #0 Create and load some memory
-   instruction(action=>'min', source=>[0..9],   target=>0),                     #1 Minimum
-   instruction(action=>'out', source=>[0]),                                     #2 Print
- ]);
+if (1)
+ {start 1;
+  Out "hello World";
+  ok execute(out=>["hello World"]);
+ }
 
-is_deeply $r->out, [10];
+done_testing;
