@@ -50,10 +50,6 @@ sub Zero::Emulator::AreaStructure::field($$)                                    
   else
    {confess "Duplicate name: $name in structure: ".$d->name;
    }
- }
-
-sub Zero::Emulator::AreaStructure::offset($$)                                   # Offset of a field
- {my ($d, $name) = @_;                                                          # Parameters
   $d->names->{$name}
  }
 
@@ -391,8 +387,10 @@ sub Zero::Emulator::Code::execute($%)                                           
 
 my $assembly = code;                                                            # The current assembly
 
-sub start()                                                                     # Start the current assembly
- {$assembly = code;                                                             # The current assembly
+sub start($)                                                                    # Start the current assembly using the specified version of the Zero languiage.  At  the moment only version 1 works.
+ {my ($version) = @_;                                                           # Version desired - at the moment only 1
+  $version == 1 or confess "Version 1 is the only version available\n";
+  $assembly = code;                                                             # The current assembly
  }
 
 sub Add($$$)                                                                    # Copy the contents of the source location to the target location
@@ -538,7 +536,7 @@ use vars qw(@ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
 
 @ISA         = qw(Exporter);
 @EXPORT      = qw();
-@EXPORT_OK   = qw(emulate instruction);
+@EXPORT_OK   = qw(start Add Call Confess Inc Jmp JLe JLt JGe JGt JEq JNe Label Mov Nop Out ParamsGet ParamsPut Return ReturnGet ReturnPut Pop Push Smaller Get Put execute);
 %EXPORT_TAGS = (all=>[@EXPORT, @EXPORT_OK]);
 
 return 1 if caller;
@@ -548,26 +546,26 @@ sub is_deeply;
 sub ok($;$);
 
 if (1)
- {start;
+ {start 1;
   Out "hello World";
   ok execute(out=>["hello World"]);
  }
 
 if (1)                                                                          # Nop
- {start;
+ {start 1;
   Nop;
   ok execute(out=>[]);
  }
 
 if (1)                                                                          # Out
- {start;
+ {start 1;
   Mov 1, 2;
   Out \1;
   ok execute(out=>[2]);
  }
 
 if (1)
- {start;                                                                        # Mov
+ {start 1;                                                                        # Mov
   Mov  1, 3;
   Mov  2, 1;
   Mov  3, \\2;
@@ -576,14 +574,14 @@ if (1)
  }
 
 if (1)                                                                          # Add constants
- {start;
+ {start 1;
   Add  \1, 3, 2;
   Out  \1;
   ok execute(out=>[5]);
  }
 
 if (1)                                                                          # Add
- {start;
+ {start 1;
   Mov   1, 1;
   Mov   2, 2;
   Mov   3, 0;
@@ -594,7 +592,7 @@ if (1)                                                                          
  }
 
 if (1)                                                                          # Inc
- {start;
+ {start 1;
   Mov  1, 1;
   Inc \1;
   Out \1;
@@ -602,14 +600,14 @@ if (1)                                                                          
  }
 
 if (1)                                                                          # Smaller - constants
- {start;
+ {start 1;
   Smaller 1, 1, 2;
   Out   1;
   ok execute(out=>[1]);
  }
 
 if (1)                                                                          # Smaller - variables
- {start;
+ {start 1;
   Mov   1, 1;
   Mov   2, 2;
   Smaller 3, \1, \2;
@@ -618,7 +616,7 @@ if (1)                                                                          
  }
 
 if (1)                                                                          # Jump
- {start;
+ {start 1;
   Jmp 'a';
     Out  1;
     Jmp 'b';
@@ -629,7 +627,7 @@ if (1)                                                                          
  }
 
 if (1)                                                                          # Jump less than
- {start;
+ {start 1;
   Mov 0, 1;
   JLt 'a', \0, 2;
     Out  1;
@@ -648,7 +646,7 @@ if (1)                                                                          
  }
 
 if (1)                                                                          # For loop
- {start;
+ {start 1;
   Mov 0, 0;
   Label 'a';
     Out \0;
@@ -658,7 +656,7 @@ if (1)                                                                          
  }
 
 if (1)                                                                          # Move between areas
- {start;
+ {start 1;
   Put  1, 0, 0;
   Get \0, 0, 0;
   Out \0;
@@ -666,7 +664,7 @@ if (1)                                                                          
  }
 
 if (1)                                                                          # Call a subroutine with no parmeters
- {start;
+ {start 1;
   Jmp 'start';
   Label 'write';
     Out 'aaa';
@@ -677,7 +675,7 @@ if (1)                                                                          
  }
 
 if (1)                                                                          # Call a subroutine with one parmeter
- {start;
+ {start 1;
   Jmp 'start';
   Label 'write';
     ParamsGet \0, 0;
@@ -690,7 +688,7 @@ if (1)                                                                          
  }
 
 if (1)                                                                          # Call a subroutine returning one value
- {start;
+ {start 1;
   Jmp 'start';
   Label 'load';
     ReturnPut 0, "ccc";
@@ -703,7 +701,7 @@ if (1)                                                                          
  }
 
 if (1)                                                                          # Call a subroutine which confesses
- {start;
+ {start 1;
   Jmp 'start';
   Label 'ccc';
     Confess;
@@ -714,14 +712,14 @@ if (1)                                                                          
  }
 
 if (1)                                                                          # Push
- {start;
+ {start 1;
   Push 1, 1;
   Push 1, 2;
   is_deeply execute()->memory->{1}, [1..2];
  }
 
 if (1)                                                                          # Push
- {start;
+ {start 1;
   Push 1, 1;
   Push 1, 2;
   Pop  0, 1;
@@ -730,9 +728,8 @@ if (1)                                                                          
   is_deeply $r->memory->{1000003}, [2];
  }
 
-#latest:;
-if (1)                                                                          # Push
- {start;
+if (1)                                                                          # Pop
+ {start 1;
   Push 1, 1;
   Push 1, 2;
   Pop  0, 1;
@@ -740,4 +737,20 @@ if (1)                                                                          
   my $r = execute();
   is_deeply $r->memory->{1}, [];
   is_deeply $r->memory->{1000003}, [2, 1];
+ }
+
+#latest:;
+if (1)                                                                          # Layout
+ {my $s = AreaStructure;
+  my $a = $s->field("a");
+  my $b = $s->field("b");
+  my $c = $s->field("c");
+  start 1;
+  Mov $a, 'A';
+  Mov $b, 'B';
+  Mov $c, 'C';
+  Out \$c;
+  Out \$b;
+  Out \$a;
+  ok execute(out=>[qw(C B A)]);
  }
