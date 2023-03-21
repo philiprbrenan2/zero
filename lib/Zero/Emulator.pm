@@ -230,14 +230,14 @@ sub Zero::Emulator::Code::execute($%)                                           
 
     confess => sub                                                              # Print the current call stack and stop
      {my ($i) = @_;                                                             # Instruction
-      push @out, "Stack trace";
+      push @out, "Stack trace\n";
       for my $j(reverse keys @calls)
        {my $c = $calls[$j];
         if (my $I = $c->call)
-         {push @out, sprintf "%4d Call", $j+1;
+         {push @out, sprintf "%4d Call\n", $j+1;
          }
         else
-         {push @out, sprintf "%4d ????", $j+1;
+         {push @out, sprintf "%4d ????\n", $j+1;
          }
        }
       $instructionPointer = @$code;                                             # Execution terminates as soon as undefined instuction is encountered
@@ -330,6 +330,20 @@ sub Zero::Emulator::Code::execute($%)                                           
     out     => sub                                                              # Write source as output to an array of words
      {my ($i) = @_;                                                             # Instruction
       push @out, right($i->source);
+     },
+
+    pop => sub                                                                  # Pop a value from the specified memory area if possible else confess
+     {my ($i) = @_;                                                             # Instruction
+      my $p = right($i->source);
+      if (!defined($memory{$p}) or !$memory{$p}->@*)                            # Stack no poppable
+       {confess($i);
+       }
+      setMemory right($i->target), pop $memory{$p}->@*;                         # Pop from memory area into current stack frame
+     },
+
+    push => sub                                                                 # Push a value onto the specified memory area
+     {my ($i) = @_;                                                             # Instruction
+      push $memory{right($i->target)}->@*, right($i->source);
      },
 
     smaller => sub                                                              # Compare two constants or variables then indicate which is smaller: 0 - they are both qual, 1- the first one is smaller, 2 - the second one is smaller
@@ -451,6 +465,11 @@ sub Nop()                                                                       
  {$assembly->instruction(action=>"nop");
  }
 
+sub Out($)                                                                      # Write memory contents to out
+ {my ($source) = @_;                                                            # Memory location to output
+  $assembly->instruction(action=>"out", source=>$source);
+ }
+
 sub ParamsGet($$)                                                               # Get a word from the parameters in the previous frame and store it in the local stack frame
  {my ($target, $source) = @_;                                                   # Memory location to place parameter in, parameter to get
   $assembly->instruction(action=>"paramsGet", target=>$target, source=>$source);
@@ -459,11 +478,6 @@ sub ParamsGet($$)                                                               
 sub ParamsPut($$)                                                               # Put a parameter into the current frame
  {my ($target, $source) = @_;                                                   # Offset in parameter area to write to, memory location whose contents are to be used as a parameter
   $assembly->instruction(action=>"paramsPut", target=>$target, source=>$source);
- }
-
-sub Out($)                                                                      # Write memory contents to out
- {my ($source) = @_;                                                            # Memory location to output
-  $assembly->instruction(action=>"out", source=>$source);
  }
 
 sub Return()                                                                    # Return from a procedure via the call stack
@@ -478,6 +492,16 @@ sub ReturnGet($$)                                                               
 sub ReturnPut($$)                                                               # Put a word ino the return area
  {my ($target, $source) = @_;                                                   # Offset in return area to write to, memory location whose contents are to be placed in the return area
   $assembly->instruction(action=>"returnPut", target=>$target, source=>$source);
+ }
+
+sub Pop($$)                                                                     # Pop the memory area specified by the source operand into the location in the current stack frame identified by the target operand.
+ {my ($target, $source) = @_;                                                   # Memory area, value
+  $assembly->instruction(action=>"pop", target=>$target, source=>$source);
+ }
+
+sub Push($$)                                                                    # Push the value in the current stack frame specified by the source operand onto the memory area identified by the target operand.
+ {my ($target, $source) = @_;                                                   # Memory area, value
+  $assembly->instruction(action=>"push", target=>$target, source=>$source);
  }
 
 sub Smaller($$$)                                                                # Compare the source operands and put 0 in the target if the operands are equal, 1 if the first operand is the smaller, or 2 if the second operand is the smaller
@@ -522,8 +546,6 @@ return 1 if caller;
 eval {goto latest};
 sub is_deeply;
 sub ok($;$);
-
-latest:;
 
 if (1)
  {start;
@@ -579,14 +601,14 @@ if (1)                                                                          
   ok execute(out=>[2]);
  }
 
-if (1)                                                                          # Small - constants
+if (1)                                                                          # Smaller - constants
  {start;
   Smaller 1, 1, 2;
   Out   1;
   ok execute(out=>[1]);
  }
 
-if (1)                                                                          # Small - variables
+if (1)                                                                          # Smaller - variables
  {start;
   Mov   1, 1;
   Mov   2, 2;
@@ -688,5 +710,34 @@ if (1)                                                                          
   Return;
   Label 'start';
     Call 'ccc';
-  ok execute(out=>["Stack trace", "   3 Call", "   2 ????", "   1 ????"]);
+  ok execute(out=>["Stack trace\n", "   3 Call\n", "   2 ????\n", "   1 ????\n"]);
+ }
+
+if (1)                                                                          # Push
+ {start;
+  Push 1, 1;
+  Push 1, 2;
+  is_deeply execute()->memory->{1}, [1..2];
+ }
+
+if (1)                                                                          # Push
+ {start;
+  Push 1, 1;
+  Push 1, 2;
+  Pop  0, 1;
+  my $r = execute();
+  is_deeply $r->memory->{1}, [1];
+  is_deeply $r->memory->{1000003}, [2];
+ }
+
+#latest:;
+if (1)                                                                          # Push
+ {start;
+  Push 1, 1;
+  Push 1, 2;
+  Pop  0, 1;
+  Pop  1, 1;
+  my $r = execute();
+  is_deeply $r->memory->{1}, [];
+  is_deeply $r->memory->{1000003}, [2, 1];
  }
