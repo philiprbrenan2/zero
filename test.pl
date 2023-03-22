@@ -10,9 +10,9 @@ use Zero::Emulator qw(:all);
 use Test::More qw(no_plan);
 
 if (1)
- {start 1;
+ {Start 1;
   Out "hello World";
-  ok execute(out=>["hello World"]);
+  ok Execute(out=>["hello World"]);
  }
 
 done_testing;
