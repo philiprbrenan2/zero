@@ -104,7 +104,7 @@ sub emulate($%)                                                                 
  {my ($code, %options) = @_;                                                    # Block of code, options
 
   my $c = code(code => $code);
-  my $r = $c->execute(%options);
+  my $r = $c->Execute(%options);
   $r
  }
 
@@ -202,7 +202,17 @@ sub Zero::Emulator::Code::execute($%)                                           
       setMemory $i->target, right($i->source) + right($i->source2);
      },
 
-    call => sub                                                                 # Call a subroutine
+    alloc     => sub                                                            # Create a new memory area and write its number into the location named by the target operand
+     {my ($i) = @_;                                                             # Instruction
+      setMemory right($i->target), allocMemory;
+     },
+
+    free      => sub                                                            # Free the memory area named by the source operand
+     {my ($i) = @_;                                                             # Instruction
+      delete $memory{right($i->source)};
+     },
+
+    call      => sub                                                            # Call a subroutine
      {my ($i) = @_;                                                             # Instruction
       my $t = $i->target;                                                       # Subroutine to call
 
@@ -258,26 +268,6 @@ sub Zero::Emulator::Code::execute($%)                                           
 
     label     => sub                                                            # Label - no operation
      {my ($i) = @_;                                                             # Instruction
-     },
-
-    memoryAllocate => sub                                                       # Allocate a new block of memory and write its key to the specified target
-     {my ($i) = @_;                                                             # Instruction
-      my ($t, $ta) = targetValue($i);                                           # Set target to length of memory area
-      $memory{$ta}[$t] = wellKnownMemoryAreas + keys %memory;                   # Create the area above the well known areas
-     },
-
-    memoryFree => sub                                                           # Free the memory area specified by the target operand
-     {my ($i) = @_;                                                             # Instruction
-      my ($t, $ta) = targetValue($i);                                           # Set target to length of memory area
-      $ta > wellKnownMemoryAreas or confess "Cannot free global area $ta";
-      $memory{$ta} = undef;
-     },
-
-    memorySize => sub                                                           # Set the target location to the size of the memory area described by the source operand.
-     {my ($i) = @_;                                                             # Instruction
-      my ($s)      = sourceValue($i);                                           # Number of memory area
-      my ($t, $ta) = targetValue($i);                                           # Set target to length of memory area
-      #setMemory($i, $ta, $t, scalar $memory{$s}->@*);
      },
 
     mov       => sub                                                            # Move data moves data from one part of memory to another - "set", by contrast, sets variables from constant values
@@ -387,7 +377,7 @@ sub Zero::Emulator::Code::execute($%)                                           
 
 my $assembly = code;                                                            # The current assembly
 
-sub start($)                                                                    # Start the current assembly using the specified version of the Zero languiage.  At  the moment only version 1 works.
+sub Start($)                                                                    # Start the current assembly using the specified version of the Zero languiage.  At  the moment only version 1 works.
  {my ($version) = @_;                                                           # Version desired - at the moment only 1
   $version == 1 or confess "Version 1 is the only version available\n";
   $assembly = code;                                                             # The current assembly
@@ -397,6 +387,16 @@ sub Add($$$)                                                                    
  {my ($target, $s1, $s2) = @_;                                                  # Target location, source one, source two
   $assembly->instruction(action=>"add",
     target=>$target, source=>$s1, source2=>$s2);
+ }
+
+sub Alloc($)                                                                    # Create a new memory area and write its number into the location named by the target operand
+ {my ($target) = @_;                                                            # Target location to palce number of area created
+  $assembly->instruction(action=>"alloc", target=>$target);
+ }
+
+sub Free($)                                                                     # Free the memory area named by the source operand
+ {my ($source) = @_;                                                            # Source location containing number of area to free
+  $assembly->instruction(action=>"free", source=>$source);
  }
 
 sub Call($)                                                                     # Call the subroutine at the target address
@@ -520,7 +520,7 @@ sub Put($$$)                                                                    
     target=>$target, source=>$s1, source2=>$s2);
  }
 
-sub execute(%)                                                                  # Execute the current assembly
+sub Execute(%)                                                                  # Execute the current assembly
  {my (%options) = @_;                                                           # Options
   my $r = $assembly->execute;                                                   # Execute the code in the current assembly
   if (my $out = $options{out})
@@ -536,7 +536,7 @@ use vars qw(@ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
 
 @ISA         = qw(Exporter);
 @EXPORT      = qw();
-@EXPORT_OK   = qw(start Add Call Confess Inc Jmp JLe JLt JGe JGt JEq JNe Label Mov Nop Out ParamsGet ParamsPut Return ReturnGet ReturnPut Pop Push Smaller Get Put execute);
+@EXPORT_OK   = qw(AreaStructure Start Add Call Confess Inc Jmp JLe JLt JGe JGt JEq JNe Label Mov Nop Out ParamsGet ParamsPut Return ReturnGet ReturnPut Pop Push Smaller Get Put Execute);
 %EXPORT_TAGS = (all=>[@EXPORT, @EXPORT_OK]);
 
 return 1 if caller;
@@ -545,89 +545,89 @@ eval {goto latest};
 sub is_deeply;
 sub ok($;$);
 
-if (1)
- {start 1;
+if (1)                                                                          #TOut #TStart
+ {Start 1;
   Out "hello World";
-  ok execute(out=>["hello World"]);
+  ok Execute(out=>["hello World"]);
  }
 
-if (1)                                                                          # Nop
- {start 1;
+if (1)                                                                          #TNop
+ {Start 1;
   Nop;
-  ok execute(out=>[]);
+  ok Execute(out=>[]);
  }
 
-if (1)                                                                          # Out
- {start 1;
+if (1)                                                                          #TMov
+ {Start 1;
   Mov 1, 2;
   Out \1;
-  ok execute(out=>[2]);
+  ok Execute(out=>[2]);
  }
 
 if (1)
- {start 1;                                                                        # Mov
+ {Start 1;                                                                      #TMov
   Mov  1, 3;
   Mov  2, 1;
   Mov  3, \\2;
   Out \3;
-  ok execute(out=>[3]);
+  ok Execute(out=>[3]);
  }
 
-if (1)                                                                          # Add constants
- {start 1;
+if (1)                                                                          #TAdd
+ {Start 1;
   Add  \1, 3, 2;
   Out  \1;
-  ok execute(out=>[5]);
+  ok Execute(out=>[5]);
  }
 
-if (1)                                                                          # Add
- {start 1;
+if (1)                                                                          #TAdd
+ {Start 1;
   Mov   1, 1;
   Mov   2, 2;
   Mov   3, 0;
   Mov   4, 3;
   Add  \4, \1, \2;
   Out  3;
-  ok execute(out=>[3]);
+  ok Execute(out=>[3]);
  }
 
-if (1)                                                                          # Inc
- {start 1;
+if (1)                                                                          #TInc
+ {Start 1;
   Mov  1, 1;
   Inc \1;
   Out \1;
-  ok execute(out=>[2]);
+  ok Execute(out=>[2]);
  }
 
-if (1)                                                                          # Smaller - constants
- {start 1;
+if (1)                                                                          #TSmaller
+ {Start 1;
   Smaller 1, 1, 2;
   Out   1;
-  ok execute(out=>[1]);
+  ok Execute(out=>[1]);
  }
 
-if (1)                                                                          # Smaller - variables
- {start 1;
+if (1)                                                                          #TSmaller
+ {Start 1;
   Mov   1, 1;
   Mov   2, 2;
   Smaller 3, \1, \2;
   Out  \3;
-  ok execute(out=>[1]);
+  ok Execute(out=>[1]);
  }
 
-if (1)                                                                          # Jump
- {start 1;
+if (1)                                                                          #TJmp
+ {Start 1;
   Jmp 'a';
     Out  1;
     Jmp 'b';
   Label 'a';
     Out  2;
   Label 'b';
-  ok execute(out=>[2]);
+  ok Execute(out=>[2]);
  }
 
-if (1)                                                                          # Jump less than
- {start 1;
+if (1)                                                                          #TJLt #TLabel
+ {Start 1;
   Mov 0, 1;
   JLt 'a', \0, 2;
     Out  1;
@@ -642,40 +642,40 @@ if (1)                                                                          
   Label 'c';
     Out  2;
   Label 'd';
-  ok execute(out=>[2,1]);
+  ok Execute(out=>[2,1]);
  }
 
-if (1)                                                                          # For loop
- {start 1;
+if (1)                                                                          #TLabel
+ {Start 1;
   Mov 0, 0;
   Label 'a';
     Out \0;
     Inc \0;
   JLt 'a', \0, 10;
-  ok execute(out=>[0..9]);
+  ok Execute(out=>[0..9]);
  }
 
-if (1)                                                                          # Move between areas
- {start 1;
+if (1)                                                                          #TPut #TGet
+ {Start 1;
   Put  1, 0, 0;
   Get \0, 0, 0;
   Out \0;
-  ok execute(out=>[1]);
+  ok Execute(out=>[1]);
  }
 
-if (1)                                                                          # Call a subroutine with no parmeters
- {start 1;
+if (1)                                                                          #TCall Call a subroutine with no parameters
+ {Start 1;
   Jmp 'start';
   Label 'write';
     Out 'aaa';
   Return;
   Label 'start';
     Call 'write';
-  ok execute(out=>['aaa']);
+  ok Execute(out=>['aaa']);
  }
 
-if (1)                                                                          # Call a subroutine with one parmeter
- {start 1;
+if (1)                                                                          #TCall Call a subroutine with one parameter
+ {Start 1;
   Jmp 'start';
   Label 'write';
     ParamsGet \0, 0;
@@ -684,11 +684,11 @@ if (1)                                                                          
   Label 'start';
     ParamsPut 0, 'bbb';
     Call 'write';
-  ok execute(out=>['bbb']);
+  ok Execute(out=>['bbb']);
  }
 
-if (1)                                                                          # Call a subroutine returning one value
- {start 1;
+if (1)                                                                          #TCall Call a subroutine returning one value
+ {Start 1;
   Jmp 'start';
   Label 'load';
     ReturnPut 0, "ccc";
@@ -697,46 +697,76 @@ if (1)                                                                          
     Call 'load';
     ReturnGet \0, 0;
     Out \0;
-  ok execute(out=>['ccc']);
+  ok Execute(out=>['ccc']);
  }
 
-if (1)                                                                          # Call a subroutine which confesses
- {start 1;
+if (1)                                                                          #TConfess
+ {Start 1;
   Jmp 'start';
   Label 'ccc';
     Confess;
   Return;
   Label 'start';
     Call 'ccc';
-  ok execute(out=>["Stack trace\n", "   3 Call\n", "   2 ????\n", "   1 ????\n"]);
+  ok Execute(out=>["Stack trace\n", "   3 Call\n", "   2 ????\n", "   1 ????\n"]);
  }
 
-if (1)                                                                          # Push
- {start 1;
+if (1)                                                                          #TPush
+ {Start 1;
   Push 1, 1;
   Push 1, 2;
-  is_deeply execute()->memory->{1}, [1..2];
+  is_deeply Execute()->memory->{1}, [1..2];
  }
 
-if (1)                                                                          # Push
- {start 1;
+if (1)                                                                          #TPop
+ {Start 1;
   Push 1, 1;
   Push 1, 2;
   Pop  0, 1;
-  my $r = execute();
+  my $r = Execute();
   is_deeply $r->memory->{1}, [1];
   is_deeply $r->memory->{1000003}, [2];
  }
 
-if (1)                                                                          # Pop
- {start 1;
+if (1)                                                                          #TPush #TPop
+ {Start 1;
   Push 1, 1;
   Push 1, 2;
   Pop  0, 1;
   Pop  1, 1;
-  my $r = execute();
+  my $r = Execute();
   is_deeply $r->memory->{1}, [];
   is_deeply $r->memory->{1000003}, [2, 1];
+ }
+
+#latest:;
+if (1)                                                                          #TAlloc #TGet #TPut
+ {Start 1;
+  Alloc 0;
+  Put 1, \0, 0;
+  Put 2, \0, 1;
+  Get 1, \0, 0;
+  Get 2, \0, 1;
+  my $r = Execute();
+  is_deeply $r->memory->{1000003}, [1000006, 1, 2];
+  is_deeply $r->memory->{1000006}, [1,2];
+ }
+
+#latest:;
+if (1)                                                                          #TFree
+ {Start 1;
+  Alloc 0;
+  Out \0;
+  Free \0;
+  my $r = Execute();
+  is_deeply $r->memory, {
+              1000000 => [],
+              1000001 => [],
+              1000002 => [],
+              1000003 => [1000006],
+              1000004 => [],
+              1000005 => [],
+            };
  }
 
 #latest:;
@@ -745,12 +775,12 @@ if (1)                                                                          
   my $a = $s->field("a");
   my $b = $s->field("b");
   my $c = $s->field("c");
-  start 1;
+  Start 1;
   Mov $a, 'A';
   Mov $b, 'B';
   Mov $c, 'C';
   Out \$c;
   Out \$b;
   Out \$a;
-  ok execute(out=>[qw(C B A)]);
+  ok Execute(out=>[qw(C B A)]);
  }
