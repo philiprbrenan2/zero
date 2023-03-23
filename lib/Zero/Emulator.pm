@@ -29,7 +29,7 @@ makeDieConfess;
 sub maximumInstructionsToExecute (){100}                                        # Maximum number of subroutines to execute
 sub wellKnownMemoryAreas         (){1e6}                                        # Memory areas with a number less than this are well known. They can be used globally but cannot be freed
 
-sub AreaStructure(@)                                                            # Describe a data structure mapping a memory area
+sub AreaStructure($@)                                                           # Describe a data structure mapping a memory area
  {my ($name, @fields) = @_;                                                     # Structure name, fields names
 
   my $d = genHash("Zero::Emulator::AreaStructure",                              # Description of a data structure mapping a memory area
@@ -53,6 +53,12 @@ sub Zero::Emulator::AreaStructure::field($$)                                    
   $d->names->{$name}
  }
 
+sub Zero::Emulator::AreaStructure::offset($$)                                   # Offset of a field in a data structure
+ {my ($d, $name) = @_;                                                          # Parameters
+  if (my $n = $d->names->{$name}){return $n}
+  confess "No such name: $name in structure: ".$d->name;
+ }
+
 sub stackFrame(%)                                                               # Describe an entry on the call stack: the return address, the parameter list length, the parameter list location, the line of code from which the call was made, the file number of the file from which the call was made
  {my (%options) = @_;                                                           # Parameters
 
@@ -67,20 +73,25 @@ sub stackFrame(%)                                                               
   );
  }
 
-sub Zero::Emulator::Code::instruction(%)                                        # Create a new instruction
- {my ($code, %options) = @_;                                                    # Code, options
+sub Zero::Emulator::Code::instruction($%)                                       # Create a new instruction
+ {my ($block, %options) = @_;                                                   # Block of code desctriptor, options
 
-  push $code->code->@*, genHash("Zero::Emulator::Instruction",                  # Instruction details
-    action        => $options{action       },                                   # Instruction name
-    number        => $options{number       },                                   # Instruction sequence number
-    owner         => $options{owner        },
-    source        => $options{source       },                                   # Source memory location
-    source2       => $options{source2      },                                   # Secondary source memory location
-    target        => $options{target       },                                   # Target memory location
-    source_area   => $options{source_area  },
-    source2_area  => $options{source2_area },
-    target_area   => $options{target_area  },
-  );
+  if ($options{action} =~ m(\Avariable\Z)i)                                     # Variable
+   {$block->variables->{$options{target}};
+   }
+  else
+   {push $block->code->@*, genHash("Zero::Emulator::Code::Instruction",         # Instruction details
+      action        => $options{action      },                                  # Instruction name
+      number        => $options{number      },                                  # Instruction sequence number
+      owner         => $options{owner       },
+      source        => $options{source      },                                  # Source memory location
+      source2       => $options{source2     },                                  # Secondary source memory location
+      target        => $options{target      },                                  # Target memory location
+      target2       => $options{target2     },                                  # Target secondary memory location
+      source_area   => $options{source_area },                                  # Source area
+      target_area   => $options{target_area },                                  # Target area
+    );
+   }
  }
 
 sub isScalar($)                                                                 # Check whether an element is a scalar or an array
@@ -94,6 +105,7 @@ sub code(%)                                                                     
   genHash("Zero::Emulator::Code",                                               # Description of a call stack entry
     assembled => undef,                                                         # Needs to be assembled unless this field is true
     code      => [],                                                            # An array of instructions
+    variables => undef,                                                         # Variables in this block of code
     labels    => {},                                                            # Label name to instruction
     files     => [],                                                            # File number to file name
     %options,
@@ -109,19 +121,22 @@ sub emulate($%)                                                                 
  }
 
 sub Zero::Emulator::Code::assemble($%)                                          # Assemble a block of code to prepare it for execution
- {my ($Code, %options) = @_;                                                    # Code block, assembly options
-  return $Code if $Code->assembled;                                             # Already assembled
-  my $code = $Code->code;                                                       # The code to be assembled
-  my %labels;                                                                   # Load labels
+ {my ($Block, %options) = @_;                                                   # Code block, assembly options
+  return $Block if $Block->assembled;                                           # Already assembled
+  my $code = $Block->code;                                                      # The code to be assembled
+  my $vars = $Block->variables;                                                 # The varaibles refernced by the code
 
-  for my $c(keys @$code)                                                        # Each instruction
+  my %labels;                                                                   # Load labels
+  my $stackFrame = AreaStructure("Stack");                                      # The current stack frame we are creating variables in
+
+  for my $c(keys @$code)                                                        # Labels
    {my $i = $$code[$c];
     $i->number = $c;
     next unless $i->action eq "label";
     $labels{$i->source} = $i;                                                   # Point label to instruction
    }
 
-  for my $c(keys @$code)                                                        # Each jump or call instruction
+  for my $c(keys @$code)                                                        # Target jump / call instructions
    {my $i = $$code[$c];
     next unless $i->action =~ m(\Aj|\Acall);
     if (my $l = $i->target)                                                     # Label
@@ -134,9 +149,10 @@ sub Zero::Emulator::Code::assemble($%)                                          
        }
      }
    }
-  $Code->labels = {%labels};                                                    # Labels created during assembly
-  $Code->assembled = time;                                                      # Time of assembly
-  $Code
+
+  $Block->labels = {%labels};                                                   # Labels created during assembly
+  $Block->assembled = time;                                                     # Time of assembly
+  $Block
  }
 
 sub Zero::Emulator::Code::execute($%)                                           # Execute a block of code
@@ -152,6 +168,21 @@ sub Zero::Emulator::Code::execute($%)                                           
   my %memory;                                                                   # Memory
   my %owner;                                                                    # Who owns the privilege of writing to the corresponding block of memory. undef means that any-one can write, otherwise the instruction must have the matching owner id
 
+  my sub stackTraceAndExit($)                                                   # Print a stack trace and exit
+   {my ($i) = @_;                                                               # Instruction trace occurred at
+    push @out, "Stack trace\n";
+    for my $j(reverse keys @calls)
+     {my $c = $calls[$j];
+      if (my $I = $c->call)
+       {push @out, sprintf "%4d Call\n", $j+1;
+       }
+      else
+       {push @out, sprintf "%4d ????\n", $j+1;
+       }
+     }
+    $instructionPointer = @$code;                                               # Execution terminates as soon as undefined instuction is encountered
+   };
+
   my sub stackArea()                                                            # Memory area associated with this method invocation
    {$calls[-1]->stackArea;                                                      # Stack area
    }
@@ -162,33 +193,77 @@ sub Zero::Emulator::Code::execute($%)                                           
     $a
    }
 
-  my sub right($)                                                               # Get a constant or a memory location
-   {my ($at) = @_;                                                              # Location
-    my $s = stackArea;
-
-    if (isScalar($at))                                                          # Constant
-     {$at
+  my sub left($;$)                                                              # Address a memory location
+   {my ($A, $area) = @_;                                                        # Location, optional area
+    my $a = $A;
+    $a = \$A if isScalar $a;                                                    # Interpret constants as direct memory locations
+    if (isScalar $$a)
+     {if (!defined($area))                                                      # Current stack frame
+       {return \$memory{&stackArea}[$$a]                                        # Stack frame
+       }
+      elsif (isScalar($area))
+       {return \$memory{$area}[$$a]                                             # Specified constant area
+       }
+      elsif (isScalar($$area))
+       {return \$memory{$memory{&stackArea}[$$area]}[$$a]                       # Indirect area
+       }
      }
-    elsif (isScalar($$at))                                                      # Direct
-     {$memory{$s}[$$at]
+    if (isScalar $$$a)
+     {if (!defined($area))                                                      # Current stack frame
+       {return \$memory{&stackArea}[$memory{&stackArea}[$$$a]]                  # Stack frame
+       }
+      elsif (isScalar($area))
+       {return \$memory{$area}[$memory{&stackArea}[$$$a]]                       # Specified constant area
+       }
+      elsif (isScalar($$area))
+       {return \$memory{$memory{&stackArea}[$$area]}[$memory{&stackArea}[$$$a]] # Indirect area
+       }
      }
-    else                                                                        # Indirect
-     {$memory{$s}[$memory{$s}[$$$at]]
-     }
+    die "Invalid left area.address: ".dump([$area, $a])."\n";
    }
 
-  my sub setMemory($$)                                                          # Set a memory location to a specified value
-   {my ($t, $value) = @_;                                                       # Target, value
-    my $s = stackArea;
-    if (isScalar($t))
-     {$memory{$s}[$t] = $value;                                                 # Set memory directly
+  my sub right($;$)                                                             # Get a constant or a memory location
+   {my ($a, $area) = @_;                                                        # Location, optional area
+    return $a if isScalar($a);                                                  # Constant
+    my $r;
+    if (isScalar($$a))                                                          # Direct
+     {if (!defined($area))
+       {$r = $memory{&stackArea}[$$a]                                           # Direct from stack area
+       }
+      elsif (isScalar($area))
+       {$r = $memory{$area}[$$a]                                                # Direct from constant area
+       }
+      elsif (isScalar($$area))
+       {if (defined(my $i = $memory{&stackArea}[$$area]))
+         {$r = $memory{$i}[$$a]                                                 # Direct from indirect area
+         }
+       }
      }
-    elsif (isScalar($$t))
-     {$memory{$s}[right($$t)]= $value;                                          # Set memory indirectly 1
+    elsif (isScalar($$$a))                                                      # Indirect
+     {if (!defined($area))
+       {$r = $memory{&stackArea}[$memory{&stackArea}[$$$a]]                     # Indirect from stack area
+       }
+      elsif (isScalar($area))
+       {if (defined(my $i = $memory{&stackArea}[$$$a]))
+         {$r = $memory{$area}[$i]                                               # Indirect from constant area
+         }
+       }
+      elsif (isScalar($$area))
+       {if (defined(my $i = $memory{&stackArea}[$$$a]))
+         {if (defined(my $j = $memory{&stackArea}[$$$area]))
+           {$r = $memory{$j}[$i]                                                # Indirect from indirect area
+           }
+         }
+       }
      }
-    else
-     {$memory{$s}[$memory{$s}[right($$t)]]= $value;                             # Set memory indirectly 2
-     }
+    die "Invalid right area.address: ".dump([$area, $a])."\n" unless defined $r;
+    $r
+   }
+
+  my sub setMemory($$;$)                                                        # Set a memory location to a specified value
+   {my ($target, $value, $area) = @_;                                           # Target, value, optional area
+    my $a = left($target, $area);
+    $$a   = $value;
    }
 
   my sub jumpOp($$)                                                             # Jump to the target location if the tested memory area if the condition is matched
@@ -222,7 +297,7 @@ sub Zero::Emulator::Code::execute($%)                                           
       else
        {$instructionPointer = $t;                                               # Absolute call
        }
-      push @calls, stackFrame(target=>$code->[$instructionPointer], call=>$i,    # Create a new call stack entry
+      push @calls, stackFrame(target=>$code->[$instructionPointer], call=>$i,   # Create a new call stack entry
         stackArea=>allocMemory, params=>allocMemory, return=>allocMemory);
      },
 
@@ -236,17 +311,7 @@ sub Zero::Emulator::Code::execute($%)                                           
 
     confess => sub                                                              # Print the current call stack and stop
      {my ($i) = @_;                                                             # Instruction
-      push @out, "Stack trace\n";
-      for my $j(reverse keys @calls)
-       {my $c = $calls[$j];
-        if (my $I = $c->call)
-         {push @out, sprintf "%4d Call\n", $j+1;
-         }
-        else
-         {push @out, sprintf "%4d ????\n", $j+1;
-         }
-       }
-      $instructionPointer = @$code;                                             # Execution terminates as soon as undefined instuction is encountered
+      stackTraceAndExit($i);
      },
 
     inc       => sub                                                            # Increment locations in memory. The first location is incremented by 1, the next by two, etc.
@@ -275,14 +340,25 @@ sub Zero::Emulator::Code::execute($%)                                           
       setMemory $i->target, right($i->source);
      },
 
-    get       => sub                                                            # Move one word from the area identified by the first source operand at the location identified by the second source operand to the target location on the current area.
+    get       => sub                                                            # Copy one word from the area identified by the first source operand at the location identified by the second source operand to the target location on the current area.
      {my ($i) = @_;                                                             # Instruction
-      setMemory $i->target, $memory{right($i->source)}[right($i->source2)];
+      my $s = right($i->source2, $i->source);
+      my $t = left($i->target);
+      $$t = $s;
      },
 
-    put       => sub                                                            # Move one word from the current area to the area identified by the first source operand at the location identified by the second source operand to the target location on the current area.
+    put       => sub                                                            # Copy one word from the current area to the area identified by the first source operand at the location identified by the second source operand to the target location on the current area.
      {my ($i) = @_;                                                             # Instruction
-      $memory{right($i->source)}[right($i->source2)] = right($i->target);
+      my $t = left($i->target2, $i->target);
+      my $s = right($i->source);
+      $$t = $s;
+     },
+
+    copy      => sub                                                            # Move one word from the area identified by the first source operand at the location identified by the second source operand to the area indic ated by the irst target operand at the location specified bythe second target operand.
+     {my ($i) = @_;                                                             # Instruction
+      my $s = right($i->source2, $i->source);
+      my $t = left ($i->target2, $i->target);
+      $$t = $s;
      },
 
     paramsGet => sub                                                            # Get a parameter from the previous parameter block - this means that we must always have two entries on teh call stack - one representing the caller of the program, the second representing the current context of the program
@@ -347,8 +423,8 @@ sub Zero::Emulator::Code::execute($%)                                           
      },
    );
 
-  push @calls, stackFrame(                                                       # Initial stack entries
-    stackArea => allocMemory,                                                      # Allocate data segment for current method
+  push @calls, stackFrame(                                                      # Initial stack entries
+    stackArea => allocMemory,                                                   # Allocate data segment for current method
     params    => allocMemory,
     return    => allocMemory,
   ) for 1..2;
@@ -360,7 +436,11 @@ sub Zero::Emulator::Code::execute($%)                                           
      {$counts{$a}++; $count++;                                                  # Execution counts
       confess qq(Invalid instruction: "$a"\n) unless my $c = $instructions{$a};
       say STDERR sprintf "%4d  %4d  %12s", $j, $i->number, $i->action if $options{trace};
-      $c->($i);                                                                 # Execute instruction
+      eval {$c->($i)};                                                          # Execute instruction
+      if ($@)                                                                   # Handle any errror produced during subroutine execution
+       {say STDERR $@;
+        last;
+       }
      }
     confess "Out of instructions after $j" if $j >= maximumInstructionsToExecute;
    }
@@ -508,21 +588,32 @@ sub Smaller($$$)                                                                
     target=>$target, source=>$s1, source2=>$s2);
  }
 
-sub Get($$$)                                                                    # Move one word from the area identified by the first source operand at the location identified by the second source operand to the target location on the current area.
- {my ($target, $s1, $s2) = @_;                                                  # Target location, source one, source two
+sub Get($$$)                                                                    # Copy one word from another memory area to the curent stack area
+ {my ($target, $s1, $s2) = @_;                                                  # Target location, source area, source location
   $assembly->instruction(action=>"get",
     target=>$target, source=>$s1, source2=>$s2);
  }
 
-sub Put($$$)                                                                    # Move one word from the current area to the area identified by the first source operand at the location identified by the second source operand to the target location on the current area.
- {my ($target, $s1, $s2) = @_;                                                  # Target location, source one, source two
+sub Put($$$)                                                                    # Copy one word from the current stack area to another memory area
+ {my ($t1, $t2, $source) = @_;                                                  # Target location, source area, source location
   $assembly->instruction(action=>"put",
-    target=>$target, source=>$s1, source2=>$s2);
+    target=>$t1, target2=>$t2, source=>$source);
+ }
+
+sub Copy($$$$)                                                                  # Copy one word from one area to another area
+ {my ($t1, $t2, $s1, $s2) = @_;                                                 # Target area, target location, source area, source location
+  $assembly->instruction(action=>"copy",
+    target=>$t1, target=>$t2, source=>$s1, source2=>$s2);
+ }
+
+sub Variable($)                                                                 # Create a variable in the cirent stack frame during assembly
+ {my ($name) = @_;                                                              # Variable name
+  $assembly->instruction(action=>"variable", target=>$name);
  }
 
 sub Execute(%)                                                                  # Execute the current assembly
  {my (%options) = @_;                                                           # Options
-  my $r = $assembly->execute;                                                   # Execute the code in the current assembly
+  my $r = $assembly->execute(%options);                                         # Execute the code in the current assembly
   if (my $out = $options{out})
    {my $c = compareArraysAndExplain $r->out, $out;
     lll $c if $c;
@@ -657,8 +748,8 @@ if (1)                                                                          
 
 if (1)                                                                          #TPut #TGet
  {Start 1;
-  Put  1, 0, 0;
-  Get \0, 0, 0;
+  Put  0, 0,  1;
+  Get  0, 0,  \0;
   Out \0;
   ok Execute(out=>[1]);
  }
@@ -734,22 +825,21 @@ if (1)                                                                          
   Push 1, 2;
   Pop  0, 1;
   Pop  1, 1;
-  my $r = Execute();
+  my $r = Execute;
   is_deeply $r->memory->{1}, [];
   is_deeply $r->memory->{1000003}, [2, 1];
  }
 
-#latest:;
 if (1)                                                                          #TAlloc #TGet #TPut
  {Start 1;
   Alloc 0;
-  Put 1, \0, 0;
-  Put 2, \0, 1;
-  Get 1, \0, 0;
-  Get 2, \0, 1;
-  my $r = Execute();
+  Put \0, 1, 1;
+  Put \0, 2, 2;
+  Get 1, \0, \1;
+  Get 2, \0, \2;
+  my $r = Execute;
   is_deeply $r->memory->{1000003}, [1000006, 1, 2];
-  is_deeply $r->memory->{1000006}, [1,2];
+  is_deeply $r->memory->{1000006}, [undef, 1,2];
  }
 
 #latest:;
@@ -758,7 +848,7 @@ if (1)                                                                          
   Alloc 0;
   Out \0;
   Free \0;
-  my $r = Execute();
+  my $r = Execute;
   is_deeply $r->memory, {
               1000000 => [],
               1000001 => [],
@@ -771,7 +861,7 @@ if (1)                                                                          
 
 #latest:;
 if (1)                                                                          # Layout
- {my $s = AreaStructure;
+ {my $s = AreaStructure("Stack");
   my $a = $s->field("a");
   my $b = $s->field("b");
   my $c = $s->field("c");
