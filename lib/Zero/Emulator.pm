@@ -466,6 +466,7 @@ sub Start($)                                                                    
  {my ($version) = @_;                                                           # Version desired - at the moment only 1
   $version == 1 or confess "Version 1 is the only version available\n";
   $assembly = code;                                                             # The current assembly
+  AreaStructure("Main");                                                        # Variables defined in mainline code
  }
 
 sub Add($$$)                                                                    # Copy the contents of the source location to the target location
@@ -866,9 +867,8 @@ if (1)                                                                          
 
 #latest:;
 if (1)                                                                          # Layout
- {my $s = AreaStructure("Stack");
+ {my $s = Start 1;
   my ($a, $b, $c) = $s->fields(qw(a b c));
-  Start 1;
   Mov $a, 'A';
   Mov $b, 'B';
   Mov $c, 'C';
