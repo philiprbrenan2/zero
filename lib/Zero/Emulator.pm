@@ -609,7 +609,7 @@ sub Put($$$)                                                                    
 sub Copy($$$$)                                                                  # Copy one word from one area to another area
  {my ($t1, $t2, $s1, $s2) = @_;                                                 # Target area, target location, source area, source location
   $assembly->instruction(action=>"copy",
-    target=>$t1, target=>$t2, source=>$s1, source2=>$s2);
+    target=>$t1, target2=>$t2, source=>$s1, source2=>$s2);
  }
 
 sub Variable($)                                                                 # Create a variable in the cirent stack frame during assembly
@@ -846,6 +846,24 @@ if (1)                                                                          
   my $r = Execute;
   is_deeply $r->memory->{1000003}, [1000006, 1, 2];
   is_deeply $r->memory->{1000006}, [undef, 1,2];
+ }
+
+if (1)                                                                          #TCopy
+ {Start 1;
+  Put  0, 0, 1;
+  Copy 1, 0, 0, \0;
+  Get  1, 1, \0;
+  my $r = Execute;
+  is_deeply $r->memory, {
+  "0" => [1],
+  "1" => [1],
+  "1000000" => [],
+  "1000001" => [],
+  "1000002" => [],
+  "1000003" => [undef, 1],
+  "1000004" => [],
+  "1000005" => [],
+};
  }
 
 #latest:;
