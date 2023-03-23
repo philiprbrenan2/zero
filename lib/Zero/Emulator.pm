@@ -50,7 +50,12 @@ sub Zero::Emulator::AreaStructure::field($$)                                    
   else
    {confess "Duplicate name: $name in structure: ".$d->name;
    }
-  $d->names->{$name}
+  \($d->names->{$name})
+ }
+
+sub Zero::Emulator::AreaStructure::fields($@)                                   # Add fields to a data structure
+ {my ($d, @names) = @_;                                                         # Parameters
+  map {$d->field($_)} @names;
  }
 
 sub Zero::Emulator::AreaStructure::offset($$)                                   # Offset of a field in a data structure
@@ -862,15 +867,13 @@ if (1)                                                                          
 #latest:;
 if (1)                                                                          # Layout
  {my $s = AreaStructure("Stack");
-  my $a = $s->field("a");
-  my $b = $s->field("b");
-  my $c = $s->field("c");
+  my ($a, $b, $c) = $s->fields(qw(a b c));
   Start 1;
   Mov $a, 'A';
   Mov $b, 'B';
   Mov $c, 'C';
-  Out \$c;
-  Out \$b;
-  Out \$a;
+  Out $c;
+  Out $b;
+  Out $a;
   ok Execute(out=>[qw(C B A)]);
  }
