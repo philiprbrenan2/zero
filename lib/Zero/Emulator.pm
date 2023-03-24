@@ -1,6 +1,6 @@
 #!/usr/bin/perl -I/home/phil/perl/cpan/DataTableText/lib/
 #-------------------------------------------------------------------------------
-# Emulate the zero programming language where all instructions operate on arrays
+# Emulate the zero assembly programming language.
 # Philip R Brenan at appaapps dot com, Appa Apps Ltd Inc., 2023
 #-------------------------------------------------------------------------------
 use v5.30;
@@ -13,9 +13,6 @@ use Data::Table::Text qw(:all);
 eval "use Test::More qw(no_plan)" unless caller;
 
 =pod
-
-All instructions except "move" operate on the local stack segment target=>1
-means location 1. \1 means the location addressed by location 1
 
 Memory is addressed in areas.  Each method has its own current stack area,
 parameter area and return results area.  Each area can grow a much as is needed
@@ -265,7 +262,7 @@ sub Zero::Emulator::Code::execute($%)                                           
     $r
    }
 
-  my sub setMemory($$;$)                                                        # Set a memory location to a specified value
+  my sub setMemory($$;$)                                                        # Set a memory location in the current stack frame to a specified value
    {my ($target, $value, $area) = @_;                                           # Target, value, optional area
     my $a = left($target, $area);
     $$a   = $value;
@@ -369,25 +366,37 @@ sub Zero::Emulator::Code::execute($%)                                           
     paramsGet => sub                                                            # Get a parameter from the previous parameter block - this means that we must always have two entries on teh call stack - one representing the caller of the program, the second representing the current context of the program
      {my ($i) = @_;                                                             # Instruction
       my $p = $calls[-2]->params;
-      setMemory ${$i->target}, $memory{$p}[right($i->source)];
+     #setMemory ${$i->target}, $memory{$p}[right($i->source)];
+      my $t = left($i->target);
+      my $s = right($i->source, $p);
+      $$t = $s;
      },
 
     paramsPut => sub                                                            # Place a parameter in the current parameter block
      {my ($i) = @_;                                                             # Instruction
       my $p = $calls[-1]->params;
-      $memory{$p}[right($i->target)] = right($i->source);
+      #$memory{$p}[right($i->target)] = right($i->source);
+      my $t = left($i->target, $p);
+      my $s = right($i->source);
+      $$t = $s;
      },
 
     returnGet => sub                                                            # Get a word from the return area
      {my ($i) = @_;                                                             # Instruction
       my $p = $calls[-1]->return;
-      setMemory ${$i->target}, $memory{$p}[right($i->source)];
+      #setMemory ${$i->target}, $memory{$p}[right($i->source)];
+      my $t = left($i->target);
+      my $s = right($i->source, $p);
+      $$t = $s;
      },
 
     returnPut => sub                                                            # Put a word ino the return area
      {my ($i) = @_;                                                             # Instruction
       my $p = $calls[-2]->return;
-      $memory{$p}[right($i->target)] = right($i->source);
+      #$memory{$p}[right($i->target)] = right($i->source);
+      my $t = left($i->target, $p);
+      my $s = right($i->source);
+      $$t = $s;
      },
 
     nop       => sub                                                            # No operation
@@ -775,7 +784,7 @@ if (1)                                                                          
  {Start 1;
   Jmp 'start';
   Label 'write';
-    ParamsGet \0, 0;
+    ParamsGet \0, \0;
     Out \0;
   Return;
   Label 'start';
@@ -792,7 +801,7 @@ if (1)                                                                          
   Return;
   Label 'start';
     Call 'load';
-    ReturnGet \0, 0;
+    ReturnGet \0, \0;
     Out \0;
   ok Execute(out=>['ccc']);
  }
