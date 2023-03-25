@@ -101,15 +101,17 @@ sub isScalar($)                                                                 
   ! ref $value;
  }
 
-sub code(%)                                                                     # A block of code
+sub block(%)                                                                    # A block of code
  {my (%options) = @_;                                                           # Parameters
 
   genHash("Zero::Emulator::Code",                                               # Description of a call stack entry
-    assembled => undef,                                                         # Needs to be assembled unless this field is true
-    code      => [],                                                            # An array of instructions
-    variables => undef,                                                         # Variables in this block of code
-    labels    => {},                                                            # Label name to instruction
-    files     => [],                                                            # File number to file name
+    assembled    => undef,                                                      # Needs to be assembled unless this field is true
+    code         => [],                                                         # An array of instructions
+    variables    => AreaStructure("Block"),                                     # Variables in this block of code
+    labels       => {},                                                         # Label name to instruction
+    labelCounter => 0,                                                         # Label counter used to generate unique labels
+    files        => [],                                                         # File number to file name
+    procedures   => {},                                                         # Procdures defined in this block of code
     %options,
    );
  }
@@ -469,13 +471,23 @@ sub Zero::Emulator::Code::execute($%)                                           
    );
  }
 
-my $assembly = code;                                                            # The current assembly
+my $assembly = block;                                                           # The current assembly
+
+sub label()                                                                     # Next unique label
+ {++$assembly->labelCounter;
+ }
+
+sub setLabel(;$)                                                                # Set and return a label
+ {my ($l) = @_;                                                                 # Optional preset label
+  $l //= label;                                                                 # Create label if none supplied
+  Label($l);                                                                    # Set label
+  $l                                                                            # return (new) label
+ }
 
 sub Start($)                                                                    # Start the current assembly using the specified version of the Zero languiage.  At  the moment only version 1 works.
  {my ($version) = @_;                                                           # Version desired - at the moment only 1
-  $version == 1 or confess "Version 1 is the only version available\n";
-  $assembly = code;                                                             # The current assembly
-  AreaStructure("Main");                                                        # Variables defined in mainline code
+  $version == 1 or confess "Version 1 is currently the only version available\n";
+  $assembly = block;                                                            # The current assembly
  }
 
 sub Add($$$)                                                                    # Copy the contents of the source location to the target location
@@ -561,6 +573,19 @@ sub Nop()                                                                       
 sub Out($)                                                                      # Write memory contents to out
  {my ($source) = @_;                                                            # Memory location to output
   $assembly->instruction(action=>"out", source=>$source);
+ }
+
+sub Procedure($$)                                                               # Define a procedure
+ {my ($name, $source) = @_;                                                     # Name of procedure, source code as a subroutine# $assembly->instruction(action=>"procedure", target=>$target, source=>$source);
+  if ($name and $assembly->procedures->{$name})
+   {confess "Procedure already defined with name: $name\n";
+   }
+  my $start = $assembly->code->@*;
+  my $jmp = &Jmp(0);
+  $assembly->procedures->{$name} = $assembly->code->@*;
+  &$source;
+  my $j = $assembly->code->[$start];
+  $j->target = $assembly->code->@* - $start;
  }
 
 sub ParamsGet($$)                                                               # Get a word from the parameters in the previous frame and store it in the local stack frame
@@ -723,41 +748,41 @@ if (1)                                                                          
 
 if (1)                                                                          #TJmp
  {Start 1;
-  Jmp 'a';
+  Jmp (my $a = label);
     Out  1;
-    Jmp 'b';
-  Label 'a';
+    Jmp (my $b = label);
+  setLabel($a);
     Out  2;
-  Label 'b';
+  setLabel($b);
   ok Execute(out=>[2]);
  }
 
 if (1)                                                                          #TJLt #TLabel
  {Start 1;
   Mov 0, 1;
-  JLt 'a', \0, 2;
+  JLt ((my $a = label), \0, 2);
     Out  1;
-    Jmp 'b';
-  Label 'a';
+    Jmp (my $b = label);
+  setLabel($a);
     Out  2;
-  Label 'b';
+  setLabel($b);
 
-  JGt 'c', \0, 3;
+  JGt ((my $c = label), \0, 3);
     Out  1;
-    Jmp 'd';
-  Label 'c';
+    Jmp (my $d = label);
+  setLabel($c);
     Out  2;
-  Label 'd';
+  setLabel($d);
   ok Execute(out=>[2,1]);
  }
 
 if (1)                                                                          #TLabel
  {Start 1;
   Mov 0, 0;
-  Label 'a';
+  my $a = setLabel;
     Out \0;
     Inc \0;
-  JLt 'a', \0, 10;
+  JLt $a, \0, 10;
   ok Execute(out=>[0..9]);
  }
 
@@ -771,49 +796,64 @@ if (1)                                                                          
 
 if (1)                                                                          #TCall Call a subroutine with no parameters
  {Start 1;
-  Jmp 'start';
-  Label 'write';
+  Jmp (my $start = label());
+  my $w = setLabel 'write';
     Out 'aaa';
   Return;
-  Label 'start';
-    Call 'write';
+  setLabel $start;
+    Call $w;
   ok Execute(out=>['aaa']);
  }
 
 if (1)                                                                          #TCall Call a subroutine with one parameter
  {Start 1;
-  Jmp 'start';
-  Label 'write';
+  Jmp (my $start = label());
+  my $w = setLabel 'write';
     ParamsGet \0, \0;
     Out \0;
   Return;
-  Label 'start';
+  setLabel $start;
     ParamsPut 0, 'bbb';
-    Call 'write';
+    Call $w;
   ok Execute(out=>['bbb']);
  }
 
 if (1)                                                                          #TCall Call a subroutine returning one value
  {Start 1;
-  Jmp 'start';
-  Label 'load';
+  Jmp (my $start = label());
+  my $l = setLabel 'write';
     ReturnPut 0, "ccc";
   Return;
-  Label 'start';
-    Call 'load';
+  setLabel $start;
+    Call $l;
     ReturnGet \0, \0;
     Out \0;
   ok Execute(out=>['ccc']);
  }
 
+#latest:;
+if (1)                                                                          #TProcedure
+ {Start 1;
+  Procedure 'add2', sub
+   {ParamsGet 0, \0;
+    Add 0, \0, 2;
+    ReturnPut 0, \0;
+   };
+  ParamsPut 0, 2;
+  Call 'add2';
+  ReturnGet \0, \0;
+  Out \0;
+# ok Execute(out=>[4]);
+ }
+
 if (1)                                                                          #TConfess
  {Start 1;
-  Jmp 'start';
-  Label 'ccc';
+  Jmp (my $start = label());
+  my $c = setLabel 'write';
     Confess;
   Return;
-  Label 'start';
-    Call 'ccc';
+  Label $start;
+    Call $c;
   ok Execute(out=>["Stack trace\n", "   3 Call\n", "   2 ????\n", "   1 ????\n"]);
  }
 
@@ -895,7 +935,7 @@ if (1)                                                                          
 #latest:;
 if (1)                                                                          # Layout
  {my $s = Start 1;
-  my ($a, $b, $c) = $s->fields(qw(a b c));
+  my ($a, $b, $c) = $s->variables->fields(qw(a b c));
   Mov $a, 'A';
   Mov $b, 'B';
   Mov $c, 'C';
