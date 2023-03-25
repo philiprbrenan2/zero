@@ -661,9 +661,34 @@ sub Copy($$$$)                                                                  
     target=>$t1, target2=>$t2, source=>$s1, source2=>$s2);
  }
 
-sub Variable($)                                                                 # Create a variable in the cirent stack frame during assembly
- {my ($name) = @_;                                                              # Variable name
-  $assembly->instruction(action=>"variable", target=>$name);
+sub Then(&)                                                                     # Then block
+ {my ($t) = @_;                                                                 # Then block subroutine
+  $t
+ }
+
+sub Else(&)                                                                     # Else block
+ {my ($e) = @_;                                                                 # Else block subroutine
+  $e
+ }
+
+sub IfEq($$$;$)                                                                 # Execute then or else clause depending on whether two memory lcoations are equal.
+ {my ($a, $b, $then, $else) = @_;                                               # First memory location, second memory location, then block, else block
+  if ($else)
+   {my $Else = label;
+    my $End  = label;
+    JNe $Else, $a, $b;
+      &$then;
+      Jmp $End;
+    setLabel($Else);
+      &$else;
+    setLabel($End);
+   }
+  else
+   {my $End  = label;
+    JNe $End, $a, $b;
+      &$then;
+    setLabel($End);
+   }
  }
 
 sub Execute(%)                                                                  # Execute the current assembly
@@ -682,7 +707,7 @@ use vars qw(@ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
 
 @ISA         = qw(Exporter);
 @EXPORT      = qw();
-@EXPORT_OK   = qw(areaStructure Start Add Call Confess Inc Jmp JLe JLt JGe JGt JEq JNe Label Mov Nop Out ParamsGet ParamsPut Return ReturnGet ReturnPut Pop Push Smaller Get Put Execute);
+@EXPORT_OK   = qw(areaStructure Start Add Call Confess Inc Jmp Jle Jlt Jge Jgt Jeq Jne Label Mov Nop Out ParamsGet ParamsPut Return ReturnGet ReturnPut Pop Push Smaller Get Put Execute);
 %EXPORT_TAGS = (all=>[@EXPORT, @EXPORT_OK]);
 
 return 1 if caller;
@@ -691,18 +716,21 @@ eval {goto latest};
 sub is_deeply;
 sub ok($;$);
 
+#latest:;
 if (1)                                                                          #TOut #TStart
  {Start 1;
   Out "hello World";
   ok Execute(out=>["hello World"]);
  }
 
+#latest:;
 if (1)                                                                          #TNop
  {Start 1;
   Nop;
   ok Execute(out=>[]);
  }
 
+#latest:;
 if (1)                                                                          #TMov
  {Start 1;
   Mov 1, 2;
@@ -710,6 +738,7 @@ if (1)                                                                          
   ok Execute(out=>[2]);
  }
 
+#latest:;
 if (1)
  {Start 1;                                                                      #TMov
   Mov  1, 3;
@@ -719,6 +748,7 @@ if (1)
   ok Execute(out=>[3]);
  }
 
+#latest:;
 if (1)                                                                          #TAdd
  {Start 1;
   Add  \1, 3, 2;
@@ -726,6 +756,7 @@ if (1)                                                                          
   ok Execute(out=>[5]);
  }
 
+#latest:;
 if (1)                                                                          #TAdd
  {Start 1;
   Mov   1, 1;
@@ -737,6 +768,7 @@ if (1)                                                                          
   ok Execute(out=>[3]);
  }
 
+#latest:;
 if (1)                                                                          #TInc
  {Start 1;
   Mov  1, 1;
@@ -745,6 +777,7 @@ if (1)                                                                          
   ok Execute(out=>[2]);
  }
 
+#latest:;
 if (1)                                                                          #TSmaller
  {Start 1;
   Smaller 1, 1, 2;
@@ -752,6 +785,7 @@ if (1)                                                                          
   ok Execute(out=>[1]);
  }
 
+#latest:;
 if (1)                                                                          #TSmaller
  {Start 1;
   Mov   1, 1;
@@ -761,6 +795,7 @@ if (1)                                                                          
   ok Execute(out=>[1]);
  }
 
+#latest:;
 if (1)                                                                          #TJmp
  {Start 1;
   Jmp (my $a = label);
@@ -772,6 +807,7 @@ if (1)                                                                          
   ok Execute(out=>[2]);
  }
 
+#latest:;
 if (1)                                                                          #TJLt #TLabel
  {Start 1;
   Mov 0, 1;
@@ -791,6 +827,7 @@ if (1)                                                                          
   ok Execute(out=>[2,1]);
  }
 
+#latest:;
 if (1)                                                                          #TLabel
  {Start 1;
   Mov 0, 0;
@@ -801,6 +838,7 @@ if (1)                                                                          
   ok Execute(out=>[0..9]);
  }
 
+#latest:;
 if (1)                                                                          #TPut #TGet
  {Start 1;
   Put  0, 0,  1;
@@ -809,6 +847,7 @@ if (1)                                                                          
   ok Execute(out=>[1]);
  }
 
+#latest:;
 if (1)                                                                          #TCall Call a subroutine with no parameters
  {Start 1;
   Jmp (my $start = label());
@@ -820,6 +859,7 @@ if (1)                                                                          
   ok Execute(out=>['aaa']);
  }
 
+#latest:;
 if (1)                                                                          #TCall Call a subroutine with one parameter
  {Start 1;
   Jmp (my $start = label());
@@ -833,6 +873,7 @@ if (1)                                                                          
   ok Execute(out=>['bbb']);
  }
 
+#latest:;
 if (1)                                                                          #TCall Call a subroutine returning one value
  {Start 1;
   Jmp (my $start = label());
@@ -846,6 +887,7 @@ if (1)                                                                          
   ok Execute(out=>['ccc']);
  }
 
+#latest:;
 if (1)                                                                          #TProcedure
  {Start 1;
   my $add = Procedure 'add2', sub
@@ -863,6 +905,7 @@ if (1)                                                                          
   ok Execute(out=>[4]);
  }
 
+#latest:;
 if (1)                                                                          #TConfess
  {Start 1;
   Jmp (my $start = label());
@@ -874,6 +917,7 @@ if (1)                                                                          
   ok Execute(out=>["Stack trace\n", "   3 Call\n", "   2 ????\n", "   1 ????\n"]);
  }
 
+#latest:;
 if (1)                                                                          #TPush
  {Start 1;
   Push 1, 1;
@@ -881,6 +925,7 @@ if (1)                                                                          
   is_deeply Execute()->memory->{1}, [1..2];
  }
 
+#latest:;
 if (1)                                                                          #TPop
  {Start 1;
   Push 1, 1;
@@ -891,6 +936,7 @@ if (1)                                                                          
   is_deeply $r->memory->{1000003}, [2];
  }
 
+#latest:;
 if (1)                                                                          #TPush #TPop
  {Start 1;
   Push 1, 1;
@@ -902,6 +948,7 @@ if (1)                                                                          
   is_deeply $r->memory->{1000003}, [2, 1];
  }
 
+#latest:;
 if (1)                                                                          #TAlloc #TGet #TPut
  {Start 1;
   Alloc 0;
@@ -914,6 +961,7 @@ if (1)                                                                          
   is_deeply $r->memory->{1000006}, [undef, 1,2];
  }
 
+#latest:;
 if (1)                                                                          #TCopy
  {Start 1;
   Put  0, 0, 1;
@@ -960,4 +1008,33 @@ if (1)                                                                          
   Out $b;
   Out $a;
   ok Execute(out=>[qw(C B A)]);
+ }
+
+#latest:;
+if (1)                                                                          #TJeq
+ {my $s = Start 1;
+  my ($a, $b, $c) = $s->variables->fields(qw(a b c));
+  Mov $a, 1;
+  Mov $b, 2;
+  IfEq $a, $b,
+  Then
+   {Out 'Equal';
+   };
+  ok Execute(out=>[]);
+ }
+
+#latest:;
+if (1)                                                                          #TJeq
+ {my $s = Start 1;
+  my ($a, $b, $c) = $s->variables->fields(qw(a b c));
+  Mov $a, 1;
+  Mov $b, 2;
+  IfEq $a, $b,
+  Then
+   {Out 'Equal';
+   },
+  Else
+   {Out 'NotEqual';
+   };
+  ok Execute(out=>[q(NotEqual)]);
  }
