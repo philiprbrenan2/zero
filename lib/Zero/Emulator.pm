@@ -580,12 +580,11 @@ sub Procedure($$)                                                               
   if ($name and $assembly->procedures->{$name})
    {confess "Procedure already defined with name: $name\n";
    }
-  my $start = $assembly->code->@*;
-  my $jmp = &Jmp(0);
-  $assembly->procedures->{$name} = $assembly->code->@*;
+  Jmp(my $end = label);
+  my $start = setLabel;
   &$source;
-  my $j = $assembly->code->[$start];
-  $j->target = $assembly->code->@* - $start;
+  setLabel $end;
+  $start;
  }
 
 sub ParamsGet($$)                                                               # Get a word from the parameters in the previous frame and store it in the local stack frame
@@ -831,19 +830,19 @@ if (1)                                                                          
   ok Execute(out=>['ccc']);
  }
 
-#latest:;
 if (1)                                                                          #TProcedure
  {Start 1;
-  Procedure 'add2', sub
+  my $add = Procedure 'add2', sub
    {ParamsGet 0, \0;
     Add 0, \0, 2;
     ReturnPut 0, \0;
+    Return;
    };
   ParamsPut 0, 2;
-  Call 'add2';
+  Call $add;
   ReturnGet \0, \0;
   Out \0;
-# ok Execute(out=>[4]);
+ ok Execute(out=>[4]);
  }
 
 if (1)                                                                          #TConfess
