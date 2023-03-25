@@ -26,10 +26,10 @@ makeDieConfess;
 sub maximumInstructionsToExecute (){100}                                        # Maximum number of subroutines to execute
 sub wellKnownMemoryAreas         (){1e6}                                        # Memory areas with a number less than this are well known. They can be used globally but cannot be freed
 
-sub AreaStructure($@)                                                           # Describe a data structure mapping a memory area
+sub areaStructure($@)                                                           # Describe a data structure mapping a memory area
  {my ($name, @fields) = @_;                                                     # Structure name, fields names
 
-  my $d = genHash("Zero::Emulator::AreaStructure",                              # Description of a data structure mapping a memory area
+  my $d = genHash("Zero::Emulator::areaStructure",                              # Description of a data structure mapping a memory area
     name  => $name,                                                             # Name of the structure
     order => [],                                                                # Order of the elements in the structure, in effect, giving the offset of each element in the data structure
     names => {},                                                                # Maps the names of the fields to their offsets in the structure
@@ -38,7 +38,7 @@ sub AreaStructure($@)                                                           
   $d
  }
 
-sub Zero::Emulator::AreaStructure::field($$)                                    # Add a field to a data structure
+sub Zero::Emulator::areaStructure::field($$)                                    # Add a field to a data structure
  {my ($d, $name) = @_;                                                          # Parameters
   if (!$d->names->{$name})
    {$d->names->{$name} = $d->order->@*;
@@ -50,15 +50,29 @@ sub Zero::Emulator::AreaStructure::field($$)                                    
   \($d->names->{$name})
  }
 
-sub Zero::Emulator::AreaStructure::fields($@)                                   # Add fields to a data structure
+sub Zero::Emulator::areaStructure::fields($@)                                   # Add fields to a data structure
  {my ($d, @names) = @_;                                                         # Parameters
   map {$d->field($_)} @names;
  }
 
-sub Zero::Emulator::AreaStructure::offset($$)                                   # Offset of a field in a data structure
+sub Zero::Emulator::areaStructure::offset($$)                                   # Offset of a field in a data structure
  {my ($d, $name) = @_;                                                          # Parameters
   if (my $n = $d->names->{$name}){return $n}
   confess "No such name: $name in structure: ".$d->name;
+ }
+
+sub procedure($%)                                                               # Describe a procedure
+ {my ($label, %options) = @_;                                                   # Start label of procedure, options describing procedure
+
+  genHash("Zero::Emulator::Procedure",                                          # Description of a procedure
+    target       => $label,                                                     # Label to call to call this procedure
+    variables    => areaStructure("Procedure"),                                 # Variables local to this procedure
+  );
+ }
+
+sub Zero::Emulator::Procedure::call($)                                          # Call a procedure.  Arguments are supplied by the ParamsPut and Get commands, return values are supplied by the ReturnPut and Get commands.
+ {my ($procedure) = @_;                                                         # Procedure description
+  Zero::Emulator::Call($procedure->target);
  }
 
 sub stackFrame(%)                                                               # Describe an entry on the call stack: the return address, the parameter list length, the parameter list location, the line of code from which the call was made, the file number of the file from which the call was made
@@ -107,9 +121,9 @@ sub block(%)                                                                    
   genHash("Zero::Emulator::Code",                                               # Description of a call stack entry
     assembled    => undef,                                                      # Needs to be assembled unless this field is true
     code         => [],                                                         # An array of instructions
-    variables    => AreaStructure("Block"),                                     # Variables in this block of code
+    variables    => areaStructure("Block"),                                     # Variables in this block of code
     labels       => {},                                                         # Label name to instruction
-    labelCounter => 0,                                                         # Label counter used to generate unique labels
+    labelCounter => 0,                                                          # Label counter used to generate unique labels
     files        => [],                                                         # File number to file name
     procedures   => {},                                                         # Procdures defined in this block of code
     %options,
@@ -131,7 +145,7 @@ sub Zero::Emulator::Code::assemble($%)                                          
   my $vars = $Block->variables;                                                 # The varaibles refernced by the code
 
   my %labels;                                                                   # Load labels
-  my $stackFrame = AreaStructure("Stack");                                      # The current stack frame we are creating variables in
+  my $stackFrame = areaStructure("Stack");                                      # The current stack frame we are creating variables in
 
   for my $c(keys @$code)                                                        # Labels
    {my $i = $$code[$c];
@@ -580,11 +594,13 @@ sub Procedure($$)                                                               
   if ($name and $assembly->procedures->{$name})
    {confess "Procedure already defined with name: $name\n";
    }
-  Jmp(my $end = label);
+
+  Jmp(my $end = label);                                                         # Jump over the code of the procedure body
   my $start = setLabel;
-  &$source;
+  &$source;                                                                     # Code of procedure
   setLabel $end;
-  $start;
+
+  procedure($start)                                                             # Return a description of the procedure
  }
 
 sub ParamsGet($$)                                                               # Get a word from the parameters in the previous frame and store it in the local stack frame
@@ -666,7 +682,7 @@ use vars qw(@ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
 
 @ISA         = qw(Exporter);
 @EXPORT      = qw();
-@EXPORT_OK   = qw(AreaStructure Start Add Call Confess Inc Jmp JLe JLt JGe JGt JEq JNe Label Mov Nop Out ParamsGet ParamsPut Return ReturnGet ReturnPut Pop Push Smaller Get Put Execute);
+@EXPORT_OK   = qw(areaStructure Start Add Call Confess Inc Jmp JLe JLt JGe JGt JEq JNe Label Mov Nop Out ParamsGet ParamsPut Return ReturnGet ReturnPut Pop Push Smaller Get Put Execute);
 %EXPORT_TAGS = (all=>[@EXPORT, @EXPORT_OK]);
 
 return 1 if caller;
@@ -839,10 +855,10 @@ if (1)                                                                          
     Return;
    };
   ParamsPut 0, 2;
-  Call $add;
+  $add->call;
   ReturnGet \0, \0;
   Out \0;
- ok Execute(out=>[4]);
+  ok Execute(out=>[4]);
  }
 
 if (1)                                                                          #TConfess
