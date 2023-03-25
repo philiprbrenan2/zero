@@ -849,9 +849,11 @@ if (1)                                                                          
 if (1)                                                                          #TProcedure
  {Start 1;
   my $add = Procedure 'add2', sub
-   {ParamsGet 0, \0;
-    Add 0, \0, 2;
-    ReturnPut 0, \0;
+   {my ($p) = @_;                                                               # Procedure description
+    my ($a, $b) = $p->variables->fields(qw(a b));
+    ParamsGet $a, \0;
+    Add $b, $a, 2;
+    ReturnPut 0, $b;
     Return;
    };
   ParamsPut 0, 2;
