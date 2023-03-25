@@ -597,10 +597,10 @@ sub Procedure($$)                                                               
 
   Jmp(my $end = label);                                                         # Jump over the code of the procedure body
   my $start = setLabel;
-  &$source;                                                                     # Code of procedure
+  &$source(procedure($start));                                                  # Code of procedure called with definitin of procedure as a parameter
   setLabel $end;
 
-  procedure($start)                                                             # Return a description of the procedure
+  $start                                                                        # Return a description of the procedure
  }
 
 sub ParamsGet($$)                                                               # Get a word from the parameters in the previous frame and store it in the local stack frame
@@ -855,7 +855,7 @@ if (1)                                                                          
     Return;
    };
   ParamsPut 0, 2;
-  $add->call;
+  Call $add;
   ReturnGet \0, \0;
   Out \0;
   ok Execute(out=>[4]);
