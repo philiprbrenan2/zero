@@ -671,7 +671,7 @@ sub Else(&)                                                                     
   (else => $e)
  }
 
-sub Ifx($$$%)                                                                  # Execute then or else clause depending on whether two memory lcoations are equal.
+sub Ifx($$$%)                                                                   # Execute then or else clause depending on whether two memory lcoations are equal.
  {my ($cmp, $a, $b, %options) = @_;                                             # Comparison, first memory location, second memory location, then block, else block
   confess "Then required" unless $options{then};
   if ($options{else})
@@ -692,33 +692,41 @@ sub Ifx($$$%)                                                                  #
    }
  }
 
-sub IfEq($$%)                                                                  # Execute then or else clause depending on whether two memory locations are equal.
+sub IfEq($$%)                                                                   # Execute then or else clause depending on whether two memory locations are equal.
  {my ($a, $b, %options) = @_;                                                   # First memory location, second memory location, then block, else block
   Ifx(\&Jne, $a, $b, %options);
  }
 
-sub IfNe($$%)                                                                  # Execute then or else clause depending on whether two memory locations are not equal.
+sub IfNe($$%)                                                                   # Execute then or else clause depending on whether two memory locations are not equal.
  {my ($a, $b, %options) = @_;                                                   # First memory location, second memory location, then block, else block
   Ifx(\&Jeq, $a, $b, %options);
  }
 
-sub IfLt($$%)                                                                  # Execute then or else clause depending on whether two memory locations are less than.
+sub IfLt($$%)                                                                   # Execute then or else clause depending on whether two memory locations are less than.
  {my ($a, $b, %options) = @_;                                                   # First memory location, second memory location, then block, else block
   Ifx(\&Jge, $a, $b, %options);
  }
 
-sub IfLe($$%)                                                                  # Execute then or else clause depending on whether two memory locations are less than or equal.
+sub IfLe($$%)                                                                   # Execute then or else clause depending on whether two memory locations are less than or equal.
  {my ($a, $b, %options) = @_;                                                   # First memory location, second memory location, then block, else block
   Ifx(\&Jgt, $a, $b, %options);
  }
 
-sub IfGt($$%)                                                                  # Execute then or else clause depending on whether two memory locations are greater than.
+sub IfGt($$%)                                                                   # Execute then or else clause depending on whether two memory locations are greater than.
  {my ($a, $b, %options) = @_;                                                   # First memory location, second memory location, then block, else block
   Ifx(\&Jge, $a, $b, %options);
  }
 
-sub IfGe($$%)                                                                  # Execute then or else clause depending on whether two memory locations are greater than or equal.
+sub IfGe($$%)                                                                   # Execute then or else clause depending on whether two memory locations are greater than or equal.
  {my ($a, $b, %options) = @_;                                                   # First memory location, second memory location, then block, else block
+  Ifx(\&Jgt, $a, $b, %options);
+ }
+
+sub For(%)                                                                      # For loop with initial, check, next clauses
+ {my (%options) = @_;                                                           # Options
+  my $start = $options{start};
+  my $next  = $options{next};
+  my $last  = $options{last};
   Ifx(\&Jgt, $a, $b, %options);
  }
 
