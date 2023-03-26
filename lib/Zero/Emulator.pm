@@ -540,32 +540,32 @@ sub Jmp($)                                                                      
   $assembly->instruction(action=>"jmp", target=>$target);
  }
 
-sub JLe($$$)                                                                    # Jump to a target label if the first source field is less than or equal to the second source field
+sub Jle($$$)                                                                    # Jump to a target label if the first source field is less than or equal to the second source field
  {my ($target, $source, $source2) = @_;                                         # Target label, source to test
   $assembly->instruction(action=>"jLe", target=>$target, source=>$source, source2=>$source2);
  }
 
-sub JLt($$$)                                                                    # Jump to a target label if the first source field is less than the second source field
+sub Jlt($$$)                                                                    # Jump to a target label if the first source field is less than the second source field
  {my ($target, $source, $source2) = @_;                                         # Target label, source to test
   $assembly->instruction(action=>"jLt", target=>$target, source=>$source, source2=>$source2);
  }
 
-sub JGe($$$)                                                                    # Jump to a target label if the first source field is greater than or equal to the second source field
+sub Jge($$$)                                                                    # Jump to a target label if the first source field is greater than or equal to the second source field
  {my ($target, $source, $source2) = @_;                                         # Target label, source to test
   $assembly->instruction(action=>"jGe", target=>$target, source=>$source, source2=>$source2);
  }
 
-sub JGt($$$)                                                                    # Jump to a target label if the first source field is greater than the second source field
+sub Jgt($$$)                                                                    # Jump to a target label if the first source field is greater than the second source field
  {my ($target, $source, $source2) = @_;                                         # Target label, source to test
   $assembly->instruction(action=>"jGt", target=>$target, source=>$source, source2=>$source2);
  }
 
-sub JEq($$$)                                                                    # Jump to a target label if the first source field is equal to the second source field
+sub Jeq($$$)                                                                    # Jump to a target label if the first source field is equal to the second source field
  {my ($target, $source, $source2) = @_;                                         # Target label, source to test
   $assembly->instruction(action=>"jEq", target=>$target, source=>$source, source2=>$source2);
  }
 
-sub JNe($$$)                                                                    # Jump to a target label if the first source field is not equal to the second source field
+sub Jne($$$)                                                                    # Jump to a target label if the first source field is not equal to the second source field
  {my ($target, $source, $source2) = @_;                                         # Target label, source to test
   $assembly->instruction(action=>"jNe", target=>$target, source=>$source, source2=>$source2);
  }
@@ -671,12 +671,12 @@ sub Else(&)                                                                     
   $e
  }
 
-sub IfEq($$$;$)                                                                 # Execute then or else clause depending on whether two memory lcoations are equal.
- {my ($a, $b, $then, $else) = @_;                                               # First memory location, second memory location, then block, else block
+sub Ifx($$$$;$)                                                                 # Execute then or else clause depending on whether two memory lcoations are equal.
+ {my ($cmp, $a, $b, $then, $else) = @_;                                         # Comparison, first memory location, second memory location, then block, else block
   if ($else)
    {my $Else = label;
     my $End  = label;
-    JNe $Else, $a, $b;
+    &$cmp($Else, $a, $b);
       &$then;
       Jmp $End;
     setLabel($Else);
@@ -685,10 +685,40 @@ sub IfEq($$$;$)                                                                 
    }
   else
    {my $End  = label;
-    JNe $End, $a, $b;
+    &$cmp($End, $a, $b);
       &$then;
     setLabel($End);
    }
+ }
+
+sub IfEq($$$;$)                                                                 # Execute then or else clause depending on whether two memory locations are equal.
+ {my ($a, $b, $then, $else) = @_;                                               # First memory location, second memory location, then block, else block
+  Ifx(\&Jne, $a, $b, $then, $else);
+ }
+
+sub IfNe($$$;$)                                                                 # Execute then or else clause depending on whether two memory locations are not equal.
+ {my ($a, $b, $then, $else) = @_;                                               # First memory location, second memory location, then block, else block
+  Ifx(\&Jeq, $a, $b, $then, $else);
+ }
+
+sub IfLt($$$;$)                                                                 # Execute then or else clause depending on whether two memory locations are less than.
+ {my ($a, $b, $then, $else) = @_;                                               # First memory location, second memory location, then block, else block
+  Ifx(\&Jge, $a, $b, $then, $else);
+ }
+
+sub IfLe($$$;$)                                                                 # Execute then or else clause depending on whether two memory locations are less than or equal.
+ {my ($a, $b, $then, $else) = @_;                                               # First memory location, second memory location, then block, else block
+  Ifx(\&Jgt, $a, $b, $then, $else);
+ }
+
+sub IfGt($$$;$)                                                                 # Execute then or else clause depending on whether two memory locations are greater than.
+ {my ($a, $b, $then, $else) = @_;                                               # First memory location, second memory location, then block, else block
+  Ifx(\&Jge, $a, $b, $then, $else);
+ }
+
+sub IfGe($$$;$)                                                                 # Execute then or else clause depending on whether two memory locations are greater than or equal.
+ {my ($a, $b, $then, $else) = @_;                                               # First memory location, second memory location, then block, else block
+  Ifx(\&Jgt, $a, $b, $then, $else);
  }
 
 sub Execute(%)                                                                  # Execute the current assembly
@@ -811,14 +841,14 @@ if (1)                                                                          
 if (1)                                                                          #TJLt #TLabel
  {Start 1;
   Mov 0, 1;
-  JLt ((my $a = label), \0, 2);
+  Jlt ((my $a = label), \0, 2);
     Out  1;
     Jmp (my $b = label);
   setLabel($a);
     Out  2;
   setLabel($b);
 
-  JGt ((my $c = label), \0, 3);
+  Jgt ((my $c = label), \0, 3);
     Out  1;
     Jmp (my $d = label);
   setLabel($c);
@@ -834,7 +864,7 @@ if (1)                                                                          
   my $a = setLabel;
     Out \0;
     Inc \0;
-  JLt $a, \0, 10;
+  Jlt $a, \0, 10;
   ok Execute(out=>[0..9]);
  }
 
@@ -1011,7 +1041,7 @@ if (1)                                                                          
  }
 
 #latest:;
-if (1)                                                                          #TJeq
+if (1)                                                                          #TIfEq
  {my $s = Start 1;
   my ($a, $b, $c) = $s->variables->fields(qw(a b c));
   Mov $a, 1;
@@ -1024,7 +1054,7 @@ if (1)                                                                          
  }
 
 #latest:;
-if (1)                                                                          #TJeq
+if (1)                                                                          #TIfEq
  {my $s = Start 1;
   my ($a, $b, $c) = $s->variables->fields(qw(a b c));
   Mov $a, 1;
