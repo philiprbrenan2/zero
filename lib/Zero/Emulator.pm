@@ -27,32 +27,32 @@ sub maximumInstructionsToExecute (){100}                                        
 sub wellKnownMemoryAreas         (){1e6}                                        # Memory areas with a number less than this are well known. They can be used globally but cannot be freed
 
 sub areaStructure($@)                                                           # Describe a data structure mapping a memory area
- {my ($name, @fields) = @_;                                                     # Structure name, fields names
+ {my ($structureName, @names) = @_;                                             # Structure name, fields names
 
   my $d = genHash("Zero::Emulator::areaStructure",                              # Description of a data structure mapping a memory area
-    name  => $name,                                                             # Name of the structure
-    order => [],                                                                # Order of the elements in the structure, in effect, giving the offset of each element in the data structure
-    names => {},                                                                # Maps the names of the fields to their offsets in the structure
+    structureName => $structureName,                                            # Name of the structure
+    fieldOrder    => [],                                                        # Order of the elements in the structure, in effect, giving the offset of each element in the data structure
+    fieldNames    => {},                                                        # Maps the names of the fields to their offsets in the structure
    );
-  $d->field($_) for @fields;                                                    # Add the field descriptions
+  $d->field($_) for @names;                                                     # Add the field descriptions
   $d
  }
 
-sub Zero::Emulator::areaStructure::field($$)                                    # Add a field to a data structure
+sub Zero::Emulator::areaStructure::name($$)                                     # Add a field to a data structure
  {my ($d, $name) = @_;                                                          # Parameters
-  if (!$d->names->{$name})
-   {$d->names->{$name} = $d->order->@*;
-    push $d->order->@*, $name;
+  if (!$d->fieldNames->{$name})
+   {$d->fieldNames->{$name} = $d->fieldOrder->@*;
+    push $d->fieldOrder->@*, $name;
    }
   else
    {confess "Duplicate name: $name in structure: ".$d->name;
    }
-  \($d->names->{$name})
+  \($d->fieldNames->{$name})
  }
 
-sub Zero::Emulator::areaStructure::fields($@)                                   # Add fields to a data structure
+sub Zero::Emulator::areaStructure::names($@)                                    # Add fields to a data structure
  {my ($d, @names) = @_;                                                         # Parameters
-  map {$d->field($_)} @names;
+  map {$d->name($_)} @names;
  }
 
 sub Zero::Emulator::areaStructure::offset($$)                                   # Offset of a field in a data structure
@@ -724,8 +724,14 @@ sub IfGe($$%)                                                                   
 
 sub For(%)                                                                      # For loop with initial, check, next clauses
  {my (%options) = @_;                                                           # Options
-  my $start = $options{start};
+  if (my $start = $options{start})
+   {&$start;
+   }
+  my ($Start, $Next, $End) = (setLabel, label, label);
   my $next  = $options{next};
+  if (my $start = $options{start})
+   {&$start;
+   }
   my $last  = $options{last};
   Ifx(\&Jgt, $a, $b, %options);
  }
@@ -931,7 +937,7 @@ if (1)                                                                          
  {Start 1;
   my $add = Procedure 'add2', sub
    {my ($p) = @_;                                                               # Procedure description
-    my ($a, $b) = $p->variables->fields(qw(a b));
+    my ($a, $b) = $p->variables->names(qw(a b));
     ParamsGet $a, \0;
     Add $b, $a, 2;
     ReturnPut 0, $b;
@@ -1039,7 +1045,7 @@ if (1)                                                                          
 #latest:;
 if (1)                                                                          # Layout
  {my $s = Start 1;
-  my ($a, $b, $c) = $s->variables->fields(qw(a b c));
+  my ($a, $b, $c) = $s->variables->names(qw(a b c));
   Mov $a, 'A';
   Mov $b, 'B';
   Mov $c, 'C';
@@ -1052,7 +1058,7 @@ if (1)                                                                          
 #latest:;
 if (1)                                                                          #TIfEq
  {my $s = Start 1;
-  my ($a, $b, $c) = $s->variables->fields(qw(a b c));
+  my ($a, $b, $c) = $s->variables->names(qw(a b c));
   Mov $a, 1;
   Mov $b, 2;
   IfEq $a, $b,
@@ -1065,7 +1071,7 @@ if (1)                                                                          
 #latest:;
 if (1)                                                                          #TIfEq
  {my $s = Start 1;
-  my ($a, $b, $c) = $s->variables->fields(qw(a b c));
+  my ($a, $b, $c) = $s->variables->names(qw(a b c));
   Mov $a, 1;
   Mov $b, 2;
   IfEq $a, $b,
