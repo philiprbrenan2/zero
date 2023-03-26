@@ -163,7 +163,7 @@ sub Zero::Emulator::Code::assemble($%)                                          
        }
       else
        {my $a = $i->action;
-         confess "No target for $a to label: $l";
+        confess "No target for $a to label: $l";
        }
      }
    }
@@ -727,13 +727,20 @@ sub For(%)                                                                      
   if (my $start = $options{start})
    {&$start;
    }
-  my ($Start, $Next, $End) = (setLabel, label, label);
-  my $next  = $options{next};
-  if (my $start = $options{start})
-   {&$start;
+  my ($Check, $Next, $End) = (label, label, label);
+  if (my $check = $options{check})
+   {setLabel($Check);
+     &$check($End);
    }
-  my $last  = $options{last};
-  Ifx(\&Jgt, $a, $b, %options);
+  if (my $block = $options{block})
+   {&$block($Check, $Next, $End);
+   }
+  if (my $next = $options{next})
+   {setLabel($Next);
+    &$next;
+   }
+  Jmp $Check;
+  setLabel($End);
  }
 
 sub Execute(%)                                                                  # Execute the current assembly
@@ -1071,15 +1078,10 @@ if (1)                                                                          
 #latest:;
 if (1)                                                                          #TIfEq
  {my $s = Start 1;
-  my ($a, $b, $c) = $s->variables->names(qw(a b c));
-  Mov $a, 1;
-  Mov $b, 2;
-  IfEq $a, $b,
-  Then
-   {Out 'Equal';
-   },
-  Else
-   {Out 'NotEqual';
-   };
-  ok Execute(out=>[q(NotEqual)]);
+  my ($a) = $s->variables->names(qw(a));
+  For start => sub{Mov $a, 0},
+      check => sub{Jge  $_[0], $a, 10},
+      next  => sub{Inc $a},
+      block => sub{Out $a};
+  ok Execute(out=>[0..9]);
  }
