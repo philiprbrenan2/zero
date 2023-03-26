@@ -663,62 +663,63 @@ sub Copy($$$$)                                                                  
 
 sub Then(&)                                                                     # Then block
  {my ($t) = @_;                                                                 # Then block subroutine
-  $t
+  (then => $t)
  }
 
 sub Else(&)                                                                     # Else block
  {my ($e) = @_;                                                                 # Else block subroutine
-  $e
+  (else => $e)
  }
 
-sub Ifx($$$$;$)                                                                 # Execute then or else clause depending on whether two memory lcoations are equal.
- {my ($cmp, $a, $b, $then, $else) = @_;                                         # Comparison, first memory location, second memory location, then block, else block
-  if ($else)
-   {my $Else = label;
-    my $End  = label;
-    &$cmp($Else, $a, $b);
-      &$then;
-      Jmp $End;
-    setLabel($Else);
-      &$else;
-    setLabel($End);
+sub Ifx($$$%)                                                                  # Execute then or else clause depending on whether two memory lcoations are equal.
+ {my ($cmp, $a, $b, %options) = @_;                                             # Comparison, first memory location, second memory location, then block, else block
+  confess "Then required" unless $options{then};
+  if ($options{else})
+   {my $else = label;
+    my $end  = label;
+    &$cmp($else, $a, $b);
+      &{$options{then}};
+      Jmp $end;
+    setLabel($else);
+      &{$options{else}};
+    setLabel($end);
    }
   else
-   {my $End  = label;
-    &$cmp($End, $a, $b);
-      &$then;
-    setLabel($End);
+   {my $end  = label;
+    &$cmp($end, $a, $b);
+      &{$options{then}};
+    setLabel($end);
    }
  }
 
-sub IfEq($$$;$)                                                                 # Execute then or else clause depending on whether two memory locations are equal.
- {my ($a, $b, $then, $else) = @_;                                               # First memory location, second memory location, then block, else block
-  Ifx(\&Jne, $a, $b, $then, $else);
+sub IfEq($$%)                                                                  # Execute then or else clause depending on whether two memory locations are equal.
+ {my ($a, $b, %options) = @_;                                                   # First memory location, second memory location, then block, else block
+  Ifx(\&Jne, $a, $b, %options);
  }
 
-sub IfNe($$$;$)                                                                 # Execute then or else clause depending on whether two memory locations are not equal.
- {my ($a, $b, $then, $else) = @_;                                               # First memory location, second memory location, then block, else block
-  Ifx(\&Jeq, $a, $b, $then, $else);
+sub IfNe($$%)                                                                  # Execute then or else clause depending on whether two memory locations are not equal.
+ {my ($a, $b, %options) = @_;                                                   # First memory location, second memory location, then block, else block
+  Ifx(\&Jeq, $a, $b, %options);
  }
 
-sub IfLt($$$;$)                                                                 # Execute then or else clause depending on whether two memory locations are less than.
- {my ($a, $b, $then, $else) = @_;                                               # First memory location, second memory location, then block, else block
-  Ifx(\&Jge, $a, $b, $then, $else);
+sub IfLt($$%)                                                                  # Execute then or else clause depending on whether two memory locations are less than.
+ {my ($a, $b, %options) = @_;                                                   # First memory location, second memory location, then block, else block
+  Ifx(\&Jge, $a, $b, %options);
  }
 
-sub IfLe($$$;$)                                                                 # Execute then or else clause depending on whether two memory locations are less than or equal.
- {my ($a, $b, $then, $else) = @_;                                               # First memory location, second memory location, then block, else block
-  Ifx(\&Jgt, $a, $b, $then, $else);
+sub IfLe($$%)                                                                  # Execute then or else clause depending on whether two memory locations are less than or equal.
+ {my ($a, $b, %options) = @_;                                                   # First memory location, second memory location, then block, else block
+  Ifx(\&Jgt, $a, $b, %options);
  }
 
-sub IfGt($$$;$)                                                                 # Execute then or else clause depending on whether two memory locations are greater than.
- {my ($a, $b, $then, $else) = @_;                                               # First memory location, second memory location, then block, else block
-  Ifx(\&Jge, $a, $b, $then, $else);
+sub IfGt($$%)                                                                  # Execute then or else clause depending on whether two memory locations are greater than.
+ {my ($a, $b, %options) = @_;                                                   # First memory location, second memory location, then block, else block
+  Ifx(\&Jge, $a, $b, %options);
  }
 
-sub IfGe($$$;$)                                                                 # Execute then or else clause depending on whether two memory locations are greater than or equal.
- {my ($a, $b, $then, $else) = @_;                                               # First memory location, second memory location, then block, else block
-  Ifx(\&Jgt, $a, $b, $then, $else);
+sub IfGe($$%)                                                                  # Execute then or else clause depending on whether two memory locations are greater than or equal.
+ {my ($a, $b, %options) = @_;                                                   # First memory location, second memory location, then block, else block
+  Ifx(\&Jgt, $a, $b, %options);
  }
 
 sub Execute(%)                                                                  # Execute the current assembly
