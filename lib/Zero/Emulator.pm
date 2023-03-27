@@ -57,8 +57,14 @@ sub Zero::Emulator::areaStructure::names($@)                                    
 
 sub Zero::Emulator::areaStructure::offset($$)                                   # Offset of a field in a data structure
  {my ($d, $name) = @_;                                                          # Parameters
-  if (my $n = $d->names->{$name}){return $n}
-  confess "No such name: $name in structure: ".$d->name;
+  if (my $n = $d->fieldNames->{$name}){return $n}
+  confess "No such name: '$name' in structure: ".$d->structureName;
+ }
+
+sub Zero::Emulator::areaStructure::address($$)                                  # Address of a field in a data structure
+ {my ($d, $name) = @_;                                                          # Parameters
+  if (defined(my $n = $d->fieldNames->{$name})){return \$n}
+  confess "No such name: '$name' in structure: ".$d->structureName;
  }
 
 sub procedure($%)                                                               # Describe a procedure
@@ -280,7 +286,7 @@ sub Zero::Emulator::Code::execute($%)                                           
 
   my sub setMemory($$;$)                                                        # Set a memory location in the current stack frame to a specified value
    {my ($target, $value, $area) = @_;                                           # Target, value, optional area
-    my $a = left($target, $area);
+    my $a = left($target, $area//stackArea);
     $$a   = $value;
    }
 
@@ -297,7 +303,9 @@ sub Zero::Emulator::Code::execute($%)                                           
 
     alloc     => sub                                                            # Create a new memory area and write its number into the location named by the target operand
      {my ($i) = @_;                                                             # Instruction
-      setMemory right($i->target), allocMemory;
+      my $l = $i->target;
+      my $a = allocMemory;
+      setMemory $l, $a;
      },
 
     free      => sub                                                            # Free the memory area named by the source operand
@@ -759,7 +767,7 @@ use vars qw(@ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
 
 @ISA         = qw(Exporter);
 @EXPORT      = qw();
-@EXPORT_OK   = qw(areaStructure Start Add Call Confess Inc Jmp Jle Jlt Jge Jgt Jeq Jne Label Mov Nop Out ParamsGet ParamsPut Return ReturnGet ReturnPut Pop Push Smaller Get Put Execute);
+@EXPORT_OK   = qw(areaStructure Add Alloc Call Confess Copy Else Execute For Free Get IfEq IfGe IfGt IfLe IfLt IfNe Ifx Inc Jeq Jge Jgt Jle Jlt Jmp Jne Label Mov Nop Out ParamsGet ParamsPut Pop Procedure Push Put Return ReturnGet ReturnPut Smaller Start Then);
 %EXPORT_TAGS = (all=>[@EXPORT, @EXPORT_OK]);
 
 return 1 if caller;
@@ -1076,7 +1084,7 @@ if (1)                                                                          
  }
 
 #latest:;
-if (1)                                                                          #TIfEq
+if (1)                                                                          #TFor
  {my $s = Start 1;
   my ($a) = $s->variables->names(qw(a));
   For start => sub{Mov $a, 0},
