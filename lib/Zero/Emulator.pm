@@ -308,6 +308,42 @@ sub Zero::Emulator::Code::execute($%)                                           
       setMemory $l, $a;
      },
 
+    assertEq  => sub                                                            # Assert equals
+     {my ($i) = @_;                                                             # Instruction
+      my ($a, $b) = ($i->source, $i->source2);
+      confess "AssertEq" unless right($a) == right($b);
+     },
+
+    assertNe  => sub                                                            # Assert not equals
+     {my ($i) = @_;                                                             # Instruction
+      my ($a, $b) = ($i->source, $i->source2);
+      confess "AssertNe" unless right($a) != right($b);
+     },
+
+    assertLt  => sub                                                            # Assert less than
+     {my ($i) = @_;                                                             # Instruction
+      my ($a, $b) = ($i->source, $i->source2);
+      confess "AssertLt" unless right($a) ,  right($b);
+     },
+
+    assertLe  => sub                                                            # Assert less than or equal
+     {my ($i) = @_;                                                             # Instruction
+      my ($a, $b) = ($i->source, $i->source2);
+      confess "AssertLe" unless right($a) <= right($b);
+     },
+
+    assertGt  => sub                                                            # Assert greater than
+     {my ($i) = @_;                                                             # Instruction
+      my ($a, $b) = ($i->source, $i->source2);
+      confess "AssertGt" unless right($a) > right($b);
+     },
+
+    assertGe  => sub                                                            # Assert greater
+     {my ($i) = @_;                                                             # Instruction
+      my ($a, $b) = ($i->source, $i->source2);
+      confess "AssertGe" unless right($a) >= right($b);
+     },
+
     free      => sub                                                            # Free the memory area named by the source operand
      {my ($i) = @_;                                                             # Instruction
       delete $memory{right($i->source)};
@@ -467,6 +503,8 @@ sub Zero::Emulator::Code::execute($%)                                           
     return    => allocMemory,
   ) for 1..2;
 
+  my $die;                                                                      # Result of any die
+
   for my $j(1..maximumInstructionsToExecute)                                    # Each instruction in the code until we hit an undefined instruction
    {my $i = $$code[$instructionPointer++];
     last unless $i;
@@ -476,7 +514,8 @@ sub Zero::Emulator::Code::execute($%)                                           
       say STDERR sprintf "%4d  %4d  %12s", $j, $i->number, $i->action if $options{trace};
       eval {$c->($i)};                                                          # Execute instruction
       if ($@)                                                                   # Handle any errror produced during subroutine execution
-       {say STDERR $@;
+       {$die = $@;
+        say STDERR $die unless $options{dieTrace};
         last;
        }
      }
@@ -490,6 +529,7 @@ sub Zero::Emulator::Code::execute($%)                                           
     memory => {%memory},                                                        # Memory contents at the end of execution
     out    => [@out],                                                           # The out channel
     owner  => {%owner},                                                         # Memory ownership
+    die    => $die,                                                             # Any die that occurred
    );
  }
 
@@ -728,6 +768,41 @@ sub IfGt($$%)                                                                   
 sub IfGe($$%)                                                                   # Execute then or else clause depending on whether two memory locations are greater than or equal.
  {my ($a, $b, %options) = @_;                                                   # First memory location, second memory location, then block, else block
   Ifx(\&Jgt, $a, $b, %options);
+ }
+
+sub assert($$$)                                                                 # Assert
+ {my ($op, $a, $b) = @_;                                                        # Operation, First memory location, second memory location
+  $assembly->instruction(action=>"assert$op", source=>$a, source2=>$b);
+ }
+
+sub assertEq($$%)                                                               # Assert two memory locations are equal.
+ {my ($a, $b, %options) = @_;                                                   # First memory location, second memory location
+  assert("Eq", $a, $b);
+ }
+
+sub assertNe($$%)                                                               # Assert two memory locations are not equal.
+ {my ($a, $b, %options) = @_;                                                   # First memory location, second memory location
+  assert("Ne", $a, $b);
+ }
+
+sub assertLt($$%)                                                               # Assert two memory locations are less than.
+ {my ($a, $b, %options) = @_;                                                   # First memory location, second memory location
+  assert("Lt", $a, $b);
+ }
+
+sub assertLe($$%)                                                               # Assert two memory locations are less than or equal.
+ {my ($a, $b, %options) = @_;                                                   # First memory location, second memory location
+  assert("Le", $a, $b);
+ }
+
+sub assertGt($$%)                                                               # Assert two memory locations are greater than.
+ {my ($a, $b, %options) = @_;                                                   # First memory location, second memory location
+  assert("Gt", $a, $b);
+ }
+
+sub assertGe($$%)                                                               # Assert are greater than or equal.
+ {my ($a, $b, %options) = @_;                                                   # First memory location, second memory location
+  assert("Ge", $a, $b);
  }
 
 sub For(%)                                                                      # For loop with initial, check, next clauses
@@ -1092,4 +1167,13 @@ if (1)                                                                          
       next  => sub{Inc $a},
       block => sub{Out $a};
   ok Execute(out=>[0..9]);
+ }
+
+#latest:;
+if (1)                                                                          #TAssertEq
+ {my $s = Start 1;
+  Mov 0, 1;
+  assertEq \0, 2;
+  my $r = Execute(dieTrace=>1);
+  ok $r->die =~ m(\AAssertEq);
  }
