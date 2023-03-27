@@ -198,7 +198,7 @@ sub Zero::Emulator::Code::execute($%)                                           
     for my $j(reverse keys @calls)
      {my $c = $calls[$j];
       if (my $I = $c->call)
-       {push @out, sprintf "%4d Call\n", $j+1;
+       {push @out, sprintf "%4d %4d Call\n", $j+1, $I->number;
        }
       else
        {push @out, sprintf "%4d ????\n", $j+1;
@@ -974,7 +974,7 @@ if (1)                                                                          
   Return;
   Label $start;
     Call $c;
-  ok Execute(out=>["Stack trace\n", "   3 Call\n", "   2 ????\n", "   1 ????\n"]);
+  ok Execute(out=>["Stack trace\n", "   3    5 Call\n", "   2 ????\n", "   1 ????\n"]);
  }
 
 #latest:;
