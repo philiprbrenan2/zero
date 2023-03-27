@@ -85,13 +85,13 @@ sub stackFrame(%)                                                               
  {my (%options) = @_;                                                           # Parameters
 
   genHash("Zero::Emulator::StackFrame",                                         # Description of a stack frame. A stack frame provides the context in which a method runs.
-    target    => $options{target},                                              # The location of the subroutine being called
-    call      => $options{call},                                                # The location of the call instruction making the call
-    stackArea => $options{stackArea},                                           # Memory area containing data for this method
-    params    => $options{params},                                              # Memory area containing paramter list
-    return    => $options{return},                                              # Memory area conmtaining returned result
-    line      => $options{line},                                                # The line number from which the call was made
-    file      => $options{file},                                                # The file number from which the call was made - this could be folded into the line number but for reasons best known to themselves people who cannot program very well often scatter projects across several files a practice that is completely pointless in this day of git and so can only lead to chaos and confusion
+    target      => $options{target},                                            # The location of the subroutine being called
+    instruction => $options{call},                                              # The location of the instruction making the call
+    stackArea   => $options{stackArea},                                         # Memory area containing data for this method
+    params      => $options{params},                                            # Memory area containing paramter list
+    return      => $options{return},                                            # Memory area conmtaining returned result
+    line        => $options{line},                                              # The line number from which the call was made
+    file        => $options{file},                                              # The file number from which the call was made - this could be folded into the line number but for reasons best known to themselves people who cannot program very well often scatter projects across several files a practice that is completely pointless in this day of git and so can only lead to chaos and confusion
   );
  }
 
@@ -197,12 +197,8 @@ sub Zero::Emulator::Code::execute($%)                                           
     push @out, "Stack trace\n";
     for my $j(reverse keys @calls)
      {my $c = $calls[$j];
-      if (my $I = $c->call)
-       {push @out, sprintf "%4d %4d Call\n", $j+1, $I->number;
-       }
-      else
-       {push @out, sprintf "%4d ????\n", $j+1;
-       }
+      my $i = $c->instruction;
+      push @out, sprintf "%5d  %4d %s\n", $j+1, $i->number+1, $i->action;
      }
     $instructionPointer = @$code;                                               # Execution terminates as soon as undefined instuction is encountered
    };
@@ -311,37 +307,37 @@ sub Zero::Emulator::Code::execute($%)                                           
     assertEq  => sub                                                            # Assert equals
      {my ($i) = @_;                                                             # Instruction
       my ($a, $b) = ($i->source, $i->source2);
-      confess "AssertEq" unless right($a) == right($b);
+      stackTraceAndExit($i) unless right($a) == right($b);
      },
 
     assertNe  => sub                                                            # Assert not equals
      {my ($i) = @_;                                                             # Instruction
       my ($a, $b) = ($i->source, $i->source2);
-      confess "AssertNe" unless right($a) != right($b);
+      stackTraceAndExit($i) unless right($a) != right($b);
      },
 
     assertLt  => sub                                                            # Assert less than
      {my ($i) = @_;                                                             # Instruction
       my ($a, $b) = ($i->source, $i->source2);
-      confess "AssertLt" unless right($a) ,  right($b);
+      stackTraceAndExit($i) unless right($a) ,  right($b);
      },
 
     assertLe  => sub                                                            # Assert less than or equal
      {my ($i) = @_;                                                             # Instruction
       my ($a, $b) = ($i->source, $i->source2);
-      confess "AssertLe" unless right($a) <= right($b);
+      stackTraceAndExit($i) unless right($a) <= right($b);
      },
 
     assertGt  => sub                                                            # Assert greater than
      {my ($i) = @_;                                                             # Instruction
       my ($a, $b) = ($i->source, $i->source2);
-      confess "AssertGt" unless right($a) > right($b);
+      stackTraceAndExit($i) unless right($a) > right($b);
      },
 
     assertGe  => sub                                                            # Assert greater
      {my ($i) = @_;                                                             # Instruction
       my ($a, $b) = ($i->source, $i->source2);
-      confess "AssertGe" unless right($a) >= right($b);
+      stackTraceAndExit($i) unless right($a) >= right($b);
      },
 
     free      => sub                                                            # Free the memory area named by the source operand
@@ -359,16 +355,23 @@ sub Zero::Emulator::Code::execute($%)                                           
       else
        {$instructionPointer = $t;                                               # Absolute call
        }
-      push @calls, stackFrame(target=>$code->[$instructionPointer], call=>$i,   # Create a new call stack entry
+      push @calls, stackFrame(target=>$code->[$instructionPointer],             # Create a new call stack entry
+        instruction=>$i,
         stackArea=>allocMemory, params=>allocMemory, return=>allocMemory);
      },
 
-    return    => sub                                                            # Return from a subrotuine call via the call stack
+    return    => sub                                                            # Return from a subroutine call via the call stack
      {my ($i) = @_;                                                             # Instruction
       @calls or confess "The call stack is empty so I do not know where to return to";
-      my $c = pop @calls;
-      $instructionPointer = $c->call->number+1;
-      $c->params = $c->return = undef;
+      my $C = pop @calls;
+      if (@calls)
+       {my $c = $calls[-1];
+        $instructionPointer = $c->instruction->number+1;
+       }
+      else
+       {$instructionPointer = undef;
+       }
+      $C->params = $C->return = undef;
      },
 
     confess => sub                                                              # Print the current call stack and stop
@@ -501,23 +504,19 @@ sub Zero::Emulator::Code::execute($%)                                           
     stackArea => allocMemory,                                                   # Allocate data segment for current method
     params    => allocMemory,
     return    => allocMemory,
-  ) for 1..2;
-
-  my $die;                                                                      # Result of any die
+  ) for 1..1;
 
   for my $j(1..maximumInstructionsToExecute)                                    # Each instruction in the code until we hit an undefined instruction
-   {my $i = $$code[$instructionPointer++];
+   {last unless defined($instructionPointer);
+    my $i = $calls[-1]->instruction = $$code[$instructionPointer++];
     last unless $i;
     if (my $a = $i->action)                                                     # Action
      {$counts{$a}++; $count++;                                                  # Execution counts
       confess qq(Invalid instruction: "$a"\n) unless my $c = $instructions{$a};
-      say STDERR sprintf "%4d  %4d  %12s", $j, $i->number, $i->action if $options{trace};
-      eval {$c->($i)};                                                          # Execute instruction
-      if ($@)                                                                   # Handle any errror produced during subroutine execution
-       {$die = $@;
-        say STDERR $die unless $options{dieTrace};
-        last;
+      if ($options{trace})
+       {say STDERR sprintf "%4d  %4d  %12s", $j, $i->number, $i->action;
        }
+      $c->($i);                                                                 # Execute instruction
      }
     confess "Out of instructions after $j" if $j >= maximumInstructionsToExecute;
    }
@@ -529,7 +528,6 @@ sub Zero::Emulator::Code::execute($%)                                           
     memory => {%memory},                                                        # Memory contents at the end of execution
     out    => [@out],                                                           # The out channel
     owner  => {%owner},                                                         # Memory ownership
-    die    => $die,                                                             # Any die that occurred
    );
  }
 
@@ -770,39 +768,39 @@ sub IfGe($$%)                                                                   
   Ifx(\&Jgt, $a, $b, %options);
  }
 
-sub assert($$$)                                                                 # Assert
+sub Assert($$$)                                                                 # Assert
  {my ($op, $a, $b) = @_;                                                        # Operation, First memory location, second memory location
   $assembly->instruction(action=>"assert$op", source=>$a, source2=>$b);
  }
 
-sub assertEq($$%)                                                               # Assert two memory locations are equal.
+sub AssertEq($$%)                                                               # Assert two memory locations are equal.
  {my ($a, $b, %options) = @_;                                                   # First memory location, second memory location
-  assert("Eq", $a, $b);
+  Assert("Eq", $a, $b);
  }
 
-sub assertNe($$%)                                                               # Assert two memory locations are not equal.
+sub AssertNe($$%)                                                               # Assert two memory locations are not equal.
  {my ($a, $b, %options) = @_;                                                   # First memory location, second memory location
-  assert("Ne", $a, $b);
+  Assert("Ne", $a, $b);
  }
 
-sub assertLt($$%)                                                               # Assert two memory locations are less than.
+sub AssertLt($$%)                                                               # Assert two memory locations are less than.
  {my ($a, $b, %options) = @_;                                                   # First memory location, second memory location
-  assert("Lt", $a, $b);
+  Assert("Lt", $a, $b);
  }
 
-sub assertLe($$%)                                                               # Assert two memory locations are less than or equal.
+sub AssertLe($$%)                                                               # Assert two memory locations are less than or equal.
  {my ($a, $b, %options) = @_;                                                   # First memory location, second memory location
-  assert("Le", $a, $b);
+  Assert("Le", $a, $b);
  }
 
-sub assertGt($$%)                                                               # Assert two memory locations are greater than.
+sub AssertGt($$%)                                                               # Assert two memory locations are greater than.
  {my ($a, $b, %options) = @_;                                                   # First memory location, second memory location
-  assert("Gt", $a, $b);
+  Assert("Gt", $a, $b);
  }
 
-sub assertGe($$%)                                                               # Assert are greater than or equal.
+sub AssertGe($$%)                                                               # Assert are greater than or equal.
  {my ($a, $b, %options) = @_;                                                   # First memory location, second memory location
-  assert("Ge", $a, $b);
+  Assert("Ge", $a, $b);
  }
 
 sub For(%)                                                                      # For loop with initial, check, next clauses
@@ -842,7 +840,7 @@ use vars qw(@ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
 
 @ISA         = qw(Exporter);
 @EXPORT      = qw();
-@EXPORT_OK   = qw(areaStructure Add Alloc Call Confess Copy Else Execute For Free Get IfEq IfGe IfGt IfLe IfLt IfNe Ifx Inc Jeq Jge Jgt Jle Jlt Jmp Jne Label Mov Nop Out ParamsGet ParamsPut Pop Procedure Push Put Return ReturnGet ReturnPut Smaller Start Then);
+@EXPORT_OK   = qw(areaStructure Add Alloc Call Confess Copy Else Execute For Free Get AssertEq AssertGe AssertGt AssertLe AssertLt AssertNe  IfEq IfGe IfGt IfLe IfLt IfNe Ifx Inc Jeq Jge Jgt Jle Jlt Jmp Jne Label Mov Nop Out ParamsGet ParamsPut Pop Procedure Push Put Return ReturnGet ReturnPut Smaller Start Then);
 %EXPORT_TAGS = (all=>[@EXPORT, @EXPORT_OK]);
 
 return 1 if caller;
@@ -985,12 +983,11 @@ if (1)                                                                          
 #latest:;
 if (1)                                                                          #TCall Call a subroutine with no parameters
  {Start 1;
-  Jmp (my $start = label());
-  my $w = setLabel 'write';
-    Out 'aaa';
-  Return;
-  setLabel $start;
-    Call $w;
+  my $w = Procedure 'write', sub
+   {Out 'aaa';
+    Return;
+   };
+  Call $w;
   ok Execute(out=>['aaa']);
  }
 
@@ -1049,7 +1046,10 @@ if (1)                                                                          
   Return;
   Label $start;
     Call $c;
-  ok Execute(out=>["Stack trace\n", "   3    5 Call\n", "   2 ????\n", "   1 ????\n"]);
+  ok Execute(out=>[
+"Stack trace\n",
+"    2     3 confess\n",
+"    1     6 call\n"]);
  }
 
 #latest:;
@@ -1068,7 +1068,7 @@ if (1)                                                                          
   Pop  0, 1;
   my $r = Execute();
   is_deeply $r->memory->{1}, [1];
-  is_deeply $r->memory->{1000003}, [2];
+  is_deeply $r->memory, {1=>[1], 1000000=>[2], 1000001=>[], 1000002=>[]};
  }
 
 #latest:;
@@ -1079,8 +1079,7 @@ if (1)                                                                          
   Pop  0, 1;
   Pop  1, 1;
   my $r = Execute;
-  is_deeply $r->memory->{1}, [];
-  is_deeply $r->memory->{1000003}, [2, 1];
+  is_deeply $r->memory, {1=>[], 1000000=>[2, 1], 1000001=>[], 1000002=>[]};
  }
 
 #latest:;
@@ -1092,8 +1091,12 @@ if (1)                                                                          
   Get 1, \0, \1;
   Get 2, \0, \2;
   my $r = Execute;
-  is_deeply $r->memory->{1000003}, [1000006, 1, 2];
-  is_deeply $r->memory->{1000006}, [undef, 1,2];
+  is_deeply $r->memory, {
+  1000000 => [1000003, 1, 2],
+  1000001 => [],
+  1000002 => [],
+  1000003 => [undef, 1, 2],
+};
  }
 
 #latest:;
@@ -1106,12 +1109,9 @@ if (1)                                                                          
   is_deeply $r->memory, {
   "0" => [1],
   "1" => [1],
-  "1000000" => [],
+  "1000000" => [undef, 1],
   "1000001" => [],
   "1000002" => [],
-  "1000003" => [undef, 1],
-  "1000004" => [],
-  "1000005" => [],
 };
  }
 
@@ -1122,14 +1122,7 @@ if (1)                                                                          
   Out \0;
   Free \0;
   my $r = Execute;
-  is_deeply $r->memory, {
-              1000000 => [],
-              1000001 => [],
-              1000002 => [],
-              1000003 => [1000006],
-              1000004 => [],
-              1000005 => [],
-            };
+  is_deeply $r->memory, {1000000=>[1000003], 1000001=>[], 1000002=>[]};
  }
 
 #latest:;
@@ -1173,7 +1166,10 @@ if (1)                                                                          
 if (1)                                                                          #TAssertEq
  {my $s = Start 1;
   Mov 0, 1;
-  assertEq \0, 2;
-  my $r = Execute(dieTrace=>1);
-  ok $r->die =~ m(\AAssertEq);
+  AssertEq \0, 2;
+  my $r = Execute;
+  is_deeply $r->out, [
+"Stack trace\n",
+"    1     2 assertEq\n"
+],
  }
