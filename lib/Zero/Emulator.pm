@@ -98,6 +98,8 @@ sub stackFrame(%)                                                               
 sub Zero::Emulator::Code::instruction($%)                                       # Create a new instruction
  {my ($block, %options) = @_;                                                   # Block of code desctriptor, options
 
+  my ($package, $fileName, $line) = caller($options{level} // 1);
+
   if ($options{action} =~ m(\Avariable\Z)i)                                     # Variable
    {$block->variables->{$options{target}};
    }
@@ -105,13 +107,14 @@ sub Zero::Emulator::Code::instruction($%)                                       
    {push $block->code->@*, genHash("Zero::Emulator::Code::Instruction",         # Instruction details
       action        => $options{action      },                                  # Instruction name
       number        => $options{number      },                                  # Instruction sequence number
-      owner         => $options{owner       },
       source        => $options{source      },                                  # Source memory location
       source2       => $options{source2     },                                  # Secondary source memory location
       target        => $options{target      },                                  # Target memory location
       target2       => $options{target2     },                                  # Target secondary memory location
       source_area   => $options{source_area },                                  # Source area
       target_area   => $options{target_area },                                  # Target area
+      line          => $line,                                                   # Line in source file at which this instruction was encoded
+      file          => fne $fileName,                                           # Source file in which instruction was encoded
     );
    }
  }
@@ -190,17 +193,19 @@ sub Zero::Emulator::Code::execute($%)                                           
   my $count;                                                                    # Instruction count
   my @calls;                                                                    # Call stack of calls made
   my %memory;                                                                   # Memory
-  my %owner;                                                                    # Who owns the privilege of writing to the corresponding block of memory. undef means that any-one can write, otherwise the instruction must have the matching owner id
 
   my sub stackTraceAndExit($)                                                   # Print a stack trace and exit
    {my ($i) = @_;                                                               # Instruction trace occurred at
+    my $s = $options{suppressStackTracePrint};
+
     push my @s, "Stack trace\n";
     for my $j(reverse keys @calls)
      {my $c = $calls[$j];
       my $i = $c->instruction;
-      push @s, sprintf "%5d  %4d %s\n", $j+1, $i->number+1, $i->action;
+      push @s, sprintf "%5d  %4d %s\n", $j+1, $i->number+1, $i->action if $s;
+      push @s, sprintf "%5d  %4d %-16s  %4d  %s\n", $j+1, $i->number+1, $i->action, $i->line, $i->file unless $s;
      }
-    say STDERR join "\n", @s unless $options{suppressStackTracePrint};
+    say STDERR join "\n", @s unless $s;
     push @out, @s;
     $instructionPointer = undef;                                                # Execution terminates as soon as undefined instuction is encountered
    };
@@ -529,7 +534,6 @@ sub Zero::Emulator::Code::execute($%)                                           
     counts => {%counts},                                                        # Executed instructions by name counts
     memory => {%memory},                                                        # Memory contents at the end of execution
     out    => [@out],                                                           # The out channel
-    owner  => {%owner},                                                         # Memory ownership
    );
  }
 
@@ -772,7 +776,7 @@ sub IfGe($$%)                                                                   
 
 sub Assert($$$)                                                                 # Assert
  {my ($op, $a, $b) = @_;                                                        # Operation, First memory location, second memory location
-  $assembly->instruction(action=>"assert$op", source=>$a, source2=>$b);
+  $assembly->instruction(action=>"assert$op", source=>$a, source2=>$b, level=>2);
  }
 
 sub AssertEq($$%)                                                               # Assert two memory locations are equal.
@@ -1048,10 +1052,10 @@ if (1)                                                                          
   Return;
   Label $start;
     Call $c;
-  ok Execute(suppressStackTracePrint=>1, out=>[
-"Stack trace\n",
-"    2     3 confess\n",
-"    1     6 call\n"]);
+  ok Execute(suppressStackTracePrint=>1, out=>
+[ "Stack trace\n",
+  "    2     3 confess\n",
+  "    1     6 call\n"]);
  }
 
 #latest:;
@@ -1172,6 +1176,6 @@ if (1)                                                                          
   my $r = Execute(suppressStackTracePrint=>1);
   is_deeply $r->out, [
 "Stack trace\n",
-"    1     2 assertEq\n"
-],
+  "    1     2 assertEq\n",
+];
  }
