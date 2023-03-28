@@ -194,13 +194,15 @@ sub Zero::Emulator::Code::execute($%)                                           
 
   my sub stackTraceAndExit($)                                                   # Print a stack trace and exit
    {my ($i) = @_;                                                               # Instruction trace occurred at
-    push @out, "Stack trace\n";
+    push my @s, "Stack trace\n";
     for my $j(reverse keys @calls)
      {my $c = $calls[$j];
       my $i = $c->instruction;
-      push @out, sprintf "%5d  %4d %s\n", $j+1, $i->number+1, $i->action;
+      push @s, sprintf "%5d  %4d %s\n", $j+1, $i->number+1, $i->action;
      }
-    $instructionPointer = @$code;                                               # Execution terminates as soon as undefined instuction is encountered
+    say STDERR join "\n", @s unless $options{suppressStackTracePrint};
+    push @out, @s;
+    $instructionPointer = undef;                                                # Execution terminates as soon as undefined instuction is encountered
    };
 
   my sub stackArea()                                                            # Memory area associated with this method invocation
@@ -1046,7 +1048,7 @@ if (1)                                                                          
   Return;
   Label $start;
     Call $c;
-  ok Execute(out=>[
+  ok Execute(suppressStackTracePrint=>1, out=>[
 "Stack trace\n",
 "    2     3 confess\n",
 "    1     6 call\n"]);
@@ -1167,7 +1169,7 @@ if (1)                                                                          
  {my $s = Start 1;
   Mov 0, 1;
   AssertEq \0, 2;
-  my $r = Execute;
+  my $r = Execute(suppressStackTracePrint=>1);
   is_deeply $r->out, [
 "Stack trace\n",
 "    1     2 assertEq\n"
