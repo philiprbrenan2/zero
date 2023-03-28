@@ -203,7 +203,7 @@ sub Zero::Emulator::Code::execute($%)                                           
      {my $c = $calls[$j];
       my $i = $c->instruction;
       push @s, sprintf "%5d  %4d %s\n", $j+1, $i->number+1, $i->action if $s;
-      push @s, sprintf "%5d  %4d %-16s  %4d  %s\n", $j+1, $i->number+1, $i->action, $i->line, $i->file unless $s;
+      push @s, sprintf "%5d  %4d %-16s  at %s line %d\n", $j+1, $i->number+1, $i->action, $i->file, $i->line, unless $s;
      }
     say STDERR join "\n", @s unless $s;
     push @out, @s;
@@ -246,7 +246,11 @@ sub Zero::Emulator::Code::execute($%)                                           
        {return \$memory{$memory{&stackArea}[$$area]}[$memory{&stackArea}[$$$a]] # Indirect area
        }
      }
-    die "Invalid left area.address: ".dump([$area, $a])."\n";
+    my $i = $calls[-1]->instruction;
+    my $l = $i->line;
+    my $f = $i->file;
+    die "Invalid left area.address: ".dump([$area, $a])
+     ." line: $l, file: $f\n";
    }
 
   my sub right($;$)                                                             # Get a constant or a memory location
@@ -283,7 +287,13 @@ sub Zero::Emulator::Code::execute($%)                                           
          }
        }
      }
-    die "Invalid right area.address: ".dump([$area, $a])."\n" unless defined $r;
+    if (!defined($r))
+     {my $i = $calls[-1]->instruction;
+      my $l = $i->line;
+      my $f = $i->file;
+      die "Invalid right area.address: "
+       .dump([$area, $a])." line: $l, file: $f\n";
+     }
     $r
    }
 
@@ -313,38 +323,56 @@ sub Zero::Emulator::Code::execute($%)                                           
 
     assertEq  => sub                                                            # Assert equals
      {my $i = $calls[-1]->instruction;
-      my ($a, $b) = ($i->source, $i->source2);
-      stackTraceAndExit($i) unless right($a) == right($b);
+      my ($a, $b) = (right($i->source), right($i->source2));
+      unless(right($a) == right($b))
+       {say STDERR "Assert $a == $b failed" unless $options{suppressStackTracePrint};
+        stackTraceAndExit($i);
+       }
      },
 
     assertNe  => sub                                                            # Assert not equals
      {my $i = $calls[-1]->instruction;
-      my ($a, $b) = ($i->source, $i->source2);
-      stackTraceAndExit($i) unless right($a) != right($b);
+      my ($a, $b) = (right($i->source), right($i->source2)) unless $options{suppressStackTracePrint};
+      unless(right($a) != right($b))
+       {say STDERR "Assert $a != $b failed";
+        stackTraceAndExit($i);
+       }
      },
 
     assertLt  => sub                                                            # Assert less than
      {my $i = $calls[-1]->instruction;
-      my ($a, $b) = ($i->source, $i->source2);
-      stackTraceAndExit($i) unless right($a) ,  right($b);
+      my ($a, $b) = (right($i->source), right($i->source2)) unless $options{suppressStackTracePrint};
+      unless(right($a) <  right($b))
+       {say STDERR "Assert $a <  $b failed";
+        stackTraceAndExit($i);
+       }
      },
 
     assertLe  => sub                                                            # Assert less than or equal
      {my $i = $calls[-1]->instruction;
-      my ($a, $b) = ($i->source, $i->source2);
-      stackTraceAndExit($i) unless right($a) <= right($b);
+      my ($a, $b) = (right($i->source), right($i->source2)) unless $options{suppressStackTracePrint};
+      unless(right($a) <= right($b))
+       {say STDERR "Assert $a <= $b failed";
+        stackTraceAndExit($i);
+       }
      },
 
     assertGt  => sub                                                            # Assert greater than
      {my $i = $calls[-1]->instruction;
-      my ($a, $b) = ($i->source, $i->source2);
-      stackTraceAndExit($i) unless right($a) > right($b);
+      my ($a, $b) = (right($i->source), right($i->source2)) unless $options{suppressStackTracePrint};
+      unless(right($a) > right($b))
+       {say STDERR "Assert $a >  $b failed";
+        stackTraceAndExit($i);
+       }
      },
 
     assertGe  => sub                                                            # Assert greater
      {my $i = $calls[-1]->instruction;
-      my ($a, $b) = ($i->source, $i->source2);
-      stackTraceAndExit($i) unless right($a) >= right($b);
+      my ($a, $b) = (right($i->source), right($i->source2)) unless $options{suppressStackTracePrint};
+      unless(right($a) >= right($b))
+       {say STDERR "Assert $a >= $b failed";
+        stackTraceAndExit($i);
+       }
      },
 
     free      => sub                                                            # Free the memory area named by the source operand
