@@ -442,22 +442,22 @@ sub Zero::Emulator::Code::execute($%)                                           
 
     get       => sub                                                            # Copy one word from the area identified by the first source operand at the location identified by the second source operand to the target location on the current area.
      {my $i = $calls[-1]->instruction;
-      my $s = right($i->source2, $i->source);
+      my $s = right($i->source, $i->source2);
       my $t = left($i->target);
       $$t = $s;
      },
 
     put       => sub                                                            # Copy one word from the current area to the area identified by the first source operand at the location identified by the second source operand to the target location on the current area.
      {my $i = $calls[-1]->instruction;
-      my $t = left($i->target2, $i->target);
+      my $t = left($i->target, $i->target2);
       my $s = right($i->source);
       $$t = $s;
      },
 
     copy      => sub                                                            # Move one word from the area identified by the first source operand at the location identified by the second source operand to the area indic ated by the irst target operand at the location specified bythe second target operand.
      {my $i = $calls[-1]->instruction;
-      my $s = right($i->source2, $i->source);
-      my $t = left ($i->target2, $i->target);
+      my $s = right($i->source, $i->source2);
+      my $t = left ($i->target, $i->target2);
       $$t = $s;
      },
 
@@ -1009,7 +1009,7 @@ if (1)                                                                          
 if (1)                                                                          #TPut #TGet
  {Start 1;
   Put  0, 0,  1;
-  Get  0, 0,  \0;
+  Get  0, \0, 0;
   Out \0;
   ok Execute(out=>[1]);
  }
@@ -1120,10 +1120,10 @@ if (1)                                                                          
 if (1)                                                                          #TAlloc #TGet #TPut
  {Start 1;
   Alloc 0;
-  Put \0, 1, 1;
-  Put \0, 2, 2;
-  Get 1, \0, \1;
-  Get 2, \0, \2;
+  Put  1, \0,  1;
+  Put  2, \0,  2;
+  Get  1, \1, \0;
+  Get  2, \2, \0;
   my $r = Execute;
   is_deeply $r->memory, {
   1000000 => [1000003, 1, 2],
@@ -1137,7 +1137,7 @@ if (1)                                                                          
 if (1)                                                                          #TCopy
  {Start 1;
   Put  0, 0, 1;
-  Copy 1, 0, 0, \0;
+  Copy 0, 1, \0, 0;
   Get  1, 1, \0;
   my $r = Execute;
   is_deeply $r->memory, {
