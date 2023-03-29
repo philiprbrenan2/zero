@@ -39,11 +39,14 @@ sub areaStructure($@)                                                           
   $d
  }
 
-sub Zero::Emulator::areaStructure::temporary($)                                 # Create a temporary variable. Need to reuse temporaries no longer in use
- {my ($d, $name) = @_;                                                          # Parameters
-  my $o = $d->fieldOrder->@*;
-  push $d->fieldOrder->@*, undef;
-  \$o;
+sub Zero::Emulator::areaStructure::temporary($;$)                               # Create one or more temporary variables. Need to reuse temporaries no longer in use
+ {my ($d, $count) = @_;                                                         # Parameters
+  if (!defined($count))
+   {my $o = $d->fieldOrder->@*;
+    push $d->fieldOrder->@*, undef;
+    return \$o;                                                                 # One temporary
+   }
+  map {__SUB__->($d)} 1..$count;                                                # Array of temporaries
  }
 
 sub Zero::Emulator::areaStructure::name($$)                                     # Add a field to a data structure
@@ -469,7 +472,7 @@ sub Zero::Emulator::Code::execute($%)                                           
 
     returnGet => sub                                                            # Get a word from the return area
      {my $i = $calls[-1]->instruction;
-      my $p = $i->sourceArea // $calls[-1]->return;
+      my $p = $calls[-1]->return;
       my $t = left($i->target, $i->targetArea);
       my $s = right($i->source, $p);
       $$t = $s;
@@ -477,7 +480,7 @@ sub Zero::Emulator::Code::execute($%)                                           
 
     returnPut => sub                                                            # Put a word ino the return area
      {my $i = $calls[-1]->instruction;
-      my $p = $i->targetArea // $calls[-2]->return;
+      my $p = $calls[-2]->return;
       my $t = left($i->target, $p);
       my $s = right($i->source, $i->sourceArea);
       $$t = $s;
@@ -670,6 +673,7 @@ sub Nop()                                                                       
 
 sub Out($;$)                                                                    # Write memory contents to out
  {my ($source, $sourceArea) = @_;                                               # Memory location to output, memory area containing source operand
+
   $assembly->instruction(action=>"out", source=>$source, sourceArea=>$sourceArea);
  }
 
