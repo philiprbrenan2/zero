@@ -671,16 +671,16 @@ sub Out($)                                                                      
 
 sub Procedure($$)                                                               # Define a procedure
  {my ($name, $source) = @_;                                                     # Name of procedure, source code as a subroutine# $assembly->instruction(action=>"procedure", target=>$target, source=>$source);
-  if ($name and $assembly->procedures->{$name})
-   {confess "Procedure already defined with name: $name\n";
+  if ($name and my $n = $assembly->procedures->{$name})                         # Reuse existing named procedure
+   {return $n;
    }
 
   Jmp(my $end = label);                                                         # Jump over the code of the procedure body
   my $start = setLabel;
-  &$source(procedure($start));                                                  # Code of procedure called with definitin of procedure as a parameter
+  &$source(procedure($start));                                                  # Code of procedure called with start label as a parameter
   setLabel $end;
 
-  $start                                                                        # Return a description of the procedure
+  $assembly->procedures->{$name} = $start                                       # Return the start of the procedure
  }
 
 sub ParamsGet($$)                                                               # Get a word from the parameters in the previous frame and store it in the local stack frame
