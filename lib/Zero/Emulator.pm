@@ -416,7 +416,9 @@ sub Zero::Emulator::Code::execute($%)                                           
 
     inc       => sub                                                            # Increment locations in memory. The first location is incremented by 1, the next by two, etc.
      {my $i = $calls[-1]->instruction;
-      setMemory $i->target, right($i->target) + 1;
+      my $t1 = $i->target;
+      my $t2 = $i->target2;
+      setMemory $i->target, right($t1, $t2) + 1, $t2;
      },
 
     jmp       => sub                                                            # Jump to the target location
