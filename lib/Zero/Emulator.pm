@@ -39,6 +39,13 @@ sub areaStructure($@)                                                           
   $d
  }
 
+sub Zero::Emulator::areaStructure::temporary($)                                 # Create a temporary variable. Need to reuse temporaries no longer in use
+ {my ($d, $name) = @_;                                                          # Parameters
+  my $o = $d->fieldOrder->@*;
+  push $d->fieldOrder->@*, undef;
+  \$o;
+ }
+
 sub Zero::Emulator::areaStructure::name($$)                                     # Add a field to a data structure
  {my ($d, $name) = @_;                                                          # Parameters
   if (!$d->fieldNames->{$name})
@@ -1195,4 +1202,16 @@ if (1)                                                                          
 "Stack trace\n",
   "    1     2 assertEq\n",
 ];
+ }
+
+#latest:;
+if (1)                                                                          # Temporary variable
+ {my $s = Start 1;
+  my ($a) = $s->variables->temporary;
+  my ($b) = $s->variables->name(q(b));
+  Mov $a, 1;
+  Mov $b, 2;
+  Out $a;
+  Out $b;
+  ok Execute(out=>[1..2]);
  }
