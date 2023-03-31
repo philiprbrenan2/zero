@@ -236,7 +236,7 @@ sub Zero::Emulator::Code::execute($%)                                           
   my sub left($;$)                                                              # Address a memory location
    {my ($A, $area) = @_;                                                        # Location, optional area
     my $a = $A;
-    $a = \$A if isScalar $a;                                                    # Interpret constants as direct memory locations
+       $a = \$A if isScalar $a;                                                 # Interpret constants as direct memory locations
     if (isScalar $$a)
      {if (!defined($area))                                                      # Current stack frame
        {return \$memory{&stackArea}[$$a]                                        # Stack frame
@@ -469,12 +469,10 @@ sub Zero::Emulator::Code::execute($%)                                           
     paramsGet => sub                                                            # Get a parameter from the previous parameter block - this means that we must always have two entries on teh call stack - one representing the caller of the program, the second representing the current context of the program
      {my $i = $calls[-1]->instruction;
       my $p = $i->sourceArea // $calls[-2]->params;
-      my $Q = $i->source;
-      my $q = $Q;
-         $q = \$Q if isScalar($q);                                              # Interpret a scalar parameter reference as a reference
+      my $q = $i->source;
       my $t = left($i->target, $i->targetArea);
-      my $s = right($q, $p);
-      $$t = $s;
+      my $s = left($q, $p);                                                     # The source has to be a left hand side because we want to address a memory area not get a constant
+      $$t = $$s;
      },
 
     paramsPut => sub                                                            # Place a parameter in the current parameter block
