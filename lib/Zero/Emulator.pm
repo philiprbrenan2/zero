@@ -262,7 +262,7 @@ sub Zero::Emulator::Code::execute($%)                                           
     my $i = $calls[-1]->instruction;
     my $l = $i->line;
     my $f = $i->file;
-    die "Invalid left area.address: ".dump([$area, $a])
+    die "Invalid left area: ".dump($area)." address: ".dump($a)
      ." at $f line $l\n".dump(\%memory);
    }
 
@@ -304,8 +304,8 @@ sub Zero::Emulator::Code::execute($%)                                           
      {my $i = $calls[-1]->instruction;
       my $l = $i->line;
       my $f = $i->file;
-      die "Invalid right area.address: "
-       .dump([$area, $a])." at $f line $l\n".dump(\%memory);
+      die "Invalid right area: ".dump($area)." address: ".dump($a)
+       ." at $f line $l\n".dump(\%memory);
      }
     $r
    }
@@ -469,8 +469,11 @@ sub Zero::Emulator::Code::execute($%)                                           
     paramsGet => sub                                                            # Get a parameter from the previous parameter block - this means that we must always have two entries on teh call stack - one representing the caller of the program, the second representing the current context of the program
      {my $i = $calls[-1]->instruction;
       my $p = $i->sourceArea // $calls[-2]->params;
+      my $Q = $i->source;
+      my $q = $Q;
+         $q = \$Q if isScalar($q);                                              # Interpret a scalar parameter reference as a reference
       my $t = left($i->target, $i->targetArea);
-      my $s = right($i->source, $p);
+      my $s = right($q, $p);
       $$t = $s;
      },
 
@@ -504,7 +507,9 @@ sub Zero::Emulator::Code::execute($%)                                           
 
     out     => sub                                                              # Write source as output to an array of words
      {my $i = $calls[-1]->instruction;
-      push @out, right($i->source, $i->sourceArea);
+      my $t = right($i->source, $i->sourceArea);
+      lll $t if $options{trace};
+      push @out, $t;
      },
 
     pop => sub                                                                  # Pop a value from the specified memory area if possible else confess
@@ -1074,7 +1079,7 @@ if (1)                                                                          
  {Start 1;
   Jmp (my $start = label());
   my $w = setLabel 'write';
-    ParamsGet \0, \0;
+    ParamsGet \0, 0;
     Out \0;
   Return;
   setLabel $start;
@@ -1103,7 +1108,7 @@ if (1)                                                                          
   my $add = Procedure 'add2', sub
    {my ($p) = @_;                                                               # Procedure description
     my ($a, $b) = $p->variables->names(qw(a b));
-    ParamsGet $a, \0;
+    ParamsGet $a, 0;
     Add $b, $a, 2;
     ReturnPut 0, $b;
     Return;
