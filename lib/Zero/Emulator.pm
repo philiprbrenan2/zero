@@ -25,7 +25,7 @@ Well known locations are represented by negative area ids
 
 makeDieConfess;
 
-sub maximumInstructionsToExecute (){100}                                        # Maximum number of subroutines to execute
+sub maximumInstructionsToExecute (){1000}                                        # Maximum number of subroutines to execute
 
 sub areaStructure($@)                                                           # Describe a data structure mapping a memory area
  {my ($structureName, @names) = @_;                                             # Structure name, fields names
@@ -546,7 +546,9 @@ sub Zero::Emulator::Code::execute($%)                                           
     return    => allocMemory,
   ) for 1..1;
 
-  for my $j(1..maximumInstructionsToExecute)                                    # Each instruction in the code until we hit an undefined instruction
+  my $mi = $options{maximumInstructionsToExecute} //                            # Prevent run away executions
+                    maximumInstructionsToExecute;
+  for my $j(1..$mi)                                                             # Each instruction in the code until we hit an undefined instruction
    {last unless defined($instructionPointer);
     my $i = $calls[-1]->instruction = $$code[$instructionPointer++];
     last unless $i;
