@@ -263,7 +263,7 @@ sub Zero::Emulator::Code::execute($%)                                           
     my $l = $i->line;
     my $f = $i->file;
     die "Invalid left area.address: ".dump([$area, $a])
-     ." line: $l, file: $f\n";
+     ." at $f line $l\n".dump(\%memory);
    }
 
   my sub right($;$)                                                             # Get a constant or a memory location
@@ -305,7 +305,7 @@ sub Zero::Emulator::Code::execute($%)                                           
       my $l = $i->line;
       my $f = $i->file;
       die "Invalid right area.address: "
-       .dump([$area, $a])." line: $l, file: $f\n";
+       .dump([$area, $a])." at $f line $l\n".dump(\%memory);
      }
     $r
    }
@@ -424,6 +424,18 @@ sub Zero::Emulator::Code::execute($%)                                           
     confess => sub                                                              # Print the current call stack and stop
      {my $i = $calls[-1]->instruction;
       stackTraceAndExit($i);
+     },
+
+    dump    => sub                                                              # Dump memory
+     {my $i = $calls[-1]->instruction;
+      say STDERR $i->source, dump(\%memory);
+     },
+
+    dec     => sub                                                              # Decrement locations in memory. The first location is incremented by 1, the next by two, etc.
+     {my $i = $calls[-1]->instruction;
+      my $t1 = $i->target;
+      my $t2 = $i->targetArea;
+      setMemory $i->target, right($t1, $t2) - 1, $t2;
      },
 
     inc       => sub                                                            # Increment locations in memory. The first location is incremented by 1, the next by two, etc.
@@ -604,6 +616,17 @@ sub Call($)                                                                     
 
 sub Confess()                                                                   # Confess
  {$assembly->instruction(action=>"confess");
+ }
+
+sub Dump($)                                                                     # Dump memory
+ {my ($title) = @_;                                                             # Title
+  $assembly->instruction(action=>"dump", source=>$title);
+ }
+
+sub Dec($;$)                                                                    # Decrement the target
+ {my ($target, $targetArea) = @_;                                               # Target location, target area
+  confess "Reference required for Dec" if isScalar $target;
+  $assembly->instruction(action=>"dec", target=>$target, targetArea=>$targetArea);
  }
 
 sub Inc($;$)                                                                    # Increment the target
@@ -882,7 +905,7 @@ use vars qw(@ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
 
 @ISA         = qw(Exporter);
 @EXPORT      = qw();
-@EXPORT_OK   = qw(areaStructure Add Alloc Call Confess Else Execute For Free AssertEq AssertGe AssertGt AssertLe AssertLt AssertNe  IfEq IfGe IfGt IfLe IfLt IfNe Ifx Inc Jeq Jge Jgt Jle Jlt Jmp Jne Label Mov Nop Out ParamsGet ParamsPut Pop Procedure Push Return ReturnGet ReturnPut Smaller Start Then);
+@EXPORT_OK   = qw(areaStructure Add Alloc Call Confess Else Execute For Free AssertEq AssertGe AssertGt AssertLe AssertLt AssertNe Dec Dump IfEq IfGe IfGt IfLe IfLt IfNe Ifx Inc Jeq Jge Jgt Jle Jlt Jmp Jne Label Mov Nop Out ParamsGet ParamsPut Pop Procedure Push Return ReturnGet ReturnPut Smaller Start Then);
 %EXPORT_TAGS = (all=>[@EXPORT, @EXPORT_OK]);
 
 return 1 if caller;
@@ -941,6 +964,15 @@ if (1)                                                                          
   Add  \4, \1, \2;
   Out  3;
   ok Execute(out=>[3]);
+ }
+
+#latest:;
+if (1)                                                                          #TDec
+ {Start 1;
+  Mov  1, 3;
+  Dec \1;
+  Out \1;
+  ok Execute(out=>[2]);
  }
 
 #latest:;
