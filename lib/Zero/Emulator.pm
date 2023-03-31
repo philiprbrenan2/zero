@@ -321,6 +321,16 @@ sub Zero::Emulator::Code::execute($%)                                           
     $instructionPointer = $i->number + right($i->target) if &$check;            # Check if condition is met
    }
 
+  my sub assert($$)                                                             # Assert generically
+   {my ($test, $sub) = @_;                                                      # text of test, subroutine of test
+    my $i = $calls[-1]->instruction;
+    my ($a, $b) = (right($i->source), right($i->source2));
+    unless($sub->(right($a), right($b)))
+     {say STDERR "Assert $a $test $b failed" unless $options{suppressStackTracePrint};
+      stackTraceAndExit($i);
+     }
+   }
+
   my %instructions =                                                            # Instruction definitions
    (add       => sub                                                            # Add two arrays to make a third array
      {my $i = $calls[-1]->instruction;
@@ -333,58 +343,28 @@ sub Zero::Emulator::Code::execute($%)                                           
       setMemory $i->target, $a, $i->targetArea;
      },
 
-    assertEq  => sub                                                            # Assert equals
-     {my $i = $calls[-1]->instruction;
-      my ($a, $b) = (right($i->source), right($i->sourceArea));
-      unless(right($a) == right($b))
-       {say STDERR "Assert $a == $b failed" unless $options{suppressStackTracePrint};
-        stackTraceAndExit($i);
-       }
+    assertEq  =>   sub                                                          # Assert equals
+     {assert("==", sub {my ($a, $b) = @_; $a == $b})
      },
 
-    assertNe  => sub                                                            # Assert not equals
-     {my $i = $calls[-1]->instruction;
-      my ($a, $b) = (right($i->source), right($i->sourceArea)) unless $options{suppressStackTracePrint};
-      unless(right($a) != right($b))
-       {say STDERR "Assert $a != $b failed";
-        stackTraceAndExit($i);
-       }
+    assertNe  =>   sub                                                          # Assert not equals
+     {assert("!=", sub {my ($a, $b) = @_; $a != $b})
      },
 
-    assertLt  => sub                                                            # Assert less than
-     {my $i = $calls[-1]->instruction;
-      my ($a, $b) = (right($i->source), right($i->sourceArea)) unless $options{suppressStackTracePrint};
-      unless(right($a) <  right($b))
-       {say STDERR "Assert $a <  $b failed";
-        stackTraceAndExit($i);
-       }
+    assertLt  =>   sub                                                          # Assert less than
+     {assert("< ", sub {my ($a, $b) = @_; $a <  $b})
      },
 
-    assertLe  => sub                                                            # Assert less than or equal
-     {my $i = $calls[-1]->instruction;
-      my ($a, $b) = (right($i->source), right($i->sourceArea)) unless $options{suppressStackTracePrint};
-      unless(right($a) <= right($b))
-       {say STDERR "Assert $a <= $b failed";
-        stackTraceAndExit($i);
-       }
+    assertLe  =>   sub                                                          # Assert less than or equal
+     {assert("<=", sub {my ($a, $b) = @_; $a <= $b})
      },
 
-    assertGt  => sub                                                            # Assert greater than
-     {my $i = $calls[-1]->instruction;
-      my ($a, $b) = (right($i->source), right($i->sourceArea)) unless $options{suppressStackTracePrint};
-      unless(right($a) > right($b))
-       {say STDERR "Assert $a >  $b failed";
-        stackTraceAndExit($i);
-       }
+    assertGt  =>   sub                                                          # Assert greater than
+     {assert("> ", sub {my ($a, $b) = @_; $a >  $b})
      },
 
-    assertGe  => sub                                                            # Assert greater
-     {my $i = $calls[-1]->instruction;
-      my ($a, $b) = (right($i->source), right($i->sourceArea)) unless $options{suppressStackTracePrint};
-      unless(right($a) >= right($b))
-       {say STDERR "Assert $a >= $b failed";
-        stackTraceAndExit($i);
-       }
+    assertGe  =>   sub                                                          # Assert greater
+     {assert(">=", sub {my ($a, $b) = @_; $a >= $b})
      },
 
     free      => sub                                                            # Free the memory area named by the source operand
@@ -442,7 +422,7 @@ sub Zero::Emulator::Code::execute($%)                                           
      {my $i = $calls[-1]->instruction;
       my $t1 = $i->target;
       my $t2 = $i->targetArea;
-      setMemory $i->target, right($t1, $t2) + 1, $t2;
+      setMemory $i->target, ${left($t1, $t2)} + 1, $t2;
      },
 
     jmp       => sub                                                            # Jump to the target location
@@ -585,6 +565,22 @@ sub setLabel(;$)                                                                
   $l                                                                            # return (new) label
  }
 
+sub xAddress($$)                                                                # Expand an address argument
+ {my ($f, $s) = @_;                                                             # Field name, source expression - either a single location ion the currnt stack frame or a refernce to an array conatyaining anInstruction pair containing the area id followed by the location
+  return ($f=>$s) unless ref($s) =~ m(array)i;                                  # Single field
+ ($f=>$$s[1], $f."Area"=>$$s[0]);                                               # Pair of fields
+ }
+
+sub xSource($)                                                                  # Expand a source argument
+ {my ($s) = @_;                                                                 # Source expression - either a single location ion the currnt stack frame or a refernce to an array conatyaining anInstruction pair containing the area id followed by the location
+  xAddress(q(source), $s)
+ }
+
+sub xTarget($)                                                                  # Expand a target argument
+ {my ($t) = @_;                                                                 # Target expression - either a single location ion the currnt stack frame or a refernce to an array conatyaining anInstruction pair containing the area id followed by the location
+  xAddress(q(target), $t)
+ }
+
 sub Start($)                                                                    # Start the current assembly using the specified version of the Zero languiage.  At  the moment only version 1 works.
  {my ($version) = @_;                                                           # Version desired - at the moment only 1
   $version == 1 or confess "Version 1 is currently the only version available\n";
@@ -606,17 +602,17 @@ sub Add($$$;$)                                                                  
 
 sub Alloc($)                                                                    # Create a new memory area and write its number into the location named by the target operand
  {my ($target) = @_;                                                            # Target location to palce number of area created
-  $assembly->instruction(action=>"alloc", target=>$target);
+  $assembly->instruction(action=>"alloc", xTarget($target))
  }
 
 sub Free($)                                                                     # Free the memory area named by the source operand
  {my ($source) = @_;                                                            # Source location containing number of area to free
-  $assembly->instruction(action=>"free", source=>$source);
+  $assembly->instruction(action=>"free", xSource($source));
  }
 
 sub Call($)                                                                     # Call the subroutine at the target address
  {my ($target) = @_;                                                            # Target
-  $assembly->instruction(action=>"call", target=>$target);
+  $assembly->instruction(action=>"call", xTarget($target));
  }
 
 sub Confess()                                                                   # Confess
@@ -628,21 +624,19 @@ sub Dump($)                                                                     
   $assembly->instruction(action=>"dump", source=>$title);
  }
 
-sub Dec($;$)                                                                    # Decrement the target
- {my ($target, $targetArea) = @_;                                               # Target location, target area
-  confess "Reference required for Dec" if isScalar $target;
-  $assembly->instruction(action=>"dec", target=>$target, targetArea=>$targetArea);
+sub Dec($)                                                                      # Decrement the target
+ {my ($target) = @_;                                                            # Target address
+  $assembly->instruction(action=>"dec", xTarget($target))
  }
 
-sub Inc($;$)                                                                    # Increment the target
- {my ($target, $targetArea) = @_;                                               # Target location, target area
-  confess "Reference required for Inc" if isScalar $target;
-  $assembly->instruction(action=>"inc", target=>$target, targetArea=>$targetArea);
+sub Inc($)                                                                      # Increment the target
+ {my ($target) = @_;                                                            # Target address
+  $assembly->instruction(action=>"inc", xTarget($target))
  }
 
 sub Jmp($)                                                                      # Jump to a label
- {my ($target) = @_;                                                            # Target
-  $assembly->instruction(action=>"jmp", target=>$target);
+ {my ($target) = @_;                                                            # Target address
+  $assembly->instruction(action=>"jmp", xTarget($target));
  }
 
 sub Jle($$$)                                                                    # Jump to a target label if the first source field is less than or equal to the second source field
@@ -681,28 +675,17 @@ sub Label($)                                                                    
  }
 
 sub Mov($$;$$)                                                                  # Copy a constant or memory location to the target location
- {if    (@_ == 2)
-   {my ($target, $source) = @_;                                                 # Target location, source location
-    $assembly->instruction(action=>"mov", target=>$target, source=>$source);
-   }
-  elsif (@_ == 3)
-   {my ($target, $source, $sourceArea) = @_;                                    # Target location, source location, source area
-    $assembly->instruction(action=>"mov", target=>$target, source=>$source, sourceArea=>$sourceArea);
-   }
-  else
-   {my ($target, $targetArea, $source, $sourceArea) = @_;                       # Target location, target area, source location, source area
-    $assembly->instruction(action=>"mov", target=>$target, targetArea=>$targetArea, source=>$source, sourceArea=>$sourceArea);
-   }
+ {my ($target, $source) = @_;                                                   # Target location, source location
+  $assembly->instruction(action=>"mov", xTarget($target), xSource($source));
  }
 
 sub Nop()                                                                       # Do nothing (but do it well!)
  {$assembly->instruction(action=>"nop");
  }
 
-sub Out($;$)                                                                    # Write memory contents to out
- {my ($source, $sourceArea) = @_;                                               # Memory location to output, memory area containing source operand
-
-  $assembly->instruction(action=>"out", source=>$source, sourceArea=>$sourceArea);
+sub Out($)                                                                      # Write memory contents to out
+ {my ($source) = @_;                                                            # Either a scalar constant or memory address to output
+  $assembly->instruction(action=>"out", xSource($source))
  }
 
 sub Procedure($$)                                                               # Define a procedure
@@ -719,56 +702,38 @@ sub Procedure($$)                                                               
   $assembly->procedures->{$name} = $start                                       # Return the start of the procedure
  }
 
-sub ParamsGet($$;$)                                                             # Get a word from the parameters in the previous frame and store it
- {if (@_ == 2)
-   {my ($target, $source) = @_;                                                 # Memory location to place parameter in, parameter to get from parameter area
-    $assembly->instruction(action=>"paramsGet", target=>$target, source=>$source);
-   }
-  else
-   {my ($target, $targetArea, $source) = @_;                                    # Memory location to place parameter in, memory area to place parameter in, parameter to get from parameter area
-    $assembly->instruction(action=>"paramsGet", target=>$target, target=>$targetArea, source=>$source);
-   }
+sub ParamsGet($$)                                                               # Get a word from the parameters in the previous frame and store it
+ {my ($target, $source) = @_;                                                   # Memory location to place parameter in, parameter to get from parameter area
+  $assembly->instruction(action=>"paramsGet", xTarget($target), source=>$source);
  }
 
-sub ParamsPut($$;$)                                                             # Put a parameter from the specified location and area into the parameters area
- {my ($target, $source, $sourceArea) = @_;                                      # Offset in parameter area to write to, memory location whose contents are to be used as a parameter, memory area containing contents
-  $assembly->instruction(action=>"paramsPut", target=>$target, source=>$source, sourceArea=>$sourceArea);
+sub ParamsPut($$)                                                               # Get a word from the parameters in the previous frame and store it
+ {my ($target, $source) = @_;                                                   # Memory location to place parameter in, parameter to get from parameter area
+  $assembly->instruction(action=>"paramsPut", target=>$target, xSource($source));
  }
 
 sub Return()                                                                    # Return from a procedure via the call stack
  {$assembly->instruction(action=>"return");
  }
 
-sub ReturnGet($$;$)                                                             # Get a word from the return area and save it
- {if (@_ == 2)
-   {my ($target, $source) = @_;                                                 # Memory location to place return value in, return value to get
-    $assembly->instruction(action=>"returnGet", target=>$target, source=>$source);
-   }
-  else
-   {my ($target, $targetArea, $source) = @_;                                    # Memory location to place return value in, memory area to place return value in, return value to get
-    $assembly->instruction(action=>"returnGet", target=>$target, targetArea=>$targetArea, source=>$source);
-   }
+sub ReturnGet($$)                                                               # Get a word from the return area and save it
+ {my ($target, $source) = @_;                                                   # Memory location to place return value in, return value to get
+  $assembly->instruction(action=>"returnGet", xTarget($target), source=>$source);
  }
 
-sub ReturnPut($$;$)                                                             # Put a word into the return area
- {my ($target, $source, $sourceArea) = @_;                                      # Offset in return area to write to, memory location whose contents are to be placed in the return area
-  $assembly->instruction(action=>"returnPut", target=>$target, source=>$source, sourceArea=>$sourceArea);
+sub ReturnPut($$)                                                               # Put a word into the return area
+ {my ($target, $source) = @_;                                                   # Offset in return area to write to, memory location whose contents are to be placed in the return area
+  $assembly->instruction(action=>"returnPut", target=>$target, xSource($source));
  }
 
-sub Pop($$;$)                                                                   # Pop the memory area specified by the source operand into the location in the current stack frame identified by the target operand.
- {if (@_ == 2)
-   {my ($target, $source) = @_;                                                 # Memory location to pop to, memory area to pop from
-    $assembly->instruction(action=>"pop", target=>$target, source=>$source);
-   }
-  else
-   {my ($target, $targetArea, $source) = @_;                                    # Memory location to pop to, memory area to pop to, memory area to pop from
-    $assembly->instruction(action=>"pop", target=>$target, targetArea=>$targetArea, source=>$source);
-   }
+sub Pop($$)                                                                     # Pop the memory area specified by the source operand into the memory address specified by the target operand
+ {my ($target, $source) = @_;                                                   # Memory location to pop to, memory area to pop from
+  $assembly->instruction(action=>"pop", xTarget($target), source=>$source);
  }
 
-sub Push($$;$)                                                                  # Push the value in the current stack frame specified by the source operand onto the memory area identified by the target operand.
- {my ($target, $source, $sourceArea) = @_;                                      # Memory area to push to, memory location containing value to push, memory area containing value to push
-  $assembly->instruction(action=>"push", target=>$target, source=>$source);
+sub Push($$)                                                                    # Push the value in the current stack frame specified by the source operand onto the memory area identified by the target operand.
+ {my ($target, $source) = @_;                                                   # Memory area to push to, memory containing value to push
+  $assembly->instruction(action=>"push", target=>$target, xSource($source));
  }
 
 sub Smaller($$$)                                                                # Compare the source operands and put 0 in the target if the operands are equal, 1 if the first operand is the smaller, or 2 if the second operand is the smaller
@@ -840,7 +805,7 @@ sub IfGe($$%)                                                                   
 
 sub Assert($$$)                                                                 # Assert
  {my ($op, $a, $b) = @_;                                                        # Operation, First memory location, second memory location
-  $assembly->instruction(action=>"assert$op", source=>$a, sourceArea=>$b, level=>2);
+  $assembly->instruction(action=>"assert$op", source=>$a, source2=>$b, level=>2);
  }
 
 sub AssertEq($$%)                                                               # Assert two memory locations are equal.
@@ -983,14 +948,20 @@ if (1)                                                                          
 #latest:;
 if (1)                                                                          #TInc
  {Start 1;
-  Mov  1, 1;
+  Mov  1, 2;
   Inc \1;
   Out \1;
-  Mov  1, 0, 2, undef;
-  Inc \1, 0;
-  Mov  0, \1, 0;
+  ok Execute(out=>[3]);
+ }
+
+#latest:;
+if (1)                                                                          #TInc
+ {Start 1;
+  Mov     [-1,  0], 4;
+  Inc     [-1,  0];
+  Mov  0, [-1, \0];
   Out \0;
-  ok Execute(out=>[2,3]);
+  ok Execute(out=>[5]);
  }
 
 #latest:;
@@ -1057,10 +1028,10 @@ if (1)                                                                          
 #latest:;
 if (1)                                                                          #TMov #TMov
  {Start 1;
-  Mov  0, 0,  1, undef;
-  Mov  0, \0, 0;
-  Out \0;
-  ok Execute(out=>[1]);
+  Mov     [-1,  1],  11;
+  Mov  1, [-1, \1];
+  Out \1;
+  ok Execute(out=>[11]);
  }
 
 #latest:;
@@ -1165,13 +1136,13 @@ if (1)                                                                          
  }
 
 #latest:;
-if (1)                                                                          #TAlloc #TMov #TMov
+if (1)                                                                          #TAlloc #TMov
  {Start 1;
   Alloc 0;
-  Mov 1, \0,  1, undef;
-  Mov 2, \0,  2, undef;
-  Mov 1, \1, \0;
-  Mov 2, \2, \0;
+  Mov [\0, 1], 1;
+  Mov [\0, 2], 2;
+  Mov 1, [\0, \1];
+  Mov 2, [\0, \2];
   my $r = Execute;
   is_deeply $r->memory, { "0" => [3, 1, 2], "1" => [], "2" => [], "3" => [undef, 1, 2] };
  }
@@ -1179,11 +1150,10 @@ if (1)                                                                          
 #latest:;
 if (1)                                                                          #TMov
  {Start 1;
-  Mov 0, 0, 1, undef;
-  Mov 0, 1, \0, 0;
-  Mov 1, 1, \0;
+  Mov [1, 0], 2;
+  Mov [2, 0], [1, \0];
   my $r = Execute;
-  is_deeply $r->memory, { "0" => [1, 1], "1" => [1], "2" => [] };
+  is_deeply $r->memory, { "0" => [], "1" => [2], "2" => [2] };
  }
 
 #latest:;
@@ -1255,4 +1225,30 @@ if (1)                                                                          
   Out $a;
   Out $b;
   ok Execute(out=>[1..2]);
+ }
+
+#latest:;
+if (1)                                                                          #TAlloc #TMov #TCall
+ {my $s = Start 1;
+  my ($a, $i, $v, $V) = $s->variables->temporary(4);
+  Alloc $a;
+  Mov $i, 1;
+  Mov $v, 11;
+  ParamsPut 0, $a;
+  ParamsPut 1, $i;
+  ParamsPut 2, $v;
+  my $set = Procedure 'set', sub
+   {my ($p) = @_;
+    my ($a, $i, $v) = $p->variables->temporary(3);
+    ParamsGet $a, 0;
+    ParamsGet $i, 1;
+    ParamsGet $v, 2;
+    Mov [$a, $i], $v;
+    Return;
+   };
+  Call $set;
+  Mov $V, [$a, $i];
+  AssertEq $v, $V;
+  Out [$a, $i];
+  ok Execute(out=>[11]);
  }
