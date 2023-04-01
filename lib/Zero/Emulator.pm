@@ -507,10 +507,11 @@ sub Zero::Emulator::Code::execute($%)                                           
     pop => sub                                                                  # Pop a value from the specified memory area if possible else confess
      {my $i = $calls[-1]->instruction;
       my $p = right($i->source);
-      if (!defined($memory{$p}) or !$memory{$p}->@*)                            # Stack no poppable
+      if (!defined($memory{$p}) or !$memory{$p}->@*)                            # Stack not poppable
        {confess($i);
        }
-      setMemory right($i->target, $i->targetArea), pop $memory{$p}->@*;         # Pop from memory area into current stack frame
+      my $t = left($i->target, $i->targetArea);
+      $$t = pop $memory{$p}->@*;                                                # Pop from memory area into indicated memory location
      },
 
     push => sub                                                                 # Push a value onto the specified memory area
@@ -557,7 +558,10 @@ sub Zero::Emulator::Code::execute($%)                                           
      }
     confess "Out of instructions after $j" if $j >= maximumInstructionsToExecute;
    }
-
+  if (1)                                                                        # Free first stack frame
+   {my $c = $calls[0];
+    delete $memory{$_} for $c->stackArea, $c->params, $c->return;
+   }
   $exec
  }                                                                              # Execution results
 
@@ -1098,7 +1102,6 @@ if (1)                                                                          
   ReturnGet \0, \0;
   Out \0;
   my $r = Execute;
-  is_deeply $r->memory, { "0" => [4], "1" => [2], "2" => [4] };
   is_deeply $r->out, [4];
  }
 
@@ -1117,54 +1120,30 @@ if (1)                                                                          
   "    1     6 call\n"]);
  }
 
-#latest:;
-if (1)                                                                          #TPush
- {Start 1;
-  Push 1, 1;
-  Push 1, 2;
-  is_deeply Execute()->memory->{1}, [1..2];
- }
-
-#latest:;
-if (1)                                                                          #TPop
- {Start 1;
-  Push -1, 1;
-  Push -1, 2;
-  Pop  0, -1;
-  my $r = Execute();
-  is_deeply $r->memory, { "-1" => [1], "0" => [2], "1" => [], "2" => [] };
- }
 
 #latest:;
 if (1)                                                                          #TPush #TPop
  {Start 1;
-  Push 1, 1;
-  Push 1, 2;
-  Pop  0, 1;
-  Pop  1, 1;
-  my $r = Execute;
-  is_deeply $r->memory, { "0" => [2, 1], "1" => [], "2" => [] };
+  Push -1, 1;
+  Push -1, 2;
+  Pop  [-2, 0], -1;
+  Pop  [-2, 1], -1;
+  my $r = Execute();
+  is_deeply $r->memory, { "-1" => [], "-2" => [2,1]};
  }
 
 #latest:;
 if (1)                                                                          #TAlloc #TMov
  {Start 1;
   Alloc 0;
+  Mov 1, 99;
+  Mov [\0, 0], \1;
   Mov [\0, 1], 1;
   Mov [\0, 2], 2;
-  Mov 1, [\0, \1];
-  Mov 2, [\0, \2];
+  Mov [\0, 3], [\0, 33];
+  Mov [\0, 4], [\0, \2];
   my $r = Execute;
-  is_deeply $r->memory, { "0" => [3, 1, 2], "1" => [], "2" => [], "3" => [undef, 1, 2] };
- }
-
-#latest:;
-if (1)                                                                          #TMov
- {Start 1;
-  Mov [1, 0], 2;
-  Mov [2, 0], [1, \0];
-  my $r = Execute;
-  is_deeply $r->memory, { "0" => [], "1" => [2], "2" => [2] };
+  is_deeply $r->memory, {"3" => [99, 1, 2, 33, 2] };
  }
 
 #latest:;
@@ -1174,13 +1153,13 @@ if (1)                                                                          
   Out \0;
   Free \0;
   my $r = Execute;
-  is_deeply $r->memory, { "0" => [3], "1" => [], "2" => [] };
+  is_deeply $r->memory, {};
  }
 
 #latest:;
 if (1)                                                                          # Layout
  {my $s = Start 1;
-  my ($a, $b, $c) = $s->variables->names(qw(a b c));
+  my ($a, $b, $c) = $s->variables->temporary(3);
   Mov $a, 'A';
   Mov $b, 'B';
   Mov $c, 'C';
@@ -1193,14 +1172,18 @@ if (1)                                                                          
 #latest:;
 if (1)                                                                          #TIfEq
  {my $s = Start 1;
-  my ($a, $b, $c) = $s->variables->names(qw(a b c));
+  my ($a, $b, $c) = $s->variables->temporary(3);
   Mov $a, 1;
   Mov $b, 2;
+  IfEq $a, $a,
+  Then
+   {Out "\\$a == \\$a";
+   };
   IfEq $a, $b,
   Then
-   {Out 'Equal';
+   {Out "$a == $b";
    };
-  ok Execute(out=>[]);
+  ok Execute(out=>["\\$a == \\$a"]);
  }
 
 #latest:;
