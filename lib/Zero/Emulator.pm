@@ -216,7 +216,7 @@ sub Zero::Emulator::Code::execute($%)                                           
      {my $c = $calls[$j];
       my $i = $c->instruction;
       push @s, sprintf "%5d  %4d %s\n", $j+1, $i->number+1, $i->action if $s;
-      push @s, sprintf "%5d  %4d %-16s  at %s line %d\n", $j+1, $i->number+1, $i->action, $i->file, $i->line, unless $s;
+      push @s, sprintf "%5d  %4d %-16s at %s line %d\n", $j+1, $i->number+1, $i->action, $i->file, $i->line, unless $s;
      }
     say STDERR join "\n", @s unless $s;
     push @out, @s;
@@ -227,8 +227,9 @@ sub Zero::Emulator::Code::execute($%)                                           
    {$calls[-1]->stackArea;                                                      # Stack area
    }
 
+  my $allocs = 0;
   my sub allocMemory()                                                          # Create the name of a new memory area
-   {my $a = scalar(keys %memory);
+   {my $a = $allocs++;
     $memory{$a} = [];
     $a
    }
@@ -422,7 +423,7 @@ sub Zero::Emulator::Code::execute($%)                                           
      {my $i = $calls[-1]->instruction;
       my $t1 = $i->target;
       my $t2 = $i->targetArea;
-      setMemory $i->target, ${left($t1, $t2)} + 1, $t2;
+      setMemory $t1, ${left($t1, $t2)} + 1, $t2;
      },
 
     jmp       => sub                                                            # Jump to the target location
@@ -536,7 +537,8 @@ sub Zero::Emulator::Code::execute($%)                                           
      {$counts{$a}++; $count++;                                                  # Execution counts
       confess qq(Invalid instruction: "$a"\n) unless my $c = $instructions{$a};
       if ($options{trace})
-       {say STDERR sprintf "%4d  %4d  %12s", $j, $i->number, $i->action;
+       {say STDERR sprintf "%4d  %4d  %12s at %s line %d\n",
+          $j, $i->number, $i->action, $i->file, $i->line;
        }
       $c->($i);                                                                 # Execute instruction
      }
