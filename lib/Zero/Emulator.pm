@@ -201,11 +201,17 @@ sub Zero::Emulator::Code::execute($%)                                           
   my $code = $Code->code;
 
   my $instructionPointer = 0;                                                   # Instruction pointer
-  my @out;                                                                      # Output channel
-  my %counts;                                                                   # Instruction counts
-  my $count;                                                                    # Instruction count
   my @calls;                                                                    # Call stack of calls made
   my %memory;                                                                   # Memory
+
+  my $exec = genHash("Zero::Emulator::Execution",                               # Execution results
+    calls  => \@calls,                                                          # Call stack
+    code   => $code,                                                            # Code executed
+    count  => 0,                                                                # Executed instructions count
+    counts => {},                                                               # Executed instructions by name counts
+    memory => \%memory,                                                         # Memory contents at the end of execution
+    out    => [],                                                               # The out channel
+   );
 
   my sub stackTraceAndExit($)                                                   # Print a stack trace and exit
    {my ($i) = @_;                                                               # Instruction trace occurred at
@@ -219,7 +225,7 @@ sub Zero::Emulator::Code::execute($%)                                           
       push @s, sprintf "%5d  %4d %-16s at %s line %d\n", $j+1, $i->number+1, $i->action, $i->file, $i->line, unless $s;
      }
     say STDERR join "\n", @s unless $s;
-    push @out, @s;
+    push $exec->out->@*, @s;
     $instructionPointer = undef;                                                # Execution terminates as soon as undefined instuction is encountered
    };
 
@@ -295,7 +301,7 @@ sub Zero::Emulator::Code::execute($%)                                           
        }
       elsif (isScalar($$area))
        {if (defined(my $i = $memory{&stackArea}[$$$a]))
-         {if (defined(my $j = $memory{&stackArea}[$$$area]))
+         {if (defined(my $j = $memory{&stackArea}[$$area]))
            {$r = $memory{$j}[$i]                                                # Indirect from indirect area
            }
          }
@@ -412,7 +418,7 @@ sub Zero::Emulator::Code::execute($%)                                           
       my $d = $i->source;
       my $D = ref $d;
       if ($D =~ m(code)i)
-       {$d->();
+       {$d->($exec);
        }
       else
        {say STDERR $d, dump(\%memory);
@@ -495,7 +501,7 @@ sub Zero::Emulator::Code::execute($%)                                           
      {my $i = $calls[-1]->instruction;
       my $t = right($i->source, $i->sourceArea);
       lll $t if $options{trace};
-      push @out, $t;
+      push $exec->out->@*, $t;
      },
 
     pop => sub                                                                  # Pop a value from the specified memory area if possible else confess
@@ -541,7 +547,7 @@ sub Zero::Emulator::Code::execute($%)                                           
     my $i = $calls[-1]->instruction = $$code[$instructionPointer++];
     last unless $i;
     if (my $a = $i->action)                                                     # Action
-     {$counts{$a}++; $count++;                                                  # Execution counts
+     {$exec->counts->{$a}++; $exec->count++;                                    # Execution instruction counts
       confess qq(Invalid instruction: "$a"\n) unless my $c = $instructions{$a};
       if ($options{trace})
        {say STDERR sprintf "%4d  %4d  %12s at %s line %d\n",
@@ -552,14 +558,8 @@ sub Zero::Emulator::Code::execute($%)                                           
     confess "Out of instructions after $j" if $j >= maximumInstructionsToExecute;
    }
 
-  genHash("Zero::Emulator::Execution",                                          # Execution results
-    code   => $code,                                                            # Code executed
-    count  => $count,                                                           # Executed instructions count
-    counts => {%counts},                                                        # Executed instructions by name counts
-    memory => {%memory},                                                        # Memory contents at the end of execution
-    out    => [@out],                                                           # The out channel
-   );
- }
+  $exec
+ }                                                                              # Execution results
 
 my $assembly = block;                                                           # The current assembly
 
