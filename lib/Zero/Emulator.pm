@@ -409,7 +409,14 @@ sub Zero::Emulator::Code::execute($%)                                           
 
     dump    => sub                                                              # Dump memory
      {my $i = $calls[-1]->instruction;
-      say STDERR $i->source, dump(\%memory);
+      my $d = $i->source;
+      my $D = ref $d;
+      if ($D =~ m(code)i)
+       {$d->();
+       }
+      else
+       {say STDERR $d, dump(\%memory);
+       }
      },
 
     dec     => sub                                                              # Decrement locations in memory. The first location is incremented by 1, the next by two, etc.
@@ -1255,4 +1262,15 @@ if (1)                                                                          
   AssertEq $v, $V;
   Out [$a, $i];
   ok Execute(out=>[11]);
+ }
+
+#latest:;
+if (1)                                                                          #TDump
+ {my $a;
+  my $s = Start 1;
+  Dump sub
+   {$a = 1;
+   };
+  Execute;
+  ok $a == 1;
  }
