@@ -398,7 +398,7 @@ sub Zero::Emulator::Code::execute($%)                                           
       else
        {$instructionPointer = undef;
        }
-      $C->params = $C->return = undef;
+      delete $memory{$$C{$_}} for qw(stackArea params return);                  # Remove memory areas associated with the current sdtack frame
      },
 
     confess => sub                                                              # Print the current call stack and stop
@@ -1088,7 +1088,9 @@ if (1)                                                                          
   Call $add;
   ReturnGet \0, \0;
   Out \0;
-  ok Execute(out=>[4]);
+  my $r = Execute;
+  is_deeply $r->memory, { "0" => [4], "1" => [2], "2" => [4] };
+  is_deeply $r->out, [4];
  }
 
 #latest:;
