@@ -759,7 +759,7 @@ sub Else(&)                                                                     
   (else => $e)
  }
 
-sub Ifx($$$%)                                                                   # Execute then or else clause depending on whether two memory lcoations are equal.
+sub Ifx($$$%)                                                                   # Execute then or else clause depending on whether two memory locations are equal.
  {my ($cmp, $a, $b, %options) = @_;                                             # Comparison, first memory location, second memory location, then block, else block
   confess "Then required" unless $options{then};
   if ($options{else})
@@ -883,6 +883,40 @@ sub ForLoop($$)                                                                 
   setLabel($End);                                                               # End
  }
 
+sub Good(&)                                                                     # A good ending
+ {my ($good) = @_;                                                              # What to do on a good ending
+  (good => $good)
+ }
+
+sub Bad(&)                                                                      # A bad ending
+ {my ($bad) = @_;                                                               # What to do on a bad ending
+  (bad => $bad)
+ }
+
+sub Block(&%)                                                                   # Block of code that can either be restarted or come to a good or a bad ending
+ {my ($block, %options) = @_;                                                   # Block, options
+  my ($Start, $Good, $Bad, $End) = (label, label, label, label);
+
+  my $g = $options{good};
+  my $b = $options{bad};
+
+  setLabel($Start);                                                             # Start
+  &$block($Start, $Good, $Bad, $End);
+
+  if ($g)                                                                       # Good
+   {Jmp $End;
+    setLabel($Good);
+    &$g;
+   }
+
+  if ($b)                                                                       # Bad
+   {Jmp $End;
+    setLabel($Bad);
+    &$b;
+   }
+  setLabel($End);                                                               # End
+ }
+
 sub Var(;$)                                                                     # Create a variable initialized to the specified value
  {my ($value) = @_;                                                             # Value
   my $i = $assembly->variables->temporary;
@@ -906,7 +940,7 @@ use vars qw(@ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
 
 @ISA         = qw(Exporter);
 @EXPORT      = qw();
-@EXPORT_OK   = qw(areaStructure Add Alloc Call Confess Else Execute For ForLoop Free AssertEq AssertNe AssertGe AssertGt AssertLe AssertLt AssertNe Dec Dump IfEq IfGe IfGt IfLe IfLt IfNe Ifx Inc Jeq Jge Jgt Jle Jlt Jmp Jne Label Mov Nop Out ParamsGet ParamsPut Pop Procedure Push Return ReturnGet ReturnPut Smaller Start Then Var);
+@EXPORT_OK   = qw(areaStructure Add Alloc Call Confess Else Execute For ForLoop Free AssertEq AssertNe AssertGe AssertGt AssertLe AssertLt Dec Dump IfEq IfGe IfGt IfLe IfLt IfNe Ifx Inc Jeq Jge Jgt Jle Jlt Jmp Jne Label Mov Nop Out ParamsGet ParamsPut Pop Procedure Push Return ReturnGet ReturnPut Smaller Start Then Var);
 %EXPORT_TAGS = (all=>[@EXPORT, @EXPORT_OK]);
 
 return 1 if caller;
@@ -1292,4 +1326,40 @@ if (1)                                                                          
    };
   Execute;
   ok $a == 1;
+ }
+
+#latest:;
+if (1)                                                                          #TBlock
+ {my $s = Start 1;
+  Block
+   {my ($start, $good, $bad, $end) = @_;
+    Out 1;
+    Jmp $good;
+   }
+  Good
+   {Out 2;
+   },
+  Bad
+   {Out 3;
+   };
+  Out 4;
+  ok Execute(out=>[1,2,4]);
+ }
+
+#latest:;
+if (1)                                                                          #TBlock
+ {my $s = Start 1;
+  Block
+   {my ($start, $good, $bad, $end) = @_;
+    Out 1;
+    Jmp $bad;
+   }
+  Good
+   {Out 2;
+   },
+  Bad
+   {Out 3;
+   };
+  Out 4;
+  ok Execute(out=>[1,3,4]);
  }
