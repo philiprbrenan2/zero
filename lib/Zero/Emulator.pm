@@ -339,9 +339,13 @@ sub Zero::Emulator::Code::execute($%)                                           
    }
 
   my %instructions =                                                            # Instruction definitions
-   (add       => sub                                                            # Add two arrays to make a third array
+   (add       => sub                                                            # Add the two source operands and store the result in the target
      {my $i = $calls[-1]->instruction;
       setMemory $i->target, right($i->source) + right($i->source2), $i->targetArea;
+     },
+    subtract  => sub                                                            # Subtract the second source operand from the first and store the result in the target
+     {my $i = $calls[-1]->instruction;
+      setMemory $i->target, right($i->source) - right($i->source2), $i->targetArea;
      },
 
     alloc     => sub                                                            # Create a new memory area and write its number into the location named by the target operand
@@ -614,9 +618,16 @@ sub Start($)                                                                    
   $assembly = block;                                                            # The current assembly
  }
 
-sub Add($$$;$)                                                                  # Copy the contents of the source location to the target location
+sub Add($$$;$)                                                                  # Add the source locations together and store in the result in the target area
  {my ($target, $s1, $s2) = @_;                                                  # Target location, source one, source two
   $assembly->instruction(action=>"add", xTarget($target),
+    source=>$s1, source2=>$s2);
+  $target
+ }
+
+sub Subtract($$$;$)                                                             # Subtract the second source location from the first and store in the result in the target area
+ {my ($target, $s1, $s2) = @_;                                                  # Target location, source one, source two
+  $assembly->instruction(action=>"subtract", xTarget($target),
     source=>$s1, source2=>$s2);
   $target
  }
@@ -1016,15 +1027,13 @@ if (1)                                                                          
  }
 
 #latest:;
-if (1)                                                                          #TAdd
+if (1)                                                                          #TAdd #TSubtract
  {Start 1;
-  Mov   1, 1;
-  Mov   2, 2;
-  Mov   3, 0;
-  Mov   4, 3;
-  Add  \4, \1, \2;
-  Out  3;
-  ok Execute(out=>[3]);
+  my $a = Add      Var, 1, 2;
+  my $b = Subtract Var, 4, 2;
+  Out $a;
+  Out $b;
+  ok Execute(out=>[3,2]);
  }
 
 #latest:;
