@@ -39,7 +39,7 @@ sub areaStructure($@)                                                           
   $d
  }
 
-sub Zero::Emulator::areaStructure::temporary($;$)                               # Create one or more temporary variables. Need to reuse temporaries no longer in use
+sub Zero::Emulator::areaStructure::registers($;$)                               # Create one or more temporary variables. Need to reuse registers no longer in use
  {my ($d, $count) = @_;                                                         # Parameters
   if (!defined($count))
    {my $o = $d->fieldOrder->@*;
@@ -811,6 +811,11 @@ sub Ifx($$$%)                                                                   
    }
  }
 
+sub IfTrue($%)                                                                  # Execute then clause if the specified memorylocation is not zero
+ {my ($a, %options) = @_;                                                       # Memory location, then block, else block
+  Ifx(\&Jeq, $a, 0, %options);
+ }
+
 sub IfEq($$%)                                                                   # Execute then or else clause depending on whether two memory locations are equal.
  {my ($a, $b, %options) = @_;                                                   # First memory location, second memory location, then block, else block
   Ifx(\&Jne, $a, $b, %options);
@@ -904,7 +909,7 @@ sub For(%)                                                                      
 
 sub ForLoop($$)                                                                 # For loop 0..range-1
  {my ($range, $block) = @_;                                                     # Limit, block
-  my $i = $assembly->variables->temporary;
+  my $i = $assembly->variables->registers;
   my $s = 0; my $e = $range;                                                    # end
   ($s, $e) = @$range if ref $e;                                                 # [start, end]
 
@@ -957,7 +962,7 @@ sub Block(&%)                                                                   
 
 sub Var(;$)                                                                     # Create a variable initialized to the specified value
  {my ($value) = @_;                                                             # Value
-  my $i = $assembly->variables->temporary;
+  my $i = $assembly->variables->registers;
   Mov $i, $value if defined $value;
   $i
  }
@@ -1209,7 +1214,7 @@ if (1)                                                                          
  {Start 1;
   my $add = Procedure 'add2', sub
    {my ($p) = @_;                                                               # Procedure description
-    my ($a, $b) = $p->variables->temporary(2);
+    my ($a, $b) = $p->variables->registers(2);
     ParamsGet $a, 0;
     Add $b, $a, 2;
     ReturnPut 0, $b;
@@ -1277,7 +1282,7 @@ if (1)                                                                          
 #latest:;
 if (1)                                                                          # Layout
  {my $s = Start 1;
-  my ($a, $b, $c) = $s->variables->temporary(3);
+  my ($a, $b, $c) = $s->variables->registers(3);
   Mov $a, 'A';
   Mov $b, 'B';
   Mov $c, 'C';
@@ -1290,7 +1295,7 @@ if (1)                                                                          
 #latest:;
 if (1)                                                                          #TIfEq
  {my $s = Start 1;
-  my ($a, $b, $c) = $s->variables->temporary(3);
+  my ($a, $b, $c) = $s->variables->registers(3);
   Mov $a, 1;
   Mov $b, 2;
   IfEq $a, $a,
@@ -1305,9 +1310,22 @@ if (1)                                                                          
  }
 
 #latest:;
+if (1)                                                                          #TIfTrue
+ {my $s = Start 1;
+  IfTrue 1,
+  Then
+   {Out 1
+   },
+  Else
+   {Out 0
+   };
+  ok Execute(out=>[1]);
+ }
+
+#latest:;
 if (1)                                                                          #TFor
  {my $s = Start 1;
-  my ($a) = $s->variables->temporary;
+  my ($a) = $s->variables->registers;
   For start => sub{Mov $a, 0},
       check => sub{Jge  $_[0], $a, 10},
       next  => sub{Inc $a},
@@ -1360,7 +1378,7 @@ if (1)                                                                          
 #latest:;
 if (1)                                                                          # Temporary variable
  {my $s = Start 1;
-  my ($a) = $s->variables->temporary;
+  my ($a) = $s->variables->registers;
   my ($b) = $s->variables->name(q(b));
   Mov $a, 1;
   Mov $b, 2;
@@ -1372,7 +1390,7 @@ if (1)                                                                          
 #latest:;
 if (1)                                                                          #TAlloc #TMov #TCall
  {my $s = Start 1;
-  my ($a, $i, $v, $V) = $s->variables->temporary(4);
+  my ($a, $i, $v, $V) = $s->variables->registers(4);
   Alloc $a;
   Mov $i, 1;
   Mov $v, 11;
@@ -1381,7 +1399,7 @@ if (1)                                                                          
   ParamsPut 2, $v;
   my $set = Procedure 'set', sub
    {my ($p) = @_;
-    my ($a, $i, $v) = $p->variables->temporary(3);
+    my ($a, $i, $v) = $p->variables->registers(3);
     ParamsGet $a, 0;
     ParamsGet $i, 1;
     ParamsGet $v, 2;
