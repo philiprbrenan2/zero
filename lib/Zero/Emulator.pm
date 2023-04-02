@@ -137,13 +137,13 @@ sub isScalar($)                                                                 
   ! ref $value;
  }
 
-sub block(%)                                                                    # A block of code
+sub Code(%)                                                                     # A block of code
  {my (%options) = @_;                                                           # Parameters
 
   genHash("Zero::Emulator::Code",                                               # Description of a call stack entry
     assembled    => undef,                                                      # Needs to be assembled unless this field is true
     code         => [],                                                         # An array of instructions
-    variables    => areaStructure("Block"),                                     # Variables in this block of code
+    variables    => areaStructure("Variables"),                                 # Variables in this block of code
     labels       => {},                                                         # Label name to instruction
     labelCounter => 0,                                                          # Label counter used to generate unique labels
     files        => [],                                                         # File number to file name
@@ -589,7 +589,7 @@ sub Zero::Emulator::Code::execute($%)                                           
   $exec
  }                                                                              # Execution results
 
-my $assembly = block;                                                           # The current assembly
+my $assembly;                                                                   # The current assembly
 
 sub label()                                                                     # Next unique label
  {++$assembly->labelCounter;
@@ -621,7 +621,7 @@ sub xTarget($)                                                                  
 sub Start($)                                                                    # Start the current assembly using the specified version of the Zero languiage.  At  the moment only version 1 works.
  {my ($version) = @_;                                                           # Version desired - at the moment only 1
   $version == 1 or confess "Version 1 is currently the only version available\n";
-  $assembly = block;                                                            # The current assembly
+  $assembly = Code;                                                             # The current assembly
  }
 
 sub Add($$$;$)                                                                  # Add the source locations together and store in the result in the target area
