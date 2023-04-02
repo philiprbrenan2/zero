@@ -533,6 +533,20 @@ sub Zero::Emulator::Code::execute($%)                                           
        {setMemory $$t, $s1 == $s2 ? 0 : $s1 < $s2 ? 1 : 2, $a;
        }
      },
+
+    shiftLeft => sub                                                            # Shift left
+     {my $i = $calls[-1]->instruction;
+      my $t = left ($i->target);
+      my $s = right($i->source);
+      $$t = $$t << $s;
+     },
+
+    shiftRight => sub                                                           # Shift right
+     {my $i = $calls[-1]->instruction;
+      my $t = left ($i->target);
+      my $s = right($i->source);
+      $$t = $$t >> $s;
+     },
    );
 
   push @calls, stackFrame(                                                      # Initial stack entries
@@ -935,12 +949,24 @@ sub Execute(%)                                                                  
   return $r;
  }
 
+sub ShiftLeft($;$)                                                              # Shift left
+ {my ($target, $source) = @_;                                                   # Target to shift, amount to shift
+  $assembly->instruction(action=>"shiftLeft", xTarget($target), xSource($source));
+  $target
+ }
+
+sub ShiftRight($;$)                                                             # Shift right
+ {my ($target, $source) = @_;                                                   # Target to shift, amount to shift
+  $assembly->instruction(action=>"shiftRight", xTarget($target), xSource($source));
+  $target
+ }
+
 use Exporter qw(import);
 use vars qw(@ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
 
 @ISA         = qw(Exporter);
 @EXPORT      = qw();
-@EXPORT_OK   = qw(areaStructure Add Alloc Call Confess Else Execute For ForLoop Free AssertEq AssertNe AssertGe AssertGt AssertLe AssertLt Dec Dump IfEq IfGe IfGt IfLe IfLt IfNe Ifx Inc Jeq Jge Jgt Jle Jlt Jmp Jne Label Mov Nop Out ParamsGet ParamsPut Pop Procedure Push Return ReturnGet ReturnPut Smaller Start Then Var);
+@EXPORT_OK   = qw(areaStructure Add Alloc Bad Block Call Confess Else Execute For ForLoop Free Good AssertEq AssertNe AssertGe AssertGt AssertLe AssertLt Dec Dump IfEq IfGe IfGt IfLe IfLt IfNe Ifx Inc Jeq Jge Jgt Jle Jlt Jmp Jne Label Mov Nop Out ParamsGet ParamsPut Pop Procedure Push Return ReturnGet ReturnPut Smaller Start Then Var);
 %EXPORT_TAGS = (all=>[@EXPORT, @EXPORT_OK]);
 
 return 1 if caller;
@@ -1017,6 +1043,24 @@ if (1)                                                                          
   Inc \1;
   Out \1;
   ok Execute(out=>[3]);
+ }
+
+#latest:;
+if (1)                                                                          #TShiftLeft
+ {Start 1;
+  Mov  1, 1;
+  ShiftLeft 1, 1;
+  Out \1;
+  ok Execute(out=>[2]);
+ }
+
+#latest:;
+if (1)                                                                          #TShiftRight
+ {Start 1;
+  Mov  1, 4;
+  ShiftRight 1, 1;
+  Out \1;
+  ok Execute(out=>[2]);
  }
 
 #latest:;
