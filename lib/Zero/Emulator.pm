@@ -905,13 +905,15 @@ sub For(%)                                                                      
 sub ForLoop($$)                                                                 # For loop 0..range-1
  {my ($range, $block) = @_;                                                     # Limit, block
   my $i = $assembly->variables->temporary;
+  my $s = 0; my $e = $range;                                                    # end
+  ($s, $e) = @$range if ref $e;                                                 # [start, end]
 
   my ($Start, $Check, $Next, $End) = (label, label, label, label);
 
   setLabel($Start);                                                             # Start
-  Mov $i, 0;
+  Mov $i, $s;
     setLabel($Check);                                                           # Check
-    Jge  $End, $i, $range;
+    Jge  $End, $i, $e;
       &$block($i, $Check, $Next, $End);                                         # Block
     setLabel($Next);
     Inc $i;                                                                     # Next
@@ -1321,6 +1323,16 @@ if (1)                                                                          
     Out $i;
    };
   ok Execute(out=>[0..9]);
+ }
+
+#latest:;
+if (1)                                                                          #TForLoop
+ {my $s = Start 1;
+  ForLoop [2, 10], sub
+   {my ($i) = @_;
+    Out $i;
+   };
+  ok Execute(out=>[2..9]);
  }
 
 #latest:;
