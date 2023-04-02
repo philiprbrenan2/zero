@@ -354,6 +354,12 @@ sub Zero::Emulator::Code::execute($%)                                           
       setMemory $i->target, $a, $i->targetArea;
      },
 
+    assert    =>   sub                                                          # Assert
+     {my $i = $calls[-1]->instruction;
+      say STDERR "Assert failed" unless $options{suppressStackTracePrint};
+      stackTraceAndExit($i);
+     },
+
     assertEq  =>   sub                                                          # Assert equals
      {assert("==", sub {my ($a, $b) = @_; $a == $b})
      },
@@ -835,39 +841,44 @@ sub IfGe($$%)                                                                   
   Ifx(\&Jgt, $a, $b, %options);
  }
 
-sub Assert($$$)                                                                 # Assert
+sub AssertOp($$$)                                                               # Assert operation
  {my ($op, $a, $b) = @_;                                                        # Operation, First memory location, second memory location
   $assembly->instruction(action=>"assert$op", source=>$a, source2=>$b, level=>2);
  }
 
+sub Assert(%)                                                                   # Assert regardless
+ {my (%options) = @_;                                                           #
+  $assembly->instruction(action=>"assert");
+ }
+
 sub AssertEq($$%)                                                               # Assert two memory locations are equal.
  {my ($a, $b, %options) = @_;                                                   # First memory location, second memory location
-  Assert("Eq", $a, $b);
+  AssertOp("Eq", $a, $b);
  }
 
 sub AssertNe($$%)                                                               # Assert two memory locations are not equal.
  {my ($a, $b, %options) = @_;                                                   # First memory location, second memory location
-  Assert("Ne", $a, $b);
+  AssertOp("Ne", $a, $b);
  }
 
 sub AssertLt($$%)                                                               # Assert two memory locations are less than.
  {my ($a, $b, %options) = @_;                                                   # First memory location, second memory location
-  Assert("Lt", $a, $b);
+  AssertOp("Lt", $a, $b);
  }
 
 sub AssertLe($$%)                                                               # Assert two memory locations are less than or equal.
  {my ($a, $b, %options) = @_;                                                   # First memory location, second memory location
-  Assert("Le", $a, $b);
+  AssertOp("Le", $a, $b);
  }
 
 sub AssertGt($$%)                                                               # Assert two memory locations are greater than.
  {my ($a, $b, %options) = @_;                                                   # First memory location, second memory location
-  Assert("Gt", $a, $b);
+  AssertOp("Gt", $a, $b);
  }
 
 sub AssertGe($$%)                                                               # Assert are greater than or equal.
  {my ($a, $b, %options) = @_;                                                   # First memory location, second memory location
-  Assert("Ge", $a, $b);
+  AssertOp("Ge", $a, $b);
  }
 
 sub For(%)                                                                      # For loop with initial, check, next clauses
@@ -977,7 +988,7 @@ use vars qw(@ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
 
 @ISA         = qw(Exporter);
 @EXPORT      = qw();
-@EXPORT_OK   = qw(areaStructure Add Alloc Bad Block Call Confess Else Execute For ForLoop Free Good AssertEq AssertNe AssertGe AssertGt AssertLe AssertLt Dec Dump IfEq IfGe IfGt IfLe IfLt IfNe Ifx Inc Jeq Jge Jgt Jle Jlt Jmp Jne Label Mov Nop Out ParamsGet ParamsPut Pop Procedure Push Return ReturnGet ReturnPut Smaller Start Then Var);
+@EXPORT_OK   = qw(areaStructure Add Alloc Bad Block Call Confess Else Execute For ForLoop Free Good Assert AssertEq AssertNe AssertGe AssertGt AssertLe AssertLt Dec Dump IfEq IfGe IfGt IfLe IfLt IfNe Ifx Inc Jeq Jge Jgt Jle Jlt Jmp Jne Label Mov Nop Out ParamsGet ParamsPut Pop Procedure Push Return ReturnGet ReturnPut Smaller Start Then Var);
 %EXPORT_TAGS = (all=>[@EXPORT, @EXPORT_OK]);
 
 return 1 if caller;
@@ -1313,6 +1324,16 @@ if (1)                                                                          
  }
 
 #latest:;
+if (1)                                                                          #TAssert
+ {my $s = Start 1;
+  Assert;
+  my $r = Execute(suppressStackTracePrint=>1);
+  is_deeply $r->out, [
+"Stack trace\n",
+  "    1     1 assert\n",
+];
+ }
+
 if (1)                                                                          #TAssertEq
  {my $s = Start 1;
   Mov 0, 1;
