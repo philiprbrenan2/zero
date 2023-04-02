@@ -7,5 +7,7 @@ A minimal [assembler](https://en.wikipedia.org/wiki/Assembly_language#Assembler)
 The goal is to implement N-Way [trees](https://en.wikipedia.org/wiki/Tree_(data_structure)) in Zero [assembler](https://en.wikipedia.org/wiki/Assembly_language#Assembler) [code](https://en.wikipedia.org/wiki/Computer_program), optimize the [assembler](https://en.wikipedia.org/wiki/Assembly_language#Assembler) [code](https://en.wikipedia.org/wiki/Computer_program) implementation through exhaustive testing, then realize the
 algorithm in silicon hardware rather than software to manufacture associative [memory](https://en.wikipedia.org/wiki/Computer_memory) on an industrial scale.
 
+Open the __action__ [tab](https://en.wikipedia.org/wiki/Tab_key) to see the [code](https://en.wikipedia.org/wiki/Computer_program) in action.
+
 If you would like to be involved with this project, please raise an issue
 saying so!
