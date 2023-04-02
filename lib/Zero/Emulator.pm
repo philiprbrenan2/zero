@@ -601,16 +601,10 @@ sub Start($)                                                                    
  }
 
 sub Add($$$;$)                                                                  # Copy the contents of the source location to the target location
- {if (@_ == 3)
-   {my ($target, $s1, $s2) = @_;                                                # Target location, source one, source two
-    $assembly->instruction(action=>"add",
-      target=>$target, source=>$s1, source2=>$s2);
-   }
-  else
-   {my ($t1, $t2, $s1, $s2) = @_;                                               # Target location, target area, source one, source two
-    $assembly->instruction(action=>"add",
-      target=>$t1, targetArea=>$t2, source=>$s1, source2=>$s2);
-   }
+ {my ($target, $s1, $s2) = @_;                                                  # Target location, source one, source two
+  $assembly->instruction(action=>"add", xTarget($target),
+    source=>$s1, source2=>$s2);
+  $target
  }
 
 sub Alloc($)                                                                    # Create a new memory area and write its number into the location named by the target operand
@@ -872,6 +866,30 @@ sub For(%)                                                                      
   setLabel($End);
  }
 
+sub ForLoop($$)                                                                 # For loop 0..range-1
+ {my ($range, $block) = @_;                                                     # Limit, block
+  my $i = $assembly->variables->temporary;
+
+  my ($Start, $Check, $Next, $End) = (label, label, label, label);
+
+  setLabel($Start);                                                             # Start
+  Mov $i, 0;
+    setLabel($Check);                                                           # Check
+    Jge  $End, $i, $range;
+      &$block($i, $Check, $Next, $End);                                         # Block
+    setLabel($Next);
+    Inc $i;                                                                     # Next
+    Jmp $Check;
+  setLabel($End);                                                               # End
+ }
+
+sub Var(;$)                                                                     # Create a variable initialized to the specified value
+ {my ($value) = @_;                                                             # Value
+  my $i = $assembly->variables->temporary;
+  Mov $i, $value if defined $value;
+  $i
+ }
+
 sub Execute(%)                                                                  # Execute the current assembly
  {my (%options) = @_;                                                           # Options
   my $r = $assembly->execute(%options);                                         # Execute the code in the current assembly
@@ -888,7 +906,7 @@ use vars qw(@ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
 
 @ISA         = qw(Exporter);
 @EXPORT      = qw();
-@EXPORT_OK   = qw(areaStructure Add Alloc Call Confess Else Execute For Free AssertEq AssertGe AssertGt AssertLe AssertLt AssertNe Dec Dump IfEq IfGe IfGt IfLe IfLt IfNe Ifx Inc Jeq Jge Jgt Jle Jlt Jmp Jne Label Mov Nop Out ParamsGet ParamsPut Pop Procedure Push Return ReturnGet ReturnPut Smaller Start Then);
+@EXPORT_OK   = qw(areaStructure Add Alloc Call Confess Else Execute For ForLoop Free AssertEq AssertGe AssertGt AssertLe AssertLt AssertNe Dec Dump IfEq IfGe IfGt IfLe IfLt IfNe Ifx Inc Jeq Jge Jgt Jle Jlt Jmp Jne Label Mov Nop Out ParamsGet ParamsPut Pop Procedure Push Return ReturnGet ReturnPut Smaller Start Then);
 %EXPORT_TAGS = (all=>[@EXPORT, @EXPORT_OK]);
 
 return 1 if caller;
@@ -1091,7 +1109,7 @@ if (1)                                                                          
  {Start 1;
   my $add = Procedure 'add2', sub
    {my ($p) = @_;                                                               # Procedure description
-    my ($a, $b) = $p->variables->names(qw(a b));
+    my ($a, $b) = $p->variables->temporary(2);
     ParamsGet $a, 0;
     Add $b, $a, 2;
     ReturnPut 0, $b;
@@ -1189,11 +1207,21 @@ if (1)                                                                          
 #latest:;
 if (1)                                                                          #TFor
  {my $s = Start 1;
-  my ($a) = $s->variables->names(qw(a));
+  my ($a) = $s->variables->temporary;
   For start => sub{Mov $a, 0},
       check => sub{Jge  $_[0], $a, 10},
       next  => sub{Inc $a},
       block => sub{Out $a};
+  ok Execute(out=>[0..9]);
+ }
+
+#latest:;
+if (1)                                                                          #TForLoop
+ {my $s = Start 1;
+  ForLoop 10, sub
+   {my ($i) = @_;
+    Out $i;
+   };
   ok Execute(out=>[0..9]);
  }
 
@@ -1245,6 +1273,14 @@ if (1)                                                                          
   AssertEq $v, $V;
   Out [$a, $i];
   ok Execute(out=>[11]);
+ }
+
+#latest:;
+if (1)                                                                          #TVar
+ {my $s = Start 1;
+  my $a = Add Var, 1, 2;
+  Out $a;
+  ok Execute(out=>[3]);
  }
 
 #latest:;
