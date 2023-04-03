@@ -813,7 +813,12 @@ sub Ifx($$$%)                                                                   
    }
  }
 
-sub IfTrue($%)                                                                  # Execute then clause if the specified memorylocation is not zero
+sub IfFalse($%)                                                                 # Execute then clause if the specified memory location is zero representing false
+ {my ($a, %options) = @_;                                                       # Memory location, then block, else block
+  Ifx(\&Jne, $a, 0, %options);
+ }
+
+sub IfTrue($%)                                                                  # Execute then clause if the specified memory location is not zero representing true
  {my ($a, %options) = @_;                                                       # Memory location, then block, else block
   Ifx(\&Jeq, $a, 0, %options);
  }
@@ -1322,6 +1327,19 @@ if (1)                                                                          
    {Out 0
    };
   ok Execute(out=>[1]);
+ }
+
+#latest:;
+if (1)                                                                          #TIfFalse
+ {my $s = Start 1;
+  IfFalse 1,
+  Then
+   {Out 1
+   },
+  Else
+   {Out 0
+   };
+  ok Execute(out=>[0]);
  }
 
 #latest:;
