@@ -87,6 +87,11 @@ my sub procedure($%)                                                            
   );
  }
 
+sub Zero::Emulator::Procedure::registers($$)                                    # Allocate registers within a procedure
+ {my ($procedure, $number) = @_;                                                         # Procedure description
+  $procedure->variables->registers($number);
+ }
+
 sub Zero::Emulator::Procedure::call($)                                          # Call a procedure.  Arguments are supplied by the ParamsPut and Get commands, return values are supplied by the ReturnPut and Get commands.
  {my ($procedure) = @_;                                                         # Procedure description
   Zero::Emulator::Call($procedure->target);
@@ -150,6 +155,11 @@ my sub Code(%)                                                                  
     procedures   => {},                                                         # Procdures defined in this block of code
     %options,
    );
+ }
+
+sub Zero::Emulator::Code::registers($$)                                         # Allocate registers
+ {my ($code, $number) = @_;                                                     # Code block, number of registers required
+  $code->variables->registers($number)
  }
 
 sub Zero::Emulator::Code::assemble($%)                                          # Assemble a block of code to prepare it for execution
@@ -901,7 +911,7 @@ sub For(%)                                                                      
 
 sub ForLoop($$)                                                                 # For loop 0..range-1
  {my ($range, $block) = @_;                                                     # Limit, block
-  my $i = $assembly->variables->registers;
+  my $i = $assembly->registers;
   my $s = 0; my $e = $range;                                                    # end
   ($s, $e) = @$range if ref $e;                                                 # [start, end]
 
@@ -954,7 +964,7 @@ sub Block(&%)                                                                   
 
 sub Var(;$)                                                                     # Create a variable initialized to the specified value
  {my ($value) = @_;                                                             # Value
-  my $i = $assembly->variables->registers;
+  my $i = $assembly->registers;
   Mov $i, $value if defined $value;
   $i
  }
@@ -1206,7 +1216,7 @@ if (1)                                                                          
  {Start 1;
   my $add = Procedure 'add2', sub
    {my ($p) = @_;                                                               # Procedure description
-    my ($a, $b) = $p->variables->registers(2);
+    my ($a, $b) = $p->registers(2);
     ParamsGet $a, 0;
     Add $b, $a, 2;
     ReturnPut 0, $b;
@@ -1274,7 +1284,7 @@ if (1)                                                                          
 #latest:;
 if (1)                                                                          # Layout
  {my $s = Start 1;
-  my ($a, $b, $c) = $s->variables->registers(3);
+  my ($a, $b, $c) = $s->registers(3);
   Mov $a, 'A';
   Mov $b, 'B';
   Mov $c, 'C';
@@ -1287,7 +1297,7 @@ if (1)                                                                          
 #latest:;
 if (1)                                                                          #TIfEq
  {my $s = Start 1;
-  my ($a, $b, $c) = $s->variables->registers(3);
+  my ($a, $b, $c) = $s->registers(3);
   Mov $a, 1;
   Mov $b, 2;
   IfEq $a, $a,
@@ -1317,7 +1327,7 @@ if (1)                                                                          
 #latest:;
 if (1)                                                                          #TFor
  {my $s = Start 1;
-  my ($a) = $s->variables->registers;
+  my ($a) = $s->registers;
   For start => sub{Mov $a, 0},
       check => sub{Jge  $_[0], $a, 10},
       next  => sub{Inc $a},
@@ -1370,7 +1380,7 @@ if (1)                                                                          
 #latest:;
 if (1)                                                                          # Temporary variable
  {my $s = Start 1;
-  my ($a) = $s->variables->registers;
+  my ($a) = $s->registers;
   my ($b) = $s->variables->name(q(b));
   Mov $a, 1;
   Mov $b, 2;
@@ -1382,7 +1392,7 @@ if (1)                                                                          
 #latest:;
 if (1)                                                                          #TAlloc #TMov #TCall
  {my $s = Start 1;
-  my ($a, $i, $v, $V) = $s->variables->registers(4);
+  my ($a, $i, $v, $V) = $s->registers(4);
   Alloc $a;
   Mov $i, 1;
   Mov $v, 11;
@@ -1391,7 +1401,7 @@ if (1)                                                                          
   ParamsPut 2, $v;
   my $set = Procedure 'set', sub
    {my ($p) = @_;
-    my ($a, $i, $v) = $p->variables->registers(3);
+    my ($a, $i, $v) = $p->registers(3);
     ParamsGet $a, 0;
     ParamsGet $i, 1;
     ParamsGet $v, 2;
