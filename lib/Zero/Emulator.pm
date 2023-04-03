@@ -25,9 +25,9 @@ Well known locations are represented by negative area ids
 
 makeDieConfess;
 
-sub maximumInstructionsToExecute (){1000}                                        # Maximum number of subroutines to execute
+my sub maximumInstructionsToExecute {1000}                                      # Maximum number of subroutines to execute
 
-sub areaStructure($@)                                                           # Describe a data structure mapping a memory area
+my sub areaStructure($@)                                                        # Describe a data structure mapping a memory area
  {my ($structureName, @names) = @_;                                             # Structure name, fields names
 
   my $d = genHash("Zero::Emulator::areaStructure",                              # Description of a data structure mapping a memory area
@@ -78,7 +78,7 @@ sub Zero::Emulator::areaStructure::address($$)                                  
   confess "No such name: '$name' in structure: ".$d->structureName;
  }
 
-sub procedure($%)                                                               # Describe a procedure
+my sub procedure($%)                                                            # Describe a procedure
  {my ($label, %options) = @_;                                                   # Start label of procedure, options describing procedure
 
   genHash("Zero::Emulator::Procedure",                                          # Description of a procedure
@@ -92,7 +92,7 @@ sub Zero::Emulator::Procedure::call($)                                          
   Zero::Emulator::Call($procedure->target);
  }
 
-sub stackFrame(%)                                                               # Describe an entry on the call stack: the return address, the parameter list length, the parameter list location, the line of code from which the call was made, the file number of the file from which the call was made
+my sub stackFrame(%)                                                            # Describe an entry on the call stack: the return address, the parameter list length, the parameter list location, the line of code from which the call was made, the file number of the file from which the call was made
  {my (%options) = @_;                                                           # Parameters
 
   genHash("Zero::Emulator::StackFrame",                                         # Description of a stack frame. A stack frame provides the context in which a method runs.
@@ -132,12 +132,12 @@ sub Zero::Emulator::Code::instruction($%)                                       
    }
  }
 
-sub isScalar($)                                                                 # Check whether an element is a scalar or an array
+my sub isScalar($)                                                              # Check whether an element is a scalar or an array
  {my ($value) = @_;                                                             # Parameters
   ! ref $value;
  }
 
-sub Code(%)                                                                     # A block of code
+my sub Code(%)                                                                  # A block of code
  {my (%options) = @_;                                                           # Parameters
 
   genHash("Zero::Emulator::Code",                                               # Description of a call stack entry
@@ -150,14 +150,6 @@ sub Code(%)                                                                     
     procedures   => {},                                                         # Procdures defined in this block of code
     %options,
    );
- }
-
-sub emulate($%)                                                                 # Emulate an array of code
- {my ($code, %options) = @_;                                                    # Block of code, options
-
-  my $c = code(code => $code);
-  my $r = $c->Execute(%options);
-  $r
  }
 
 sub Zero::Emulator::Code::assemble($%)                                          # Assemble a block of code to prepare it for execution
@@ -591,29 +583,29 @@ sub Zero::Emulator::Code::execute($%)                                           
 
 my $assembly;                                                                   # The current assembly
 
-sub label()                                                                     # Next unique label
+my sub label()                                                                  # Next unique label
  {++$assembly->labelCounter;
  }
 
-sub setLabel(;$)                                                                # Set and return a label
+my sub setLabel(;$)                                                             # Set and return a label
  {my ($l) = @_;                                                                 # Optional preset label
   $l //= label;                                                                 # Create label if none supplied
   Label($l);                                                                    # Set label
   $l                                                                            # return (new) label
  }
 
-sub xAddress($$)                                                                # Expand an address argument
+my sub xAddress($$)                                                             # Expand an address argument
  {my ($f, $s) = @_;                                                             # Field name, source expression - either a single location ion the currnt stack frame or a refernce to an array conatyaining anInstruction pair containing the area id followed by the location
   return ($f=>$s) unless ref($s) =~ m(array)i;                                  # Single field
  ($f=>$$s[1], $f."Area"=>$$s[0]);                                               # Pair of fields
  }
 
-sub xSource($)                                                                  # Expand a source argument
+my sub xSource($)                                                               # Expand a source argument
  {my ($s) = @_;                                                                 # Source expression - either a single location ion the currnt stack frame or a refernce to an array conatyaining anInstruction pair containing the area id followed by the location
   xAddress(q(source), $s)
  }
 
-sub xTarget($)                                                                  # Expand a target argument
+my sub xTarget($)                                                               # Expand a target argument
  {my ($t) = @_;                                                                 # Target expression - either a single location ion the currnt stack frame or a refernce to an array conatyaining anInstruction pair containing the area id followed by the location
   xAddress(q(target), $t)
  }
@@ -624,15 +616,15 @@ sub Start($)                                                                    
   $assembly = Code;                                                             # The current assembly
  }
 
-sub Add($$$;$)                                                                  # Add the source locations together and store in the result in the target area
- {my ($target, $s1, $s2) = @_;                                                  # Target location, source one, source two
+sub Add($$;$)                                                                   # Add the source locations together and store in the result in the target area
+ {my ($target, $s1, $s2) = @_ == 2 ? (&Var, @_) : @_;                           # Target location, source one, source two
   $assembly->instruction(action=>"add", xTarget($target),
     source=>$s1, source2=>$s2);
   $target
  }
 
-sub Subtract($$$;$)                                                             # Subtract the second source location from the first and store in the result in the target area
- {my ($target, $s1, $s2) = @_;                                                  # Target location, source one, source two
+sub Subtract($$;$)                                                              # Subtract the second source location from the first and store in the result in the target area
+ {my ($target, $s1, $s2) = @_ == 2 ? (&Var, @_) : @_;                           # Target location, source one, source two
   $assembly->instruction(action=>"subtract", xTarget($target),
     source=>$s1, source2=>$s2);
   $target
@@ -1047,8 +1039,8 @@ if (1)                                                                          
 #latest:;
 if (1)                                                                          #TAdd #TSubtract
  {Start 1;
-  my $a = Add      Var, 1, 2;
-  my $b = Subtract Var, 4, 2;
+  my $a = Add      1, 2;
+  my $b = Subtract 4, 2;
   Out $a;
   Out $b;
   ok Execute(out=>[3,2]);
@@ -1416,7 +1408,7 @@ if (1)                                                                          
 #latest:;
 if (1)                                                                          #TVar
  {my $s = Start 1;
-  my $a = Add Var, 1, 2;
+  my $a = Add 1, 2;
   Out $a;
   ok Execute(out=>[3]);
  }
