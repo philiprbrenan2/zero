@@ -1,6 +1,6 @@
 #!/usr/bin/perl -I/home/phil/perl/cpan/DataTableText/lib/
 #-------------------------------------------------------------------------------
-# Emulate the zero assembly programming language.
+# Assemble and execute the Zero programming language.
 # Philip R Brenan at appaapps dot com, Appa Apps Ltd Inc., 2023
 #-------------------------------------------------------------------------------
 use v5.30;
@@ -27,7 +27,7 @@ makeDieConfess;
 
 my sub maximumInstructionsToExecute {1000}                                      # Maximum number of subroutines to execute
 
-my sub areaStructure($@)                                                        # Describe a data structure mapping a memory area
+sub areaStructure($@)                                                           # Describe a data structure mapping a memory area
  {my ($structureName, @names) = @_;                                             # Structure name, fields names
 
   my $d = genHash("Zero::Emulator::areaStructure",                              # Description of a data structure mapping a memory area
@@ -784,11 +784,13 @@ sub Smaller($$$)                                                                
 
 sub Then(&)                                                                     # Then block
  {my ($t) = @_;                                                                 # Then block subroutine
+  @_ == 1 or confess "One parameter";
   (then => $t)
  }
 
 sub Else(&)                                                                     # Else block
  {my ($e) = @_;                                                                 # Else block subroutine
+  @_ == 1 or confess "One parameter";
   (else => $e)
  }
 
@@ -935,11 +937,13 @@ sub ForLoop($$)                                                                 
 
 sub Good(&)                                                                     # A good ending
  {my ($good) = @_;                                                              # What to do on a good ending
+  @_ == 1 or confess "One parameter";
   (good => $good)
  }
 
 sub Bad(&)                                                                      # A bad ending
  {my ($bad) = @_;                                                               # What to do on a bad ending
+  @_ == 1 or confess "One parameter";
   (bad => $bad)
  }
 
