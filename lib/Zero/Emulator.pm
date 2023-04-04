@@ -612,14 +612,14 @@ sub Start($)                                                                    
  }
 
 sub Add($$;$)                                                                   # Add the source locations together and store in the result in the target area
- {my ($target, $s1, $s2) = @_ == 2 ? (&Var, @_) : @_;                           # Target location, source one, source two
+ {my ($target, $s1, $s2) = @_ == 2 ? (&Var(), @_) : @_;                         # Target location, source one, source two
   $assembly->instruction(action=>"add", xTarget($target),
     source=>$s1, source2=>$s2);
   $target
  }
 
 sub Subtract($$;$)                                                              # Subtract the second source location from the first and store in the result in the target area
- {my ($target, $s1, $s2) = @_ == 2 ? (&Var, @_) : @_;                           # Target location, source one, source two
+ {my ($target, $s1, $s2) = @_ == 2 ? (&Var(), @_) : @_;                         # Target location, source one, source two
   $assembly->instruction(action=>"subtract", xTarget($target),
     source=>$s1, source2=>$s2);
   $target
@@ -735,12 +735,12 @@ sub Procedure($$)                                                               
 sub ParamsGet($;$)                                                              # Get a word from the parameters in the previous frame and store it in the current frame
  {if (@_ == 1)
    {my ($source) = @_;                                                          # Memory location to place parameter in, parameter number
-    my $p = &Var;
+    my $p = &Var();
     $assembly->instruction(action=>"paramsGet", target=>$p, source=>$source);
     return $p;
    }
   elsif (@_ == 2)
-   {my ($target, $source) = @_;                                                   # Memory location to place parameter in, parameter number
+   {my ($target, $source) = @_;                                                 # Memory location to place parameter in, parameter number
     $assembly->instruction(action=>"paramsGet", xTarget($target), source=>$source);
    }
   else
@@ -757,9 +757,20 @@ sub Return()                                                                    
  {$assembly->instruction(action=>"return");
  }
 
-sub ReturnGet($$)                                                               # Get a word from the return area and save it
- {my ($target, $source) = @_;                                                   # Memory location to place return value in, return value to get
-  $assembly->instruction(action=>"returnGet", xTarget($target), source=>$source);
+sub ReturnGet($;$)                                                              # Get a word from the return area and save it
+ {if (@_ == 1)                                                                  # Create a variable
+   {my ($source) = @_;                                                          # Memory location to place return value in, return value to get
+    my $p = &Var();
+    $assembly->instruction(action=>"returnGet", target=>$p, source=>$source);
+    return $p;
+   }
+  elsif (@_ == 2)
+   {my ($target, $source) = @_;                                                 # Memory location to place return value in, return value to get
+    $assembly->instruction(action=>"returnGet", xTarget($target), source=>$source);
+   }
+  else
+   {confess "One or two parameters required";
+   }
  }
 
 sub ReturnPut($$)                                                               # Put a word into the return area
@@ -1232,9 +1243,9 @@ if (1)                                                                          
    };
   ParamsPut 0, 2;
   Call $add;
-  ReturnGet \0, \0;
-  Out \0;
-  my $r = Execute;
+  my $c = ReturnGet \0;
+  Out $c;
+  my $r = Execute(trace=>0);
   is_deeply $r->out, [4];
  }
 
