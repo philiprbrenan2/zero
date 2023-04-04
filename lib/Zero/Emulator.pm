@@ -1225,10 +1225,8 @@ if (1)                                                                          
 if (1)                                                                          #TProcedure
  {Start 1;
   my $add = Procedure 'add2', sub
-   {my ($p) = @_;                                                               # Procedure description
-    my ($a, $b) = $p->registers(2);
-    ParamsGet $a, 0;
-    Add $b, $a, 2;
+   {my $a = ParamsGet 0;
+    my $b = Add $a, 2;
     ReturnPut 0, $b;
     Return;
    };
