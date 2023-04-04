@@ -49,23 +49,6 @@ sub Zero::Emulator::areaStructure::registers($;$)                               
   map {__SUB__->($d)} 1..$count;                                                # Array of temporaries
  }
 
-sub Zero::Emulator::areaStructure::name($$)                                     # Add a field to a data structure
- {my ($d, $name) = @_;                                                          # Parameters
-  if (!$d->fieldNames->{$name})
-   {$d->fieldNames->{$name} = $d->fieldOrder->@*;
-    push $d->fieldOrder->@*, $name;
-   }
-  else
-   {confess "Duplicate name: $name in structure: ".$d->name;
-   }
-  \($d->fieldNames->{$name})
- }
-
-sub Zero::Emulator::areaStructure::names($@)                                    # Add fields to a data structure
- {my ($d, @names) = @_;                                                         # Parameters
-  map {$d->name($_)} @names;
- }
-
 sub Zero::Emulator::areaStructure::offset($$)                                   # Offset of a field in a data structure
  {my ($d, $name) = @_;                                                          # Parameters
   if (my $n = $d->fieldNames->{$name}){return $n}
@@ -83,12 +66,12 @@ my sub procedure($%)                                                            
 
   genHash("Zero::Emulator::Procedure",                                          # Description of a procedure
     target       => $label,                                                     # Label to call to call this procedure
-    variables    => areaStructure("Procedure"),                                 # Variables local to this procedure
+    variables    => areaStructure("Procedure"),                                 # Registers local to this procedure
   );
  }
 
 sub Zero::Emulator::Procedure::registers($$)                                    # Allocate registers within a procedure
- {my ($procedure, $number) = @_;                                                         # Procedure description
+ {my ($procedure, $number) = @_;                                                # Procedure description
   $procedure->variables->registers($number);
  }
 
@@ -740,7 +723,7 @@ sub Procedure($$)                                                               
   my $start = setLabel;
   my $p = procedure($start);                                                    # Procedure description
   my $save_registers = $assembly->variables;
-  $assembly->variables = $p->registers;
+  $assembly->variables = $p->variables;
   &$source($p);                                                                 # Code of procedure called with start label as a parameter
   $assembly->variables = $save_registers;
 
@@ -750,8 +733,19 @@ sub Procedure($$)                                                               
  }
 
 sub ParamsGet($;$)                                                              # Get a word from the parameters in the previous frame and store it in the current frame
- {my ($target, $source) = @_;                                                   # Memory location to place parameter in, parameter number
-  $assembly->instruction(action=>"paramsGet", xTarget($target), source=>$source);
+ {if (@_ == 1)
+   {my ($source) = @_;                                                          # Memory location to place parameter in, parameter number
+    my $p = &Var;
+    $assembly->instruction(action=>"paramsGet", target=>$p, source=>$source);
+    return $p;
+   }
+  elsif (@_ == 2)
+   {my ($target, $source) = @_;                                                   # Memory location to place parameter in, parameter number
+    $assembly->instruction(action=>"paramsGet", xTarget($target), source=>$source);
+   }
+  else
+   {confess "One or two parameters required";
+   }
  }
 
 sub ParamsPut($$)                                                               # Put a word into the parameters list to make it visible in a called procedure
@@ -1409,8 +1403,7 @@ if (1)                                                                          
 #latest:;
 if (1)                                                                          # Temporary variable
  {my $s = Start 1;
-  my ($a) = $s->registers;
-  my ($b) = $s->variables->name(q(b));
+  my ($a, $b) = $s->registers(2);
   Mov $a, 1;
   Mov $b, 2;
   Out $a;
@@ -1429,11 +1422,9 @@ if (1)                                                                          
   ParamsPut 1, $i;
   ParamsPut 2, $v;
   my $set = Procedure 'set', sub
-   {my ($p) = @_;
-    my ($a, $i, $v) = $p->registers(3);
-    ParamsGet $a, 0;
-    ParamsGet $i, 1;
-    ParamsGet $v, 2;
+   {my $a = ParamsGet 0;
+    my $i = ParamsGet 1;
+    my $v = ParamsGet 2;
     Mov [$a, \$i], $v;
     Return;
    };
