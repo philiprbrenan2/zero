@@ -152,7 +152,7 @@ my sub Code(%)                                                                  
     labels       => {},                                                         # Label name to instruction
     labelCounter => 0,                                                          # Label counter used to generate unique labels
     files        => [],                                                         # File number to file name
-    procedures   => {},                                                         # Procdures defined in this block of code
+    procedures   => {},                                                         # Procedures defined in this block of code
     %options,
    );
  }
@@ -258,14 +258,16 @@ sub Zero::Emulator::Code::execute($%)                                           
        }
      }
     if (isScalar $$$a)
-     {if (!defined($area))                                                      # Current stack frame
-       {return \$memory{&stackArea}[$memory{&stackArea}[$$$a]]                  # Stack frame
+     {my $s = stackArea;
+      my $m = $memory{&stackArea}[$$$a];
+      if (!defined($area))                                                      # Current stack frame
+       {return \$memory{&stackArea}[$m]                                         # Stack frame
        }
       elsif (isScalar($area))
-       {return \$memory{$area}[$memory{&stackArea}[$$$a]]                       # Specified constant area
+       {return \$memory{$area}[$m]                                              # Specified constant area
        }
       elsif (isScalar($$area))
-       {return \$memory{$memory{&stackArea}[$$area]}[$memory{&stackArea}[$$$a]] # Indirect area
+       {return \$memory{$memory{&stackArea}[$$area]}[$m]                        # Indirect area
        }
      }
     my $i = $calls[-1]->instruction;
@@ -736,19 +738,24 @@ sub Procedure($$)                                                               
 
   Jmp(my $end = label);                                                         # Jump over the code of the procedure body
   my $start = setLabel;
-  &$source(procedure($start));                                                  # Code of procedure called with start label as a parameter
+  my $p = procedure($start);                                                    # Procedure description
+  my $save_registers = $assembly->variables;
+  $assembly->variables = $p->registers;
+  &$source($p);                                                                 # Code of procedure called with start label as a parameter
+  $assembly->variables = $save_registers;
+
   setLabel $end;
 
   $assembly->procedures->{$name} = $start                                       # Return the start of the procedure
  }
 
-sub ParamsGet($$)                                                               # Get a word from the parameters in the previous frame and store it
- {my ($target, $source) = @_;                                                   # Memory location to place parameter in, parameter to get from parameter area
+sub ParamsGet($;$)                                                              # Get a word from the parameters in the previous frame and store it in the current frame
+ {my ($target, $source) = @_;                                                   # Memory location to place parameter in, parameter number
   $assembly->instruction(action=>"paramsGet", xTarget($target), source=>$source);
  }
 
-sub ParamsPut($$)                                                               # Get a word from the parameters in the previous frame and store it
- {my ($target, $source) = @_;                                                   # Memory location to place parameter in, parameter to get from parameter area
+sub ParamsPut($$)                                                               # Put a word into the parameters list to make it visible in a called procedure
+ {my ($target, $source) = @_;                                                   # Parameter number, location to fetch paranter from
   $assembly->instruction(action=>"paramsPut", target=>$target, xSource($source));
  }
 
@@ -1427,14 +1434,14 @@ if (1)                                                                          
     ParamsGet $a, 0;
     ParamsGet $i, 1;
     ParamsGet $v, 2;
-    Mov [$a, $i], $v;
+    Mov [$a, \$i], $v;
     Return;
    };
   Call $set;
   Mov $V, [$a, $i];
   AssertEq $v, $V;
   Out [$a, $i];
-  ok Execute(out=>[11]);
+  ok Execute(trace=>0, out=>[11]);
  }
 
 #latest:;
