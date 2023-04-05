@@ -103,7 +103,7 @@ sub Zero::Emulator::Code::instruction($%)                                       
    {$block->variables->{$options{target}};
    }
   else
-   {push $block->code->@*, genHash("Zero::Emulator::Code::Instruction",         # Instruction details
+   {push $block->code->@*, my $i = genHash("Zero::Emulator::Code::Instruction", # Instruction details
       action        => $options{action      },                                  # Instruction name
       number        => $options{number      },                                  # Instruction sequence number
       source        => $options{source      },                                  # Source memory location
@@ -117,6 +117,7 @@ sub Zero::Emulator::Code::instruction($%)                                       
       line          => $line,                                                   # Line in source file at which this instruction was encoded
       file          => fne $fileName,                                           # Source file in which instruction was encoded
     );
+    return $i;
    }
  }
 
@@ -256,7 +257,7 @@ sub Zero::Emulator::Code::execute($%)                                           
     my $i = $calls[-1]->instruction;
     my $l = $i->line;
     my $f = $i->file;
-    die "Invalid left area: ".dump($area)." address: ".dump($a)
+    die "Invalid left area: ".dump($area)." address: ".dump($a)." stack=".&stackArea
      ." at $f line $l\n".dump(\%memory);
    }
 
@@ -298,7 +299,7 @@ sub Zero::Emulator::Code::execute($%)                                           
      {my $i = $calls[-1]->instruction;
       my $l = $i->line;
       my $f = $i->file;
-      die "Invalid right area: ".dump($area)." address: ".dump($a)
+      die "Invalid right area: ".dump($area)." address: ".dump($a)." stack=".&stackArea
        ." at $f line $l\n".dump(\%memory);
      }
     $r
@@ -453,6 +454,11 @@ sub Zero::Emulator::Code::execute($%)                                           
      },
 
     mov       => sub                                                            # Move data moves data from one part of memory to another - "set", by contrast, sets variables from constant values
+     {my $i = $calls[-1]->instruction;
+      setMemory $i->target, right($i->source, $i->sourceArea), $i->targetArea;
+     },
+
+    mov2      => sub                                                            # Move data moves data from one part of memory to another - "set", by contrast, sets variables from constant values
      {my $i = $calls[-1]->instruction;
       setMemory $i->target, right($i->source, $i->sourceArea), $i->targetArea;
      },
@@ -625,9 +631,16 @@ sub Subtract($$;$)                                                              
   $target
  }
 
-sub Alloc($)                                                                    # Create a new memory area and write its number into the location named by the target operand
- {my ($target) = @_;                                                            # Target location to palce number of area created
-  $assembly->instruction(action=>"alloc", xTarget($target))
+sub Alloc(;$)                                                                   # Create a new memory area and write its number into the location named by the target operand
+ {if (@_ == 0)
+   {my $t = &Var();
+    $assembly->instruction(action=>"alloc", target=>$t);
+    return $t;
+   }
+  else
+   {my ($target) = @_;                                                          # Target location to palce number of area created
+    $assembly->instruction(action=>"alloc", xTarget($target))
+   }
  }
 
 sub Free($)                                                                     # Free the memory area named by the source operand
@@ -699,9 +712,26 @@ sub Label($)                                                                    
   $assembly->instruction(action=>"label", source=>$source);
  }
 
-sub Mov($$;$$)                                                                  # Copy a constant or memory location to the target location
+sub Mov($;$)                                                                    # Copy a constant or memory location to the target location
+ {if (@_ == 1)
+   {my ($source) = @_;                                                          # Target location, source location
+    my $t = &Var();
+    $assembly->instruction(action=>"mov", target=>$t, xSource($source));
+    return $t;
+   }
+  elsif (@ == 2)
+   {my ($target, $source) = @_;                                                 # Target location, source location
+    $assembly->instruction(action=>"mov", xTarget($target), xSource($source));
+   }
+  else
+   {confess "One or two parameters required";
+   }
+ }
+
+sub Mov2($$)                                                                    # Copy a constant or memory location to the target location
  {my ($target, $source) = @_;                                                   # Target location, source location
-  $assembly->instruction(action=>"mov", xTarget($target), xSource($source));
+  my $i = $assembly->instruction(action=>"mov2", xTarget($target), xSource($source));
+  $i
  }
 
 sub Nop()                                                                       # Do nothing (but do it well!)
@@ -1293,9 +1323,9 @@ if (1)                                                                          
 #latest:;
 if (1)                                                                          #TFree
  {Start 1;
-  Alloc 0;
-  Out \0;
-  Free \0;
+  my $a = Alloc;
+  Out $a;
+  Free $a;
   my $r = Execute;
   is_deeply $r->memory, {};
  }
@@ -1423,10 +1453,9 @@ if (1)                                                                          
 #latest:;
 if (1)                                                                          #TAlloc #TMov #TCall
  {my $s = Start 1;
-  my ($a, $i, $v, $V) = $s->registers(4);
-  Alloc $a;
-  Mov $i, 1;
-  Mov $v, 11;
+  my $a = Alloc;
+  my $i = Mov 1;
+  my $v = Mov 11;
   ParamsPut 0, $a;
   ParamsPut 1, $i;
   ParamsPut 2, $v;
@@ -1438,10 +1467,11 @@ if (1)                                                                          
     Return;
    };
   Call $set;
-  Mov $V, [$a, $i];
+  my $V = Mov [$a, \$i];
   AssertEq $v, $V;
-  Out [$a, $i];
-  ok Execute(trace=>0, out=>[11]);
+  Out [$a, \$i];
+  my $e = Execute(trace=>0);
+  is_deeply $e->out, [11];
  }
 
 #latest:;
