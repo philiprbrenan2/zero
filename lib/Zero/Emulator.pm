@@ -743,15 +743,21 @@ sub Out($)                                                                      
   $assembly->instruction(action=>"out", xSource($source))
  }
 
-sub Procedure($$%)                                                              # Define a procedure
- {my ($name, $source, %options) = @_;                                           # Name of procedure, source code as a subroutine# $assembly->instruction(action=>"procedure", target=>$target, source=>$source);
+
+sub Procedure($$)                                                               # Define a procedure
+ {my ($name, $source) = @_;                                                     # Name of procedure, source code as a subroutine# $assembly->instruction(action=>"procedure", target=>$target, source=>$source);
   if ($name and my $n = $assembly->procedures->{$name})                         # Reuse existing named procedure
    {return $n;
    }
 
   Jmp(my $end = label);                                                         # Jump over the code of the procedure body
   my $start = setLabel;
-  &$source(procedure($start));                                                  # Code of procedure called with start label as a parameter
+  my $p = procedure($start);                                                    # Procedure description
+  my $save_registers = $assembly->variables;
+  $assembly->variables = $p->variables;
+  &$source($p);                                                                 # Code of procedure called with start label as a parameter
+  $assembly->variables = $save_registers;
+
   setLabel $end;
 
   $assembly->procedures->{$name} = $start                                       # Return the start of the procedure
