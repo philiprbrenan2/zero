@@ -743,20 +743,15 @@ sub Out($)                                                                      
   $assembly->instruction(action=>"out", xSource($source))
  }
 
-sub Procedure($$)                                                               # Define a procedure
- {my ($name, $source) = @_;                                                     # Name of procedure, source code as a subroutine# $assembly->instruction(action=>"procedure", target=>$target, source=>$source);
+sub Procedure($$%)                                                              # Define a procedure
+ {my ($name, $source, %options) = @_;                                           # Name of procedure, source code as a subroutine# $assembly->instruction(action=>"procedure", target=>$target, source=>$source);
   if ($name and my $n = $assembly->procedures->{$name})                         # Reuse existing named procedure
    {return $n;
    }
 
   Jmp(my $end = label);                                                         # Jump over the code of the procedure body
   my $start = setLabel;
-  my $p = procedure($start);                                                    # Procedure description
-  my $save_registers = $assembly->variables;
-  $assembly->variables = $p->variables;
-  &$source($p);                                                                 # Code of procedure called with start label as a parameter
-  $assembly->variables = $save_registers;
-
+  &$source(procedure($start));                                                  # Code of procedure called with start label as a parameter
   setLabel $end;
 
   $assembly->procedures->{$name} = $start                                       # Return the start of the procedure
@@ -1332,11 +1327,10 @@ if (1)                                                                          
 
 #latest:;
 if (1)                                                                          # Layout
- {my $s = Start 1;
-  my ($a, $b, $c) = $s->registers(3);
-  Mov $a, 'A';
-  Mov $b, 'B';
-  Mov $c, 'C';
+ {Start 1;
+  my $a = Mov 'A';
+  my $b = Mov 'B';
+  my $c = Mov 'C';
   Out $c;
   Out $b;
   Out $a;
@@ -1345,10 +1339,9 @@ if (1)                                                                          
 
 #latest:;
 if (1)                                                                          #TIfEq
- {my $s = Start 1;
-  my ($a, $b, $c) = $s->registers(3);
-  Mov $a, 1;
-  Mov $b, 2;
+ {Start 1;
+  my $a = Mov 1;
+  my $b = Mov 2;
   IfEq $a, $a,
   Then
    {Out "\\$a == \\$a";
@@ -1362,7 +1355,7 @@ if (1)                                                                          
 
 #latest:;
 if (1)                                                                          #TIfTrue
- {my $s = Start 1;
+ {Start 1;
   IfTrue 1,
   Then
    {Out 1
@@ -1375,7 +1368,7 @@ if (1)                                                                          
 
 #latest:;
 if (1)                                                                          #TIfFalse
- {my $s = Start 1;
+ {Start 1;
   IfFalse 1,
   Then
    {Out 1
@@ -1388,9 +1381,9 @@ if (1)                                                                          
 
 #latest:;
 if (1)                                                                          #TFor
- {my $s = Start 1;
-  my ($a) = $s->registers;
-  For start => sub{Mov $a, 0},
+ {Start 1;
+  my $a;
+  For start => sub{$a = Mov 0},
       check => sub{Jge  $_[0], $a, 10},
       next  => sub{Inc $a},
       block => sub{Out $a};
@@ -1399,7 +1392,7 @@ if (1)                                                                          
 
 #latest:;
 if (1)                                                                          #TForLoop
- {my $s = Start 1;
+ {Start 1;
   ForLoop 10, sub
    {my ($i) = @_;
     Out $i;
@@ -1409,7 +1402,7 @@ if (1)                                                                          
 
 #latest:;
 if (1)                                                                          #TForLoop
- {my $s = Start 1;
+ {Start 1;
   ForLoop [2, 10], sub
    {my ($i) = @_;
     Out $i;
@@ -1419,7 +1412,7 @@ if (1)                                                                          
 
 #latest:;
 if (1)                                                                          #TAssert
- {my $s = Start 1;
+ {Start 1;
   Assert;
   my $r = Execute(suppressStackTracePrint=>1);
   is_deeply $r->out, [
@@ -1429,7 +1422,7 @@ if (1)                                                                          
  }
 
 if (1)                                                                          #TAssertEq
- {my $s = Start 1;
+ {Start 1;
   Mov 0, 1;
   AssertEq \0, 2;
   my $r = Execute(suppressStackTracePrint=>1);
@@ -1442,9 +1435,8 @@ if (1)                                                                          
 #latest:;
 if (1)                                                                          # Temporary variable
  {my $s = Start 1;
-  my ($a, $b) = $s->registers(2);
-  Mov $a, 1;
-  Mov $b, 2;
+  my $a = Mov 1;
+  my $b = Mov 2;
   Out $a;
   Out $b;
   ok Execute(out=>[1..2]);
@@ -1452,7 +1444,7 @@ if (1)                                                                          
 
 #latest:;
 if (1)                                                                          #TAlloc #TMov #TCall
- {my $s = Start 1;
+ {Start 1;
   my $a = Alloc;
   my $i = Mov 1;
   my $v = Mov 11;
@@ -1475,27 +1467,8 @@ if (1)                                                                          
  }
 
 #latest:;
-if (1)                                                                          #TVar
- {my $s = Start 1;
-  my $a = Add 1, 2;
-  Out $a;
-  ok Execute(out=>[3]);
- }
-
-#latest:;
-if (1)                                                                          #TDump
- {my $a;
-  my $s = Start 1;
-  Dump sub
-   {$a = 1;
-   };
-  Execute;
-  ok $a == 1;
- }
-
-#latest:;
 if (1)                                                                          #TBlock
- {my $s = Start 1;
+ {Start 1;
   Block
    {my ($start, $good, $bad, $end) = @_;
     Out 1;
@@ -1513,7 +1486,7 @@ if (1)                                                                          
 
 #latest:;
 if (1)                                                                          #TBlock
- {my $s = Start 1;
+ {Start 1;
   Block
    {my ($start, $good, $bad, $end) = @_;
     Out 1;
