@@ -39,6 +39,18 @@ sub areaStructure($@)                                                           
   $d
  }
 
+sub Zero::Emulator::areaStructure::name($$)                                     # Add a field to a data structure
+ {my ($d, $name) = @_;                                                          # Parameters
+  if (!$d->fieldNames->{$name})
+   {$d->fieldNames->{$name} = $d->fieldOrder->@*;
+    push $d->fieldOrder->@*, $name;
+   }
+  else
+   {confess "Duplicate name: $name in structure: ".$d->name;
+   }
+  \($d->fieldNames->{$name})
+ }
+
 sub Zero::Emulator::areaStructure::registers($;$)                               # Create one or more temporary variables. Need to reuse registers no longer in use
  {my ($d, $count) = @_;                                                         # Parameters
   if (!defined($count))
