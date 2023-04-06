@@ -975,7 +975,7 @@ sub ForLoop($$)                                                                 
  {my ($range, $block) = @_;                                                     # Limit, block
   my $i = $assembly->registers;
   my $s = 0; my $e = $range;                                                    # end
-  ($s, $e) = @$range if ref $e;                                                 # [start, end]
+  ($s, $e) = @$range if ref($e) =~ m(ARRAY);                                    # [start, end]
 
   my ($Start, $Check, $Next, $End) = (label, label, label, label);
 
@@ -1041,6 +1041,13 @@ sub Execute(%)                                                                  
     lll $c if $c;
     return !$c;
    }
+  if (my $memory = $options{memory})
+   {my $e = [split "\n", dump $memory   ];
+    my $g = [split "\n", dump $r->memory];
+    my $c = compareArraysAndExplain $g, $e;
+    lll $c if $c;
+    return !$c;
+   }
   return $r;
  }
 
@@ -1061,7 +1068,7 @@ use vars qw(@ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
 
 @ISA         = qw(Exporter);
 @EXPORT      = qw();
-@EXPORT_OK   = qw(areaStructure Add Alloc Bad Block Call Confess Else Execute For ForLoop Free Good Assert AssertEq AssertNe AssertGe AssertGt AssertLe AssertLt Dec Dump IfEq IfGe IfGt IfLe IfLt IfNe Ifx Inc Jeq Jge Jgt Jle Jlt Jmp Jne Label Mov Nop Out ParamsGet ParamsPut Pop Procedure Push Return ReturnGet ReturnPut ShiftLeft ShiftRight Smaller Start Subtract Then Var);
+@EXPORT_OK   = qw(areaStructure Add Alloc Bad Block Call Confess Else Execute For ForLoop Free Good Assert AssertEq AssertNe AssertGe AssertGt AssertLe AssertLt Dec Dump IfEq IfGe IfGt IfLe IfLt IfNe Ifx IfTrue IfFalse Inc Jeq Jge Jgt Jle Jlt Jmp Jne Label Mov Nop Out ParamsGet ParamsPut Pop Procedure Push Return ReturnGet ReturnPut ShiftLeft ShiftRight Smaller Start Subtract Then Var);
 %EXPORT_TAGS = (all=>[@EXPORT, @EXPORT_OK]);
 
 return 1 if caller;
@@ -1288,8 +1295,7 @@ if (1)                                                                          
   Call $add;
   my $c = ReturnGet \0;
   Out $c;
-  my $r = Execute(trace=>0);
-  is_deeply $r->out, [4];
+  ok Execute(trace=>0, out=>[4]);
  }
 
 #latest:;
@@ -1315,8 +1321,7 @@ if (1)                                                                          
   Push -1, 2;
   Pop  [-2, 0], -1;
   Pop  [-2, 1], -1;
-  my $r = Execute();
-  is_deeply $r->memory, { "-1" => [], "-2" => [2,1]};
+  ok Execute(memory => { "-1" => [], "-2" => [2,1]});
  }
 
 #latest:;
@@ -1329,8 +1334,7 @@ if (1)                                                                          
   Mov [\0, 2], 2;
   Mov [\0, 3], [\0, 33];
   Mov [\0, 4], [\0, \2];
-  my $r = Execute;
-  is_deeply $r->memory, {"3" => [99, 1, 2, 33, 2] };
+  ok Execute(memory => {"3" => [99, 1, 2, 33, 2] });
  }
 
 #latest:;
