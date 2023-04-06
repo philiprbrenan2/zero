@@ -484,8 +484,8 @@ sub Zero::Emulator::Code::execute($%)                                           
      {my $i = $calls[-1]->instruction;
       my $p = $calls[-1]->return;
       my $t = left($i->target, $i->targetArea);
-      my $s = right($i->source, $p);
-      $$t = $s;
+      my $s = left($i->source, $p);                                             # The source has to be a left hand side because we want to address a memory area not get a constant
+      $$t = $$s;
      },
 
     returnPut => sub                                                            # Put a word ino the return area
