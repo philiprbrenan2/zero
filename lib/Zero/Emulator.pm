@@ -25,7 +25,7 @@ Well known locations are represented by negative area ids
 
 makeDieConfess;
 
-my sub maximumInstructionsToExecute {1000}                                      # Maximum number of subroutines to execute
+my sub maximumInstructionsToExecute {1e4}                                       # Maximum number of subroutines to execute
 
 sub areaStructure($@)                                                           # Describe a data structure mapping a memory area
  {my ($structureName, @names) = @_;                                             # Structure name, fields names
