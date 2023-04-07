@@ -875,12 +875,12 @@ sub IfLe($$%)                                                                   
 
 sub IfGt($$%)                                                                   # Execute then or else clause depending on whether two memory locations are greater than.
  {my ($a, $b, %options) = @_;                                                   # First memory location, second memory location, then block, else block
-  Ifx(\&Jge, $a, $b, %options);
+  Ifx(\&Jle, $a, $b, %options);
  }
 
 sub IfGe($$%)                                                                   # Execute then or else clause depending on whether two memory locations are greater than or equal.
  {my ($a, $b, %options) = @_;                                                   # First memory location, second memory location, then block, else block
-  Ifx(\&Jgt, $a, $b, %options);
+  Ifx(\&Jlt, $a, $b, %options);
  }
 
 sub AssertOp($$$)                                                               # Assert operation
