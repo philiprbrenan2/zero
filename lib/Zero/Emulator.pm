@@ -1295,11 +1295,10 @@ if (1)                                                                          
 #latest:;
 if (1)                                                                          #TFree
  {Start 1;
-  my $a = Alloc "alloc";
+  my $a = Alloc "node";
   Out $a;
   Free $a;
-  my $r = Execute;
-  is_deeply $r->memory, {};
+  ok Execute(memory => {}, out=>[3]);
  }
 
 #latest:;
