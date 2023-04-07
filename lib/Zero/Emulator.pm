@@ -267,6 +267,7 @@ sub Zero::Emulator::Code::execute($%)                                           
        }
      }
     my $i = $calls[-1]->instruction;
+    stackTraceAndExit($i);
     my $l = $i->line;
     my $f = $i->file;
     die "Invalid left area: ".dump($area)." address: ".dump($a)." stack=".&stackArea
@@ -286,7 +287,7 @@ sub Zero::Emulator::Code::execute($%)                                           
        }
       elsif (isScalar($$area))
        {if (defined(my $i = $memory{&stackArea}[$$area]))
-         {$r = $memory{$i}[$$a]                                                 # Direct from indirect area
+         {$r = $memory{$i}[$$a];                                                 # Direct from indirect area
          }
        }
      }
@@ -309,18 +310,13 @@ sub Zero::Emulator::Code::execute($%)                                           
      }
     if (!defined($r))
      {my $i = $calls[-1]->instruction;
+      stackTraceAndExit($i);
       my $l = $i->line;
       my $f = $i->file;
       die "Invalid right area: ".dump($area)." address: ".dump($a)." stack=".&stackArea
        ." at $f line $l\n".dump(\%memory);
      }
     $r
-   }
-
-  my sub setMemory($$;$)                                                        # Set a memory location in the current stack frame to a specified value
-   {my ($target, $value, $area) = @_;                                           # Target, value, optional area
-    my $a = left($target, $area//stackArea);
-    $$a   = $value;
    }
 
   my sub jumpOp($$)                                                             # Jump to the target location if the tested memory area if the condition is matched
@@ -341,17 +337,20 @@ sub Zero::Emulator::Code::execute($%)                                           
   my %instructions =                                                            # Instruction definitions
    (add       => sub                                                            # Add the two source operands and store the result in the target
      {my $i = $calls[-1]->instruction;
-      setMemory $i->target, right($i->source) + right($i->source2), $i->targetArea;
+      my $t = left($i->target, $i->targetArea);
+      $$t = right($i->source) + right($i->source2);
      },
     subtract  => sub                                                            # Subtract the second source operand from the first and store the result in the target
      {my $i = $calls[-1]->instruction;
-      setMemory $i->target, right($i->source) - right($i->source2), $i->targetArea;
+      my $t = left($i->target, $i->targetArea);
+      $$t = right($i->source) - right($i->source2);
      },
 
     alloc     => sub                                                            # Create a new memory area and write its number into the location named by the target operand
      {my $i = $calls[-1]->instruction;
       my $a = allocMemory;
-      setMemory $i->target, $a, $i->targetArea;
+      my $t = left($i->target, $i->targetArea);
+      $$t = $a;
      },
 
     assert    =>   sub                                                          # Assert
@@ -437,16 +436,14 @@ sub Zero::Emulator::Code::execute($%)                                           
 
     dec     => sub                                                              # Decrement locations in memory. The first location is incremented by 1, the next by two, etc.
      {my $i = $calls[-1]->instruction;
-      my $t1 = $i->target;
-      my $t2 = $i->targetArea;
-      setMemory $i->target, right($t1, $t2) - 1, $t2;
+      my $t = left($i->target, $i->targetArea);
+      $$t--;
      },
 
     inc       => sub                                                            # Increment locations in memory. The first location is incremented by 1, the next by two, etc.
      {my $i = $calls[-1]->instruction;
-      my $t1 = $i->target;
-      my $t2 = $i->targetArea;
-      setMemory $t1, ${left($t1, $t2)} + 1, $t2;
+      my $t = left($i->target, $i->targetArea);
+      $$t++;
      },
 
     jmp       => sub                                                            # Jump to the target location
@@ -467,12 +464,9 @@ sub Zero::Emulator::Code::execute($%)                                           
 
     mov       => sub                                                            # Move data moves data from one part of memory to another - "set", by contrast, sets variables from constant values
      {my $i = $calls[-1]->instruction;
-      setMemory $i->target, right($i->source, $i->sourceArea), $i->targetArea;
-     },
-
-    mov2      => sub                                                            # Move data moves data from one part of memory to another - "set", by contrast, sets variables from constant values
-     {my $i = $calls[-1]->instruction;
-      setMemory $i->target, right($i->source, $i->sourceArea), $i->targetArea;
+      my $s = right($i->source, $i->sourceArea);
+      my $t = left($i->target, $i->targetArea);
+      $$t = $s;
      },
 
     paramsGet => sub                                                            # Get a parameter from the previous parameter block - this means that we must always have two entries on teh call stack - one representing the caller of the program, the second representing the current context of the program
@@ -532,21 +526,6 @@ sub Zero::Emulator::Code::execute($%)                                           
     push => sub                                                                 # Push a value onto the specified memory area
      {my $i = $calls[-1]->instruction;
       push $memory{right($i->target)}->@*, right($i->source, $i->sourceArea);
-     },
-
-    smaller => sub                                                              # Compare two constants or variables then indicate which is smaller: 0 - they are both equal, 1 - the first one is smaller, 2 - the second one is smaller
-     {my $i = $calls[-1]->instruction;
-      my $s1 = right($i->source);
-      my $s2 = right($i->sourceArea);
-      my $t  = $i->target;
-      my $a  = $i->targetArea;
-
-      if (isScalar $t)
-       {setMemory $t,  $s1 == $s2 ? 0 : $s1 < $s2 ? 1 : 2, $a;
-       }
-      else
-       {setMemory $$t, $s1 == $s2 ? 0 : $s1 < $s2 ? 1 : 2, $a;
-       }
      },
 
     shiftLeft => sub                                                            # Shift left
@@ -831,12 +810,6 @@ sub Push($$)                                                                    
   $assembly->instruction(action=>"push", target=>$target, xSource($source));
  }
 
-sub Smaller($$$)                                                                # Compare the source operands and put 0 in the target if the operands are equal, 1 if the first operand is the smaller, or 2 if the second operand is the smaller
- {my ($target, $s1, $s2) = @_;                                                  # Target location, source one, source two
-  $assembly->instruction(action=>"smaller",
-    target=>$target, source=>$s1, sourceArea=>$s2);
- }
-
 sub Then(&)                                                                     # Then block
  {my ($t) = @_;                                                                 # Then block subroutine
   @_ == 1 or confess "One parameter";
@@ -1039,14 +1012,16 @@ sub Execute(%)                                                                  
   if (my $out = $options{out})
    {my $c = compareArraysAndExplain $r->out, $out;
     lll $c if $c;
-    return !$c;
+    return 0 if $c;
    }
   if (my $memory = $options{memory})
-   {my $e = [split "\n", dump $memory   ];
-    my $g = [split "\n", dump $r->memory];
+   {my $E = dump $memory;
+    my $G = dump $r->memory;
+    my $e = [split "\n", $E];
+    my $g = [split "\n", $G];
     my $c = compareArraysAndExplain $g, $e;
-    lll $c if $c;
-    return !$c;
+    lll "$c\n$G\n" if $c;
+    return 0 if $c;
    }
   return $r;
  }
@@ -1171,24 +1146,6 @@ if (1)                                                                          
   Mov  0, [-1, \0];
   Out \0;
   ok Execute(out=>[5]);
- }
-
-#latest:;
-if (1)                                                                          #TSmaller
- {Start 1;
-  Smaller 1, 1, 2;
-  Out   1;
-  ok Execute(out=>[1]);
- }
-
-#latest:;
-if (1)                                                                          #TSmaller
- {Start 1;
-  Mov   1, 1;
-  Mov   2, 2;
-  Smaller 3, \1, \2;
-  Out  \3;
-  ok Execute(out=>[1]);
  }
 
 #latest:;
