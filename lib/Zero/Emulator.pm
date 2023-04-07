@@ -350,6 +350,9 @@ sub Zero::Emulator::Code::execute($%)                                           
      {my $i = $calls[-1]->instruction;
       my $a = allocMemory;
       my $t = left($i->target, $i->targetArea);
+
+      $memory{$a} = [];
+      bless $memory{$a}, $i->source;
       $$t = $a;
      },
 
@@ -622,16 +625,11 @@ sub Subtract($$;$)                                                              
   $target
  }
 
-sub Alloc(;$)                                                                   # Create a new memory area and write its number into the location named by the target operand
- {if (@_ == 0)
-   {my $t = &Var();
-    $assembly->instruction(action=>"alloc", target=>$t);
-    return $t;
-   }
-  else
-   {my ($target) = @_;                                                          # Target location to palce number of area created
-    $assembly->instruction(action=>"alloc", xTarget($target))
-   }
+sub Alloc($)                                                                    # Create a new memory area and write its number into the location named by the target operand
+ {my ($name) = @_;                                                              # Name of allocation
+  my $t = &Var();
+  $assembly->instruction(action=>"alloc", target=>$t, source=>$name);
+  $t;
  }
 
 sub Free($)                                                                     # Free the memory area named by the source operand
@@ -1284,20 +1282,20 @@ if (1)                                                                          
 #latest:;
 if (1)                                                                          #TAlloc #TMov
  {Start 1;
-  Alloc 0;
+  Alloc "alloc";
   Mov 1, 99;
   Mov [\0, 0], \1;
   Mov [\0, 1], 1;
   Mov [\0, 2], 2;
   Mov [\0, 3], [\0, 33];
   Mov [\0, 4], [\0, \2];
-  ok Execute(memory => {"3" => [99, 1, 2, 33, 2] });
+  ok Execute(memory => { 3 => bless([99, 1, 2, 33, 2], "alloc") });
  }
 
 #latest:;
 if (1)                                                                          #TFree
  {Start 1;
-  my $a = Alloc;
+  my $a = Alloc "alloc";
   Out $a;
   Free $a;
   my $r = Execute;
@@ -1424,7 +1422,7 @@ if (1)                                                                          
 #latest:;
 if (1)                                                                          #TAlloc #TMov #TCall
  {Start 1;
-  my $a = Alloc;
+  my $a = Alloc "aaa";
   my $i = Mov 1;
   my $v = Mov 11;
   ParamsPut 0, $a;
