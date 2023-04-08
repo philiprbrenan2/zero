@@ -27,7 +27,7 @@ Well known locations are represented by negative area ids
 
 my sub maximumInstructionsToExecute {1e4}                                       # Maximum number of subroutines to execute
 
-my sub areaStructure($@)                                                           # Describe a data structure mapping a memory area
+sub areaStructure($@)                                                           # Describe a data structure mapping a memory area
  {my ($structureName, @names) = @_;                                             # Structure name, fields names
 
   my $d = genHash("Zero::Emulator::areaStructure",                              # Description of a data structure mapping a memory area
@@ -287,9 +287,11 @@ sub Zero::Emulator::Code::execute($%)                                           
 
   my sub right($;$)                                                             # Get a constant or a memory location
    {my ($a, $area) = @_;                                                        # Location, optional area
-    return $a if isScalar($a);                                                  # Constant
     my $r;
-    if (isScalar($$a))                                                          # Direct
+    if (isScalar($a))                                                           # Constant
+     {return $a if defined $a;
+     }
+    elsif (isScalar($$a))                                                       # Direct
      {if (!defined($area))
        {$r = $memory{&stackArea}[$$a]                                           # Direct from stack area
        }
@@ -298,7 +300,7 @@ sub Zero::Emulator::Code::execute($%)                                           
        }
       elsif (isScalar($$area))
        {if (defined(my $i = $memory{&stackArea}[$$area]))
-         {$r = $memory{$i}[$$a];                                                 # Direct from indirect area
+         {$r = $memory{$i}[$$a];                                                # Direct from indirect area
          }
        }
      }
@@ -462,7 +464,9 @@ sub Zero::Emulator::Code::execute($%)                                           
 
     jmp       => sub                                                            # Jump to the target location
      {my $i = $calls[-1]->instruction;
-      $instructionPointer = $i->number + right($i->target);
+      my $n = $i->number;
+      my $r = right($i->target);
+      $instructionPointer = $n + $r;
      },
                                                                                 # Conditional jumps
     jEq => sub {my $i = $calls[-1]->instruction; jumpOp($i, sub{right($i->source) == right($i->source2)})},
@@ -523,7 +527,7 @@ sub Zero::Emulator::Code::execute($%)                                           
     out     => sub                                                              # Write source as output to an array of words
      {my $i = $calls[-1]->instruction;
       my $t = right($i->source, $i->sourceArea);
-      lll $t if $options{trace};
+      lll $t if  $options{debug} or $options{trace};
       push $exec->out->@*, $t;
      },
 
