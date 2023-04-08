@@ -23,11 +23,11 @@ Well known locations are represented by negative area ids
 
 =cut
 
-makeDieConfess;
+#makeDieConfess;
 
 my sub maximumInstructionsToExecute {1e4}                                       # Maximum number of subroutines to execute
 
-sub areaStructure($@)                                                           # Describe a data structure mapping a memory area
+my sub areaStructure($@)                                                           # Describe a data structure mapping a memory area
  {my ($structureName, @names) = @_;                                             # Structure name, fields names
 
   my $d = genHash("Zero::Emulator::areaStructure",                              # Description of a data structure mapping a memory area
@@ -111,6 +111,10 @@ sub Zero::Emulator::Code::instruction($%)                                       
 
   my ($package, $fileName, $line) = caller($options{level} // 1);
 
+  eval {confess};
+  my $context = $@;
+     $context =~ s(\A.*?Zero::Emulator::Code::instruction.*?\n) ()is;
+
   if ($options{action} !~ m(\Avariable\Z)i)                                     # Non variable
    {push $block->code->@*, my $i = genHash("Zero::Emulator::Code::Instruction", # Instruction details
       action        => $options{action      },                                  # Instruction name
@@ -125,6 +129,7 @@ sub Zero::Emulator::Code::instruction($%)                                       
       target_area   => $options{target_area },                                  # Target area
       line          => $line,                                                   # Line in source file at which this instruction was encoded
       file          => fne $fileName,                                           # Source file in which instruction was encoded
+      context       => $context,                                                # The call context in which this instruction was created
     );
     return $i;
    }
@@ -211,8 +216,17 @@ sub Zero::Emulator::Code::execute($%)                                           
   my sub stackTraceAndExit($)                                                   # Print a stack trace and exit
    {my ($i) = @_;                                                               # Instruction trace occurred at
     my $s = $options{suppressStackTracePrint};
+    my @s;
 
-    push my @s, "Stack trace\n";
+    if (!$s)
+     {push @s, "Context\n";
+      for my $c(split /\n/, $i->context)
+       {$c =~ s(\A\t) ();
+        push @s, $c;
+       }
+     }
+
+    push    @s, "Stack trace\n";
     for my $j(reverse keys @calls)
      {my $c = $calls[$j];
       my $i = $c->instruction;
@@ -1007,6 +1021,7 @@ sub Execute(%)                                                                  
   if (my $out = $options{out})
    {my $c = compareArraysAndExplain $r->out, $out;
     lll $c if $c;
+    say STDERR dump($r->out) if $c;
     return 0 if $c;
    }
   if (my $memory = $options{memory})
@@ -1260,7 +1275,8 @@ if (1)                                                                          
   Label $start;
     Call $c;
   ok Execute(suppressStackTracePrint=>1, out=>
-[ "Stack trace\n",
+[
+"Stack trace\n",
   "    2     3 confess\n",
   "    1     6 call\n"]);
  }
