@@ -111,10 +111,7 @@ sub Zero::Emulator::Code::instruction($%)                                       
 
   my ($package, $fileName, $line) = caller($options{level} // 1);
 
-  if ($options{action} =~ m(\Avariable\Z)i)                                     # Variable
-   {$block->variables->{$options{target}};
-   }
-  else
+  if ($options{action} !~ m(\Avariable\Z)i)                                     # Non variable
    {push $block->code->@*, my $i = genHash("Zero::Emulator::Code::Instruction", # Instruction details
       action        => $options{action      },                                  # Instruction name
       number        => $options{number      },                                  # Instruction sequence number
