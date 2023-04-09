@@ -7,7 +7,7 @@ use v5.30;
 package Zero::Emulator;
 use warnings FATAL => qw(all);
 use strict;
-use Carp;
+use Carp qw(cluck confess);
 use Data::Dump qw(dump);
 use Data::Table::Text qw(:all);
 eval "use Test::More qw(no_plan)" unless caller;
@@ -216,9 +216,10 @@ sub Zero::Emulator::Code::execute($%)                                           
   my sub stackTraceAndExit($)                                                   # Print a stack trace and exit
    {my ($i) = @_;                                                               # Instruction trace occurred at
     my $s = $options{suppressStackTracePrint};
+    my $d = $options{debug};
     my @s;
 
-    if (!$s)
+    if ($d)
      {push @s, "Context\n";
       for my $c(split /\n/, $i->context)
        {$c =~ s(\A\t) ();
@@ -936,8 +937,9 @@ sub AssertGe($$%)                                                               
   AssertOp("Ge", $a, $b);
  }
 
-sub For(%)                                                                      # For loop with initial, check, next clauses
+sub ForFF(%)                                                                    # For loop with initial, check, next clauses
  {my (%options) = @_;                                                           # Options
+  cluck;
   if (my $start = $options{start})
    {&$start;
    }
@@ -957,23 +959,41 @@ sub For(%)                                                                      
   setLabel($End);
  }
 
-sub ForLoop($$)                                                                 # For loop 0..range-1
- {my ($range, $block) = @_;                                                     # Limit, block
-  my $i = $assembly->registers;
-  my $s = 0; my $e = $range;                                                    # end
-  ($s, $e) = @$range if ref($e) =~ m(ARRAY);                                    # [start, end]
+sub For($$%)                                                                    # For loop 0..range-1 or in reverse
+ {my ($range, $block, %options) = @_;                                           # Limit, block, options
+  if (!exists $options{reverse})                                                # Ascending order
+   {my $s = 0; my $e = $range;                                                  # Start, end
+    ($s, $e) = @$range if ref($e) =~ m(ARRAY);                                  # [start, end]
 
-  my ($Start, $Check, $Next, $End) = (label, label, label, label);
+    my ($Start, $Check, $Next, $End) = (label, label, label, label);
 
-  setLabel($Start);                                                             # Start
-  Mov $i, $s;
-    setLabel($Check);                                                           # Check
-    Jge  $End, $i, $e;
-      &$block($i, $Check, $Next, $End);                                         # Block
-    setLabel($Next);
-    Inc $i;                                                                     # Next
-    Jmp $Check;
-  setLabel($End);                                                               # End
+    setLabel($Start);                                                           # Start
+    my $i = Mov $s;
+      setLabel($Check);                                                         # Check
+      Jge  $End, $i, $e;
+        &$block($i, $Check, $Next, $End);                                       # Block
+      setLabel($Next);
+      Inc $i;                                                                   # Next
+      Jmp $Check;
+    setLabel($End);                                                             # End
+   }
+  else
+   {my $s = $range; my $e = 0;                                                  # Start, end
+    ($e, $s) = @$range if ref($e) =~ m(ARRAY);                                  # [end, start]
+
+    my ($Start, $Check, $Next, $End) = (label, label, label, label);
+
+    setLabel($Start);                                                           # Start
+    my $i = Subtract $s, 1;
+    Subtract $i, $s;
+      setLabel($Check);                                                         # Check
+      Jlt  $End, $i, $e;
+        &$block($i, $Check, $Next, $End);                                       # Block
+      setLabel($Next);
+      Dec $i;                                                                   # Next
+      Jmp $Check;
+    setLabel($End);                                                             # End
+   }
  }
 
 sub Good(&)                                                                     # A good ending
@@ -1373,20 +1393,9 @@ if (1)                                                                          
  }
 
 #latest:;
-if (1)                                                                          #TFor
- {Start 1;
-  my $a;
-  For start => sub{$a = Mov 0},
-      check => sub{Jge  $_[0], $a, 10},
-      next  => sub{Inc $a},
-      block => sub{Out $a};
-  ok Execute(out=>[0..9]);
- }
-
-#latest:;
 if (1)                                                                          #TForLoop
  {Start 1;
-  ForLoop 10, sub
+  For 10, sub
    {my ($i) = @_;
     Out $i;
    };
@@ -1396,7 +1405,17 @@ if (1)                                                                          
 #latest:;
 if (1)                                                                          #TForLoop
  {Start 1;
-  ForLoop [2, 10], sub
+  For 10, sub
+   {my ($i) = @_;
+    Out $i;
+   }, reverse=>1;
+  ok Execute(out=>[reverse 0..9]);
+ }
+
+#latest:;
+if (1)                                                                          #TForLoop
+ {Start 1;
+  For [2, 10], sub
    {my ($i) = @_;
     Out $i;
    };
