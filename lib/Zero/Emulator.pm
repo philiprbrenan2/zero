@@ -16,7 +16,7 @@ eval "use Test::More qw(no_plan)" unless caller;
 
 Memory is addressed in areas.  Each method has its own current stack area,
 parameter area and return results area.  Each area can grow a much as is needed
-to hold data. Memory areas can be sparse.  Additional memory areas can be
+to hold data and can bve sparse.  Additional memory areas can be
 allocated and freed as necessary.
 
 Well known locations are represented by negative area ids
@@ -25,7 +25,7 @@ Well known locations are represented by negative area ids
 
 #makeDieConfess;
 
-my sub maximumInstructionsToExecute {1e4}                                       # Maximum number of subroutines to execute
+my sub maximumInstructionsToExecute {1e5}                                       # Maximum number of subroutines to execute
 
 sub areaStructure($@)                                                           # Describe a data structure mapping a memory area
  {my ($structureName, @names) = @_;                                             # Structure name, fields names
@@ -937,28 +937,6 @@ sub AssertGe($$%)                                                               
   AssertOp("Ge", $a, $b);
  }
 
-sub ForFF(%)                                                                    # For loop with initial, check, next clauses
- {my (%options) = @_;                                                           # Options
-  cluck;
-  if (my $start = $options{start})
-   {&$start;
-   }
-  my ($Check, $Next, $End) = (label, label, label);
-  if (my $check = $options{check})
-   {setLabel($Check);
-     &$check($End);
-   }
-  if (my $block = $options{block})
-   {&$block($Check, $Next, $End);
-   }
-  if (my $next = $options{next})
-   {setLabel($Next);
-    &$next;
-   }
-  Jmp $Check;
-  setLabel($End);
- }
-
 sub For($$%)                                                                    # For loop 0..range-1 or in reverse
  {my ($range, $block, %options) = @_;                                           # Limit, block, options
   if (!exists $options{reverse})                                                # Ascending order
@@ -1077,7 +1055,7 @@ use vars qw(@ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
 
 @ISA         = qw(Exporter);
 @EXPORT      = qw();
-@EXPORT_OK   = qw(areaStructure Add Alloc Bad Block Call Confess Else Execute For ForLoop Free Good Assert AssertEq AssertNe AssertGe AssertGt AssertLe AssertLt Dec Dump IfEq IfGe IfGt IfLe IfLt IfNe Ifx IfTrue IfFalse Inc Jeq Jge Jgt Jle Jlt Jmp Jne Label Mov Nop Out ParamsGet ParamsPut Pop Procedure Push Return ReturnGet ReturnPut ShiftLeft ShiftRight Smaller Start Subtract Then Var);
+@EXPORT_OK   = qw(areaStructure Add Alloc Bad Block Call Confess Else Execute For Free Good Assert AssertEq AssertNe AssertGe AssertGt AssertLe AssertLt Dec Dump IfEq IfGe IfGt IfLe IfLt IfNe Ifx IfTrue IfFalse Inc Jeq Jge Jgt Jle Jlt Jmp Jne Label Mov Nop Out ParamsGet ParamsPut Pop Procedure Push Return ReturnGet ReturnPut ShiftLeft ShiftRight Start Subtract Then Var);
 %EXPORT_TAGS = (all=>[@EXPORT, @EXPORT_OK]);
 
 return 1 if caller;
