@@ -27,69 +27,19 @@ Well known locations are represented by negative area ids
 
 my sub maximumInstructionsToExecute {1e5}                                       # Maximum number of subroutines to execute
 
-sub areaStructure($@)                                                           # Describe a data structure mapping a memory area
- {my ($structureName, @names) = @_;                                             # Structure name, fields names
+my sub Code(%)                                                                  # A block of code
+ {my (%options) = @_;                                                           # Parameters
 
-  my $d = genHash("Zero::Emulator::areaStructure",                              # Description of a data structure mapping a memory area
-    structureName => $structureName,                                            # Name of the structure
-    fieldOrder    => [],                                                        # Order of the elements in the structure, in effect, giving the offset of each element in the data structure
-    fieldNames    => {},                                                        # Maps the names of the fields to their offsets in the structure
+  genHash("Zero::Emulator::Code",                                               # Description of a call stack entry
+    assembled    => undef,                                                      # Needs to be assembled unless this field is true
+    code         => [],                                                         # An array of instructions
+    variables    => areaStructure("Variables"),                                 # Variables in this block of code
+    labels       => {},                                                         # Label name to instruction
+    labelCounter => 0,                                                          # Label counter used to generate unique labels
+    files        => [],                                                         # File number to file name
+    procedures   => {},                                                         # Procedures defined in this block of code
+    %options,
    );
-  $d->field($_) for @names;                                                     # Add the field descriptions
-  $d
- }
-
-sub Zero::Emulator::areaStructure::name($$)                                     # Add a field to a data structure
- {my ($d, $name) = @_;                                                          # Parameters
-  if (!$d->fieldNames->{$name})
-   {$d->fieldNames->{$name} = $d->fieldOrder->@*;
-    push $d->fieldOrder->@*, $name;
-   }
-  else
-   {confess "Duplicate name: $name in structure: ".$d->name;
-   }
-  \($d->fieldNames->{$name})
- }
-
-sub Zero::Emulator::areaStructure::registers($;$)                               # Create one or more temporary variables. Need to reuse registers no longer in use
- {my ($d, $count) = @_;                                                         # Parameters
-  if (!defined($count))
-   {my $o = $d->fieldOrder->@*;
-    push $d->fieldOrder->@*, undef;
-    return \$o;                                                                 # One temporary
-   }
-  map {__SUB__->($d)} 1..$count;                                                # Array of temporaries
- }
-
-sub Zero::Emulator::areaStructure::offset($$)                                   # Offset of a field in a data structure
- {my ($d, $name) = @_;                                                          # Parameters
-  if (my $n = $d->fieldNames->{$name}){return $n}
-  confess "No such name: '$name' in structure: ".$d->structureName;
- }
-
-sub Zero::Emulator::areaStructure::address($$)                                  # Address of a field in a data structure
- {my ($d, $name) = @_;                                                          # Parameters
-  if (defined(my $n = $d->fieldNames->{$name})){return \$n}
-  confess "No such name: '$name' in structure: ".$d->structureName;
- }
-
-my sub procedure($%)                                                            # Describe a procedure
- {my ($label, %options) = @_;                                                   # Start label of procedure, options describing procedure
-
-  genHash("Zero::Emulator::Procedure",                                          # Description of a procedure
-    target       => $label,                                                     # Label to call to call this procedure
-    variables    => areaStructure("Procedure"),                                 # Registers local to this procedure
-  );
- }
-
-sub Zero::Emulator::Procedure::registers($$)                                    # Allocate registers within a procedure
- {my ($procedure, $number) = @_;                                                # Procedure description
-  $procedure->variables->registers($number);
- }
-
-sub Zero::Emulator::Procedure::call($)                                          # Call a procedure.  Arguments are supplied by the ParamsPut and Get commands, return values are supplied by the ReturnPut and Get commands.
- {my ($procedure) = @_;                                                         # Procedure description
-  Zero::Emulator::Call($procedure->target);
  }
 
 my sub stackFrame(%)                                                            # Describe an entry on the call stack: the return address, the parameter list length, the parameter list location, the line of code from which the call was made, the file number of the file from which the call was made
@@ -130,29 +80,80 @@ sub Zero::Emulator::Code::instruction($%)                                       
       line          => $line,                                                   # Line in source file at which this instruction was encoded
       file          => fne $fileName,                                           # Source file in which instruction was encoded
       context       => $context,                                                # The call context in which this instruction was created
+      executed      => 0,                                                       # The number of times this instruction was executed
     );
     return $i;
    }
  }
 
+sub areaStructure($@)                                                           # Describe a data structure mapping a memory area
+ {my ($structureName, @names) = @_;                                             # Structure name, fields names
+
+  my $d = genHash("Zero::Emulator::areaStructure",                              # Description of a data structure mapping a memory area
+    structureName => $structureName,                                            # Name of the structure
+    fieldOrder    => [],                                                        # Order of the elements in the structure, in effect, giving the offset of each element in the data structure
+    fieldNames    => {},                                                        # Maps the names of the fields to their offsets in the structure
+   );
+  $d->field($_) for @names;                                                     # Add the field descriptions
+  $d
+ }
+
+sub Zero::Emulator::areaStructure::name($$)                                     # Add a field to a data structure
+ {my ($d, $name) = @_;                                                          # Parameters
+  if (!$d->fieldNames->{$name})
+   {$d->fieldNames->{$name} = $d->fieldOrder->@*;
+    push $d->fieldOrder->@*, $name;
+   }
+  else
+   {confess "Duplicate name: $name in structure: ".$d->name;
+   }
+  \($d->fieldNames->{$name})
+ }
+
+my sub procedure($%)                                                            # Describe a procedure
+ {my ($label, %options) = @_;                                                   # Start label of procedure, options describing procedure
+
+  genHash("Zero::Emulator::Procedure",                                          # Description of a procedure
+    target       => $label,                                                     # Label to call to call this procedure
+    variables    => areaStructure("Procedure"),                                 # Registers local to this procedure
+  );
+ }
+
+sub Zero::Emulator::areaStructure::registers($;$)                               # Create one or more temporary variables. Need to reuse registers no longer in use
+ {my ($d, $count) = @_;                                                         # Parameters
+  if (!defined($count))
+   {my $o = $d->fieldOrder->@*;
+    push $d->fieldOrder->@*, undef;
+    return \$o;                                                                 # One temporary
+   }
+  map {__SUB__->($d)} 1..$count;                                                # Array of temporaries
+ }
+
+sub Zero::Emulator::areaStructure::offset($$)                                   # Offset of a field in a data structure
+ {my ($d, $name) = @_;                                                          # Parameters
+  if (my $n = $d->fieldNames->{$name}){return $n}
+  confess "No such name: '$name' in structure: ".$d->structureName;
+ }
+
+sub Zero::Emulator::areaStructure::address($$)                                  # Address of a field in a data structure
+ {my ($d, $name) = @_;                                                          # Parameters
+  if (defined(my $n = $d->fieldNames->{$name})){return \$n}
+  confess "No such name: '$name' in structure: ".$d->structureName;
+ }
+
+sub Zero::Emulator::Procedure::registers($$)                                    # Allocate registers within a procedure
+ {my ($procedure, $number) = @_;                                                # Procedure description
+  $procedure->variables->registers($number);
+ }
+
+sub Zero::Emulator::Procedure::call($)                                          # Call a procedure.  Arguments are supplied by the ParamsPut and Get commands, return values are supplied by the ReturnPut and Get commands.
+ {my ($procedure) = @_;                                                         # Procedure description
+  Zero::Emulator::Call($procedure->target);
+ }
+
 my sub isScalar($)                                                              # Check whether an element is a scalar or an array
  {my ($value) = @_;                                                             # Parameters
   ! ref $value;
- }
-
-my sub Code(%)                                                                  # A block of code
- {my (%options) = @_;                                                           # Parameters
-
-  genHash("Zero::Emulator::Code",                                               # Description of a call stack entry
-    assembled    => undef,                                                      # Needs to be assembled unless this field is true
-    code         => [],                                                         # An array of instructions
-    variables    => areaStructure("Variables"),                                 # Variables in this block of code
-    labels       => {},                                                         # Label name to instruction
-    labelCounter => 0,                                                          # Label counter used to generate unique labels
-    files        => [],                                                         # File number to file name
-    procedures   => {},                                                         # Procedures defined in this block of code
-    %options,
-   );
  }
 
 sub Zero::Emulator::Code::registers($$)                                         # Allocate registers
@@ -193,6 +194,28 @@ sub Zero::Emulator::Code::assemble($%)                                          
   $Block->labels = {%labels};                                                   # Labels created during assembly
   $Block->assembled = time;                                                     # Time of assembly
   $Block
+ }
+
+sub Zero::Emulator::Code::analyzeExecutionResults($%)                           # Analyze execution results
+ {my ($code, %options) = @_;                                                    # Block of code, execution options
+  return unless my $a = $options{analyze};
+
+  my @C = $code->code->@*;
+  my @c = sort {$C[$a]->executed <=> $C[$b]->executed} keys @C;                 # Sort by number of times executed
+  my @l =         @c; $#l = $a unless $a < @l;
+  my @h = reverse @c; $#h = $a unless $a < @h;
+
+  say STDERR "Least executed";
+  for my $i(@l)
+   {my $j = $C[$i];
+    say STDERR $j->executed, $j->context;
+   }
+
+  say STDERR "Most executed";
+  for my $i(@h)
+   {my $j = $C[$i];
+    say STDERR $j->executed, $j->context;
+   }
  }
 
 sub Zero::Emulator::Code::execute($%)                                           # Execute a block of code
@@ -581,6 +604,7 @@ sub Zero::Emulator::Code::execute($%)                                           
        {say STDERR sprintf "%4d  %4d  %12s at %s line %d\n",
           $j, $i->number, $i->action, $i->file, $i->line;
        }
+      ++$i->executed;
       $c->($i);                                                                 # Execute instruction
      }
     confess "Out of instructions after $j" if $j >= maximumInstructionsToExecute;
@@ -589,6 +613,9 @@ sub Zero::Emulator::Code::execute($%)                                           
    {my $c = $calls[0];
     delete $memory{$_} for $c->stackArea, $c->params, $c->return;
    }
+
+  $Code->analyzeExecutionResults(%options);
+
   $exec
  }                                                                              # Execution results
 
@@ -1377,7 +1404,8 @@ if (1)                                                                          
    {my ($i) = @_;
     Out $i;
    };
-  ok Execute(out=>[0..9]);
+  my $e = Execute;
+  is_deeply $e->out, [0..9];
  }
 
 #latest:;
@@ -1471,7 +1499,7 @@ if (1)                                                                          
    {Out 3;
    };
   Out 4;
-  ok Execute(out=>[1,2,4]);
+  ok Execute(out=>[1,2,4], analyze=>1);
  }
 
 #latest:;
