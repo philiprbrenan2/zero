@@ -131,7 +131,7 @@ sub Zero::Emulator::areaStructure::registers($;$)                               
 
 sub Zero::Emulator::areaStructure::offset($$)                                   # Offset of a field in a data structure
  {my ($d, $name) = @_;                                                          # Parameters
-  if (my $n = $d->fieldNames->{$name}){return $n}
+  if (defined(my $n = $d->fieldNames->{$name})){return $n}
   confess "No such name: '$name' in structure: ".$d->structureName;
  }
 
@@ -198,24 +198,40 @@ sub Zero::Emulator::Code::assemble($%)                                          
 
 sub Zero::Emulator::Code::analyzeExecutionResults($%)                           # Analyze execution results
  {my ($code, %options) = @_;                                                    # Block of code, execution options
-  return unless my $a = $options{analyze};
 
-  my @C = $code->code->@*;
-  my @c = sort {$C[$a]->executed <=> $C[$b]->executed} keys @C;                 # Sort by number of times executed
-  my @l =         @c; $#l = $a unless $a < @l;
-  my @h = reverse @c; $#h = $a unless $a < @h;
+  return '' unless my $N = $options{analyze};
 
-  say STDERR "Least executed";
+  my @r;                                                                        # Report
+  my @c = $code->code->@*;
+  my %l;
+  for my $i(@c)                                                                 # Count executions of each instruction
+   {$l{$i->file}{$i->line} += $i->executed unless $i->action =~ m(\Aassert)i;
+   }
+
+  my @L;
+  for   my $f(keys %l)
+   {for my $l(keys $l{$f}->%*)
+     {push @L, [$l{$f}{$l}, $f, $l];
+     }
+   }
+  my @l = sort {$$a[0] <=> $$b[0]}                                              # By frequency
+          sort {$$a[2] <=> $$b[2]} @L;                                          # By line number
+
+  push @r, "Least executed";
+  my $l = 0;
   for my $i(@l)
-   {my $j = $C[$i];
-    say STDERR $j->executed, $j->context;
+   {push @r, sprintf "%4d at %s line %4d", $$i[0], $$i[1], $$i[2];
+    last if $l++ > $N;
    }
 
-  say STDERR "Most executed";
-  for my $i(@h)
-   {my $j = $C[$i];
-    say STDERR $j->executed, $j->context;
+  push @r, "Most executed";
+  my $h = 0;
+  for my $i(reverse @l)
+   {push @r, sprintf "%4d at %s line %4d", $$i[0], $$i[1], $$i[2];
+    last if $h++ > $N;
    }
+
+  join "\n", @r;
  }
 
 sub Zero::Emulator::Code::execute($%)                                           # Execute a block of code
@@ -229,7 +245,7 @@ sub Zero::Emulator::Code::execute($%)                                           
 
   my $exec = genHash("Zero::Emulator::Execution",                               # Execution results
     calls  => \@calls,                                                          # Call stack
-    code   => $code,                                                            # Code executed
+    code   => $Code,                                                            # Code executed
     count  => 0,                                                                # Executed instructions count
     counts => {},                                                               # Executed instructions by name counts
     memory => \%memory,                                                         # Memory contents at the end of execution
@@ -614,7 +630,9 @@ sub Zero::Emulator::Code::execute($%)                                           
     delete $memory{$_} for $c->stackArea, $c->params, $c->return;
    }
 
-  $Code->analyzeExecutionResults(%options);
+  if (my $r = $Code->analyzeExecutionResults(%options))
+   {say STDERR $r;
+   }
 
   $exec
  }                                                                              # Execution results
@@ -1499,7 +1517,7 @@ if (1)                                                                          
    {Out 3;
    };
   Out 4;
-  ok Execute(out=>[1,2,4], analyze=>1);
+  ok Execute(out=>[1,2,4], analyze=>0);
  }
 
 #latest:;
@@ -1518,4 +1536,20 @@ if (1)                                                                          
    };
   Out 4;
   ok Execute(out=>[1,3,4]);
+ }
+
+
+#latest:;
+if (0)                                                                          #TProcedure
+ {Start 1;
+  for my $i(1..10)
+   {Out $i;
+   };
+  IfTrue 0,
+  Then
+   {Out 99;
+   };
+  my $e = Execute;
+  is_deeply $e->out, [1..10];
+  say STDERR $e->code->analyzeExecutionResults(analyze=>3);
  }
