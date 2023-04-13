@@ -325,7 +325,6 @@ sub Zero::Emulator::Code::execute($%)                                           
 
   my sub rwRead($$)                                                             # Observe read from memory
    {my ($area, $address) = @_;                                                  # Area in memory, address within area
-say STDERR "Read", dump($area, $address);
 
     if (defined(my $a = $rw{$area}[$address]))
      {my $l = \$rw{$area}[$address];
@@ -380,8 +379,7 @@ say STDERR "Read", dump($area, $address);
    {my ($a, $area) = @_;                                                        # Location, optional area
     my $r;
     if (isScalar($a))                                                           # Constant
-     {say STDERR "RRRR", dump($a, $area);
-      rwRead($area//&stackArea, $a) if $a =~ m(\A\-?\d+\Z);
+     {rwRead($area//&stackArea, $a) if $a =~ m(\A\-?\d+\Z);
       return $a if defined $a;
      }
     elsif (isScalar($$a))                                                       # Direct
@@ -592,8 +590,9 @@ say STDERR "Read", dump($area, $address);
      {my $i = $calls[-1]->instruction;
       my $p = $i->sourceArea // $calls[-2]->params;
       my $q = $i->source;
-      my $t = left($i->target, $i->targetArea);
-      my $s = left($q, $p);                                                     # The source has to be a left hand side because we want to address a memory area not get a constant
+      my $t = left ($i->target, $i->targetArea);
+              right($q, $p);                                                    # The source will be read from
+      my $s = left ($q, $p);                                                    # The source has to be a left hand side because we want to address a memory area not get a constant
       $$t = $$s;
      },
 
@@ -608,8 +607,9 @@ say STDERR "Read", dump($area, $address);
     returnGet => sub                                                            # Get a word from the return area
      {my $i = $calls[-1]->instruction;
       my $p = $calls[-1]->return;
-      my $t = left($i->target, $i->targetArea);
-      my $s = left($i->source, $p);                                             # The source has to be a left hand side because we want to address a memory area not get a constant
+      my $t = left ($i->target, $i->targetArea);
+              right($i->source, $p);                                            # The source will be read from
+      my $s = left ($i->source, $p);                                            # The source has to be a left hand side because we want to address a memory area not get a constant
       $$t = $$s;
      },
 
@@ -696,8 +696,6 @@ say STDERR "Read", dump($area, $address);
   if (my $r = $exec->analyzeExecutionResults(%options))
    {say STDERR $r;
    }
-
-say STDERR "AAAA ", dump($exec->rw);
 
   $exec
  }                                                                              # Execution results
@@ -1344,7 +1342,7 @@ if (1)                                                                          
   setLabel $start;
     ParamsPut 0, 'bbb';
     Call $w;
-  ok Execute(out=>['bbb'], tarce=>1);
+  ok Execute(out=>['bbb'], trace=>0);
  }
 
 #latest:;
@@ -1602,7 +1600,6 @@ if (1)                                                                          
   Out 4;
   ok Execute(out=>[1,3,4]);
  }
-
 
 #latest:;
 if (1)                                                                          #TProcedure
