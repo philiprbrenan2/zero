@@ -313,11 +313,15 @@ sub Zero::Emulator::Code::execute($%)                                           
     $a
    }
 
+  my sub currentInstruction()                                                   # Get the current instructionm
+   {$calls[-1]->instruction;
+   };
+
   my sub rwWrite($$)                                                            # Observe write to memory
    {my ($area, $address) = @_;                                                  # Area in memory, address within area
     if (defined(my $a = $rw{$area}[$address]))
      {if ($a > 0)
-       {confess "double write" if $options{doubleWrite};
+       {stackTraceAndExit(currentInstruction()) if $options{doubleWrite};
        }
      }
     $rw{$area}[$address]++
@@ -366,7 +370,7 @@ sub Zero::Emulator::Code::execute($%)                                           
         return \$memory{$memory{&stackArea}[$$area]}[$m]                        # Indirect area
        }
      }
-    my $i = $calls[-1]->instruction;
+    my $i = currentInstruction;
     stackTraceAndExit($i);
     my $l = $i->line;
     my $f = $i->file;
@@ -419,7 +423,7 @@ sub Zero::Emulator::Code::execute($%)                                           
        }
      }
     if (!defined($r))
-     {my $i = $calls[-1]->instruction;
+     {my $i = currentInstruction;
       stackTraceAndExit($i);
       my $l = $i->line;
       my $f = $i->file;
@@ -436,7 +440,7 @@ sub Zero::Emulator::Code::execute($%)                                           
 
   my sub assert($$)                                                             # Assert generically
    {my ($test, $sub) = @_;                                                      # text of test, subroutine of test
-    my $i = $calls[-1]->instruction;
+    my $i = currentInstruction;
     my ($a, $b) = (right($i->source), right($i->source2));
     unless($sub->(right($a), right($b)))
      {say STDERR "Assert $a $test $b failed" unless $options{suppressStackTracePrint};
@@ -445,19 +449,19 @@ sub Zero::Emulator::Code::execute($%)                                           
    }
 
   my %instructions =                                                            # Instruction definitions
-   (add       => sub                                                            # Add the two source operands and store the result in the target
-     {my $i = $calls[-1]->instruction;
+   (add     => sub                                                              # Add the two source operands and store the result in the target
+     {my $i = currentInstruction;
       my $t = left($i->target, $i->targetArea);
       $$t = right($i->source) + right($i->source2);
      },
     subtract  => sub                                                            # Subtract the second source operand from the first and store the result in the target
-     {my $i = $calls[-1]->instruction;
+     {my $i = currentInstruction;
       my $t = left($i->target, $i->targetArea);
       $$t = right($i->source) - right($i->source2);
      },
 
     alloc     => sub                                                            # Create a new memory area and write its number into the location named by the target operand
-     {my $i = $calls[-1]->instruction;
+     {my $i = currentInstruction;
       my $a = allocMemory;
       my $t = left($i->target, $i->targetArea);
 
@@ -467,7 +471,7 @@ sub Zero::Emulator::Code::execute($%)                                           
      },
 
     assert    =>   sub                                                          # Assert
-     {my $i = $calls[-1]->instruction;
+     {my $i = currentInstruction;
       say STDERR "Assert failed" unless $options{suppressStackTracePrint};
       stackTraceAndExit($i);
      },
@@ -497,12 +501,12 @@ sub Zero::Emulator::Code::execute($%)                                           
      },
 
     free      => sub                                                            # Free the memory area named by the source operand
-     {my $i = $calls[-1]->instruction;
+     {my $i = currentInstruction;
       delete $memory{right($i->source, $i->sourceArea)};
      },
 
     call      => sub                                                            # Call a subroutine
-     {my $i = $calls[-1]->instruction;
+     {my $i = currentInstruction;
       my $t = $i->target;                                                       # Subroutine to call
 
       if (isScalar($t))
@@ -517,7 +521,7 @@ sub Zero::Emulator::Code::execute($%)                                           
      },
 
     return    => sub                                                            # Return from a subroutine call via the call stack
-     {my $i = $calls[-1]->instruction;
+     {my $i = currentInstruction;
       @calls or confess "The call stack is empty so I do not know where to return to";
       my $C = pop @calls;
       if (@calls)
@@ -531,12 +535,11 @@ sub Zero::Emulator::Code::execute($%)                                           
      },
 
     confess => sub                                                              # Print the current call stack and stop
-     {my $i = $calls[-1]->instruction;
-      stackTraceAndExit($i);
+     {stackTraceAndExit(currentInstruction);
      },
 
     dump    => sub                                                              # Dump memory
-     {my $i = $calls[-1]->instruction;
+     {my $i = currentInstruction;
       my $d = $i->source;
       my $D = ref $d;
       if ($D =~ m(code)i)
@@ -548,46 +551,46 @@ sub Zero::Emulator::Code::execute($%)                                           
      },
 
     dec     => sub                                                              # Decrement locations in memory. The first location is incremented by 1, the next by two, etc.
-     {my $i = $calls[-1]->instruction;
+     {my $i = currentInstruction;
       my $s = right($i->target, $i->targetArea);                                # Make sure there is something to decrement
       my $t = left ($i->target, $i->targetArea);
       $$t--;
      },
 
     inc       => sub                                                            # Increment locations in memory. The first location is incremented by 1, the next by two, etc.
-     {my $i = $calls[-1]->instruction;
+     {my $i = currentInstruction;
       my $s = right($i->target, $i->targetArea);                                # Make sure there is something to increment
       my $t = left($i->target, $i->targetArea);
       $$t++;
      },
 
     jmp       => sub                                                            # Jump to the target location
-     {my $i = $calls[-1]->instruction;
+     {my $i = currentInstruction;
       my $n = $i->number;
       my $r = right($i->target);
       $instructionPointer = $n + $r;
      },
                                                                                 # Conditional jumps
-    jEq => sub {my $i = $calls[-1]->instruction; jumpOp($i, sub{right($i->source) == right($i->source2)})},
-    jNe => sub {my $i = $calls[-1]->instruction; jumpOp($i, sub{right($i->source) != right($i->source2)})},
-    jLe => sub {my $i = $calls[-1]->instruction; jumpOp($i, sub{right($i->source) <= right($i->source2)})},
-    jLt => sub {my $i = $calls[-1]->instruction; jumpOp($i, sub{right($i->source) <  right($i->source2)})},
-    jGe => sub {my $i = $calls[-1]->instruction; jumpOp($i, sub{right($i->source) >= right($i->source2)})},
-    jGt => sub {my $i = $calls[-1]->instruction; jumpOp($i, sub{right($i->source) >  right($i->source2)})},
+    jEq => sub {my $i = currentInstruction; jumpOp($i, sub{right($i->source) == right($i->source2)})},
+    jNe => sub {my $i = currentInstruction; jumpOp($i, sub{right($i->source) != right($i->source2)})},
+    jLe => sub {my $i = currentInstruction; jumpOp($i, sub{right($i->source) <= right($i->source2)})},
+    jLt => sub {my $i = currentInstruction; jumpOp($i, sub{right($i->source) <  right($i->source2)})},
+    jGe => sub {my $i = currentInstruction; jumpOp($i, sub{right($i->source) >= right($i->source2)})},
+    jGt => sub {my $i = currentInstruction; jumpOp($i, sub{right($i->source) >  right($i->source2)})},
 
     label     => sub                                                            # Label - no operation
      {my ($i) = @_;                                                             # Instruction
      },
 
     mov       => sub                                                            # Move data moves data from one part of memory to another - "set", by contrast, sets variables from constant values
-     {my $i = $calls[-1]->instruction;
+     {my $i = currentInstruction;
       my $s = right($i->source, $i->sourceArea);
       my $t = left($i->target, $i->targetArea);
       $$t = $s;
      },
 
     paramsGet => sub                                                            # Get a parameter from the previous parameter block - this means that we must always have two entries on teh call stack - one representing the caller of the program, the second representing the current context of the program
-     {my $i = $calls[-1]->instruction;
+     {my $i = currentInstruction;
       my $p = $i->sourceArea // $calls[-2]->params;
       my $q = $i->source;
       my $t = left ($i->target, $i->targetArea);
@@ -597,7 +600,7 @@ sub Zero::Emulator::Code::execute($%)                                           
      },
 
     paramsPut => sub                                                            # Place a parameter in the current parameter block
-     {my $i = $calls[-1]->instruction;
+     {my $i = currentInstruction;
       my $p = $i->targetArea // $calls[-1]->params;
       my $t = left($i->target, $p);
       my $s = right($i->source, $i->sourceArea);
@@ -605,7 +608,7 @@ sub Zero::Emulator::Code::execute($%)                                           
      },
 
     returnGet => sub                                                            # Get a word from the return area
-     {my $i = $calls[-1]->instruction;
+     {my $i = currentInstruction;
       my $p = $calls[-1]->return;
       my $t = left ($i->target, $i->targetArea);
               right($i->source, $p);                                            # The source will be read from
@@ -614,7 +617,7 @@ sub Zero::Emulator::Code::execute($%)                                           
      },
 
     returnPut => sub                                                            # Put a word ino the return area
-     {my $i = $calls[-1]->instruction;
+     {my $i = currentInstruction;
       my $p = $calls[-2]->return;
       my $t = left($i->target, $p);
       my $s = right($i->source, $i->sourceArea);
@@ -626,14 +629,14 @@ sub Zero::Emulator::Code::execute($%)                                           
      },
 
     out     => sub                                                              # Write source as output to an array of words
-     {my $i = $calls[-1]->instruction;
+     {my $i = currentInstruction;
       my $t = right($i->source, $i->sourceArea);
       lll $t if  $options{debug} or $options{trace};
       push $exec->out->@*, $t;
      },
 
     pop => sub                                                                  # Pop a value from the specified memory area if possible else confess
-     {my $i = $calls[-1]->instruction;
+     {my $i = currentInstruction;
       my $p = right($i->source);
       if (!defined($memory{$p}) or !$memory{$p}->@*)                            # Stack not poppable
        {confess($i);
@@ -643,12 +646,12 @@ sub Zero::Emulator::Code::execute($%)                                           
      },
 
     push => sub                                                                 # Push a value onto the specified memory area
-     {my $i = $calls[-1]->instruction;
+     {my $i = currentInstruction;
       push $memory{right($i->target)}->@*, right($i->source, $i->sourceArea);
      },
 
     shiftLeft => sub                                                            # Shift left
-     {my $i = $calls[-1]->instruction;
+     {my $i = currentInstruction;
               right($i->target);                                                # Make sure there something to shift
       my $t = left ($i->target);
       my $s = right($i->source);
@@ -656,7 +659,7 @@ sub Zero::Emulator::Code::execute($%)                                           
      },
 
     shiftRight => sub                                                           # Shift right
-     {my $i = $calls[-1]->instruction;
+     {my $i = currentInstruction;
               right($i->target);                                                # Make sure there something to shift
       my $t = left ($i->target);
       my $s = right($i->source);
@@ -1615,3 +1618,13 @@ if (1)                                                                          
   is_deeply $e->out, [1..10];
   say STDERR $e->analyzeExecutionResults(analyze=>3);
  }
+
+
+=pod
+Chick peas, tinned cod, diced onion, tolive oil, hared boild eggs. Mash together in a bowl and eat on bread.
+
+Fresh cottage cheese sliced, olive oil, salt, pepper on top.
+
+Alternatively use tuna and black eye Frade beans.
+
+=cut
