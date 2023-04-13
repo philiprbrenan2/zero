@@ -263,6 +263,7 @@ sub Zero::Emulator::Code::execute($%)                                           
 
   my $instructionPointer = 0;                                                   # Instruction pointer
   my @calls;                                                                    # Call stack of calls made
+  my @out;                                                                      # Output area
   my %memory;                                                                   # Memory
   my %rw;                                                                       # Last action on each memory location, read or write: two writes with no interveing read is bad.  Writes are represented as positive integers, reads as negative ones
 
@@ -273,11 +274,11 @@ sub Zero::Emulator::Code::execute($%)                                           
     counts => {},                                                               # Executed instructions by name counts
     memory => \%memory,                                                         # Memory contents at the end of execution
     rw     => \%rw,                                                             # Read / write access to memory
-    out    => [],                                                               # The out channel
+    out    => \@out,                                                            # The out channel
    );
 
-  my sub stackTraceAndExit($)                                                   # Print a stack trace and exit
-   {my ($i) = @_;                                                               # Instruction trace occurred at
+  my sub stackTraceAndExit($;$)                                                 # Print a stack trace and exit
+   {my ($i, $title) = @_;                                                       # Instruction trace occurred at, title
     my $s = $options{suppressStackTracePrint};
     my $d = $options{debug};
     my @s;
@@ -290,7 +291,7 @@ sub Zero::Emulator::Code::execute($%)                                           
        }
      }
 
-    push    @s, "Stack trace\n";
+    push    @s, $title // "Stack trace\n";
     for my $j(reverse keys @calls)
      {my $c = $calls[$j];
       my $i = $c->instruction;
@@ -298,7 +299,7 @@ sub Zero::Emulator::Code::execute($%)                                           
       push @s, sprintf "%5d  %4d %-16s at %s line %d\n", $j+1, $i->number+1, $i->action, $i->file, $i->line, unless $s;
      }
     say STDERR join "\n", @s unless $s;
-    push $exec->out->@*, @s;
+    push @out, @s;
     $instructionPointer = undef;                                                # Execution terminates as soon as undefined instuction is encountered
    };
 
@@ -321,10 +322,13 @@ sub Zero::Emulator::Code::execute($%)                                           
    {my ($area, $address) = @_;                                                  # Area in memory, address within area
     if (defined(my $a = $rw{$area}[$address]))
      {if ($a > 0)
-       {stackTraceAndExit(currentInstruction()) if $options{doubleWrite};
+       {if ($options{doubleWrite})
+         {stackTraceAndExit(currentInstruction(), "Double write at:") ;
+         }
        }
      }
-    $rw{$area}[$address]++
+    $rw{$area}[$address]++;
+
    }
 
   my sub rwRead($$)                                                             # Observe read from memory
@@ -383,7 +387,7 @@ sub Zero::Emulator::Code::execute($%)                                           
    {my ($a, $area) = @_;                                                        # Location, optional area
     my $r;
     if (isScalar($a))                                                           # Constant
-     {rwRead($area//&stackArea, $a) if $a =~ m(\A\-?\d+\Z);
+     {#rwRead($area//&stackArea, $a) if $a =~ m(\A\-?\d+\Z);
       return $a if defined $a;
      }
     elsif (isScalar($$a))                                                       # Direct
@@ -439,7 +443,7 @@ sub Zero::Emulator::Code::execute($%)                                           
    }
 
   my sub assert($$)                                                             # Assert generically
-   {my ($test, $sub) = @_;                                                      # text of test, subroutine of test
+   {my ($test, $sub) = @_;                                                      # Text of test, subroutine of test
     my $i = currentInstruction;
     my ($a, $b) = (right($i->source), right($i->source2));
     unless($sub->(right($a), right($b)))
@@ -632,7 +636,7 @@ sub Zero::Emulator::Code::execute($%)                                           
      {my $i = currentInstruction;
       my $t = right($i->source, $i->sourceArea);
       lll $t if  $options{debug} or $options{trace};
-      push $exec->out->@*, $t;
+      push @out, $t;
      },
 
     pop => sub                                                                  # Pop a value from the specified memory area if possible else confess
@@ -1619,12 +1623,26 @@ if (1)                                                                          
   say STDERR $e->analyzeExecutionResults(analyze=>3);
  }
 
+#latest:;
+if (1)                                                                          # double write
+ {Start 1;
+  Mov 1, 1;
+  Mov 1, 1;
+  my $e = Execute(doubleWrite=>1);
+  my $o = dump($e->out);
+     $o =~ s(\s+line.*?\d+) ()s;
+  is_deeply eval($o), [
+  "Double write at:",
+  "    1     2 mov              at Emulator.pm\n",
+];
+ }
+
 
 =pod
-Chick peas, tinned cod, diced onion, tolive oil, hared boild eggs. Mash together in a bowl and eat on bread.
-
-Fresh cottage cheese sliced, olive oil, salt, pepper on top.
+Chick peas, tinned cod, diced onion, olive oil, hard boild eggs. Mash together and eat on bread.
 
 Alternatively use tuna and black eye Frade beans.
+
+Fresh cottage cheese sliced, olive oil, salt, pepper on top.
 
 =cut
