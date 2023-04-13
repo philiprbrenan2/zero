@@ -317,7 +317,7 @@ sub Zero::Emulator::Code::execute($%)                                           
    {my ($area, $address) = @_;                                                  # Area in memory, address within area
     if (defined(my $a = $rw{$area}[$address]))
      {if ($a > 0)
-       {confess "double write";
+       {confess "double write" if $options{doubleWrite};
        }
      }
     $rw{$area}[$address]++
@@ -932,6 +932,18 @@ sub Push($$)                                                                    
   $assembly->instruction(action=>"push", target=>$target, xSource($source));
  }
 
+sub ShiftLeft($;$)                                                              # Shift left
+ {my ($target, $source) = @_;                                                   # Target to shift, amount to shift
+  $assembly->instruction(action=>"shiftLeft", xTarget($target), xSource($source));
+  $target
+ }
+
+sub ShiftRight($;$)                                                             # Shift right
+ {my ($target, $source) = @_;                                                   # Target to shift, amount to shift
+  $assembly->instruction(action=>"shiftRight", xTarget($target), xSource($source));
+  $target
+ }
+
 sub Then(&)                                                                     # Then block
  {my ($t) = @_;                                                                 # Then block subroutine
   @_ == 1 or confess "One parameter";
@@ -1144,18 +1156,6 @@ sub Execute(%)                                                                  
     return 0 if $c;
    }
   return $r;
- }
-
-sub ShiftLeft($;$)                                                              # Shift left
- {my ($target, $source) = @_;                                                   # Target to shift, amount to shift
-  $assembly->instruction(action=>"shiftLeft", xTarget($target), xSource($source));
-  $target
- }
-
-sub ShiftRight($;$)                                                             # Shift right
- {my ($target, $source) = @_;                                                   # Target to shift, amount to shift
-  $assembly->instruction(action=>"shiftRight", xTarget($target), xSource($source));
-  $target
  }
 
 use Exporter qw(import);
