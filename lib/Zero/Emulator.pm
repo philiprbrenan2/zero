@@ -252,7 +252,7 @@ sub Zero::Emulator::Execution::analyzeExecutionResults($%)                      
   push @r, "Most executed:";
   push @r, $exec->analyzeExecutionResultsMost (%options);
 
-  push @r, join ' ', "Instructions executed:", $exec->count;
+  push @r, join ' ', $exec->count, " instructions executed";
   join "\n", @r;
  }
 
@@ -264,6 +264,7 @@ sub Zero::Emulator::Code::execute($%)                                           
   my $instructionPointer = 0;                                                   # Instruction pointer
   my @calls;                                                                    # Call stack of calls made
   my %memory;                                                                   # Memory
+  my %rw;                                                                       # Last action on each memory location, read or write: two writes with no interveing read is bad.  Writes are represented as positive integers, reads as negative ones
 
   my $exec = genHash("Zero::Emulator::Execution",                               # Execution results
     calls  => \@calls,                                                          # Call stack
@@ -271,6 +272,7 @@ sub Zero::Emulator::Code::execute($%)                                           
     count  => 0,                                                                # Executed instructions count
     counts => {},                                                               # Executed instructions by name counts
     memory => \%memory,                                                         # Memory contents at the end of execution
+    rw     => \%rw,                                                             # Read / write access to memory
     out    => [],                                                               # The out channel
    );
 
@@ -311,32 +313,58 @@ sub Zero::Emulator::Code::execute($%)                                           
     $a
    }
 
+  my sub rwWrite($$)                                                            # Observe write to memory
+   {my ($area, $address) = @_;                                                  # Area in memory, address within area
+    if (defined(my $a = $rw{$area}[$address]))
+     {if ($a > 0)
+       {confess "double write";
+       }
+     }
+    $rw{$area}[$address]++
+   }
+
+  my sub rwRead($$)                                                             # Observe read from memory
+   {my ($area, $address) = @_;                                                  # Area in memory, address within area
+say STDERR "Read", dump($area, $address);
+
+    if (defined(my $a = $rw{$area}[$address]))
+     {my $l = \$rw{$area}[$address];
+      $$l = $a > 0 ? -1 : $$l-1;
+     }
+   }
+
   my sub left($;$)                                                              # Address a memory location
    {my ($A, $area) = @_;                                                        # Location, optional area
     my $a = $A;
        $a = \$A if isScalar $a;                                                 # Interpret constants as direct memory locations
     if (isScalar $$a)
      {if (!defined($area))                                                      # Current stack frame
-       {return \$memory{&stackArea}[$$a]                                        # Stack frame
+       {rwWrite(        &stackArea, $$a);
+        return \$memory{&stackArea}[$$a]                                        # Stack frame
        }
       elsif (isScalar($area))
-       {return \$memory{$area}[$$a]                                             # Specified constant area
+       {rwWrite(        $area, $$a);
+        return \$memory{$area}[$$a]                                             # Specified constant area
        }
       elsif (isScalar($$area))
-       {return \$memory{$memory{&stackArea}[$$area]}[$$a]                       # Indirect area
+       {rwWrite(        $memory{&stackArea}[$$area], $$a);
+        return \$memory{$memory{&stackArea}[$$area]}[$$a]                       # Indirect area
        }
      }
     if (isScalar $$$a)
      {my $s = stackArea;
       my $m = $memory{&stackArea}[$$$a];
       if (!defined($area))                                                      # Current stack frame
-       {return \$memory{&stackArea}[$m]                                         # Stack frame
+       {rwWrite(        &stackArea, $m);
+        return \$memory{&stackArea}[$m]                                         # Stack frame
        }
       elsif (isScalar($area))
-       {return \$memory{$area}[$m]                                              # Specified constant area
+       {rwWrite(        $area, $m);
+        return \$memory{$area}[$m]                                              # Specified constant area
        }
       elsif (isScalar($$area))
-       {return \$memory{$memory{&stackArea}[$$area]}[$m]                        # Indirect area
+       {rwWrite(        $memory{&stackArea}[$$area], $m);
+        return \$memory{$memory{&stackArea}[$$area]}[$m]                        # Indirect area
        }
      }
     my $i = $calls[-1]->instruction;
@@ -352,34 +380,42 @@ sub Zero::Emulator::Code::execute($%)                                           
    {my ($a, $area) = @_;                                                        # Location, optional area
     my $r;
     if (isScalar($a))                                                           # Constant
-     {return $a if defined $a;
+     {say STDERR "RRRR", dump($a, $area);
+      rwRead($area//&stackArea, $a) if $a =~ m(\A\-?\d+\Z);
+      return $a if defined $a;
      }
     elsif (isScalar($$a))                                                       # Direct
      {if (!defined($area))
-       {$r = $memory{&stackArea}[$$a]                                           # Direct from stack area
+       {rwRead(      &stackArea, $$a);
+        $r = $memory{&stackArea}[$$a]                                           # Direct from stack area
        }
       elsif (isScalar($area))
-       {$r = $memory{$area}[$$a]                                                # Direct from constant area
+       {rwRead(      $area, $$a);
+        $r = $memory{$area}[$$a]                                                # Direct from constant area
        }
       elsif (isScalar($$area))
        {if (defined(my $i = $memory{&stackArea}[$$area]))
-         {$r = $memory{$i}[$$a];                                                # Direct from indirect area
+         {rwRead(      $i, $$a);
+          $r = $memory{$i}[$$a];                                                # Direct from indirect area
          }
        }
      }
     elsif (isScalar($$$a))                                                      # Indirect
      {if (!defined($area))
-       {$r = $memory{&stackArea}[$memory{&stackArea}[$$$a]]                     # Indirect from stack area
+       {rwRead(      &stackArea, $memory{&stackArea}[$$$a]);
+        $r = $memory{&stackArea}[$memory{&stackArea}[$$$a]]                     # Indirect from stack area
        }
       elsif (isScalar($area))
        {if (defined(my $i = $memory{&stackArea}[$$$a]))
-         {$r = $memory{$area}[$i]                                               # Indirect from constant area
+         {rwRead(      $area, $i);
+          $r = $memory{$area}[$i]                                               # Indirect from constant area
          }
        }
       elsif (isScalar($$area))
        {if (defined(my $i = $memory{&stackArea}[$$$a]))
          {if (defined(my $j = $memory{&stackArea}[$$area]))
-           {$r = $memory{$j}[$i]                                                # Indirect from indirect area
+           {rwRead(      $j, $i);
+            $r = $memory{$j}[$i]                                                # Indirect from indirect area
            }
          }
        }
@@ -515,12 +551,14 @@ sub Zero::Emulator::Code::execute($%)                                           
 
     dec     => sub                                                              # Decrement locations in memory. The first location is incremented by 1, the next by two, etc.
      {my $i = $calls[-1]->instruction;
-      my $t = left($i->target, $i->targetArea);
+      my $s = right($i->target, $i->targetArea);                                # Make sure there is something to decrement
+      my $t = left ($i->target, $i->targetArea);
       $$t--;
      },
 
     inc       => sub                                                            # Increment locations in memory. The first location is incremented by 1, the next by two, etc.
      {my $i = $calls[-1]->instruction;
+      my $s = right($i->target, $i->targetArea);                                # Make sure there is something to increment
       my $t = left($i->target, $i->targetArea);
       $$t++;
      },
@@ -611,6 +649,7 @@ sub Zero::Emulator::Code::execute($%)                                           
 
     shiftLeft => sub                                                            # Shift left
      {my $i = $calls[-1]->instruction;
+              right($i->target);                                                # Make sure there something to shift
       my $t = left ($i->target);
       my $s = right($i->source);
       $$t = $$t << $s;
@@ -618,6 +657,7 @@ sub Zero::Emulator::Code::execute($%)                                           
 
     shiftRight => sub                                                           # Shift right
      {my $i = $calls[-1]->instruction;
+              right($i->target);                                                # Make sure there something to shift
       my $t = left ($i->target);
       my $s = right($i->source);
       $$t = $$t >> $s;
@@ -656,6 +696,8 @@ sub Zero::Emulator::Code::execute($%)                                           
   if (my $r = $exec->analyzeExecutionResults(%options))
    {say STDERR $r;
    }
+
+say STDERR "AAAA ", dump($exec->rw);
 
   $exec
  }                                                                              # Execution results
@@ -1225,7 +1267,7 @@ if (1)                                                                          
   Inc     [-1,  0];
   Mov  0, [-1, \0];
   Out \0;
-  ok Execute(out=>[5]);
+  ok Execute(out=>[5], trace=>0);
  }
 
 #latest:;
@@ -1302,7 +1344,7 @@ if (1)                                                                          
   setLabel $start;
     ParamsPut 0, 'bbb';
     Call $w;
-  ok Execute(out=>['bbb']);
+  ok Execute(out=>['bbb'], tarce=>1);
  }
 
 #latest:;
@@ -1562,7 +1604,7 @@ if (1)                                                                          
  }
 
 
-latest:;
+#latest:;
 if (1)                                                                          #TProcedure
  {Start 1;
   for my $i(1..10)
