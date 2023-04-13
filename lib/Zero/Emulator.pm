@@ -61,9 +61,15 @@ sub Zero::Emulator::Code::instruction($%)                                       
 
   my ($package, $fileName, $line) = caller($options{level} // 1);
 
-  eval {confess};
-  my $context = $@;
-     $context =~ s(\A.*?Zero::Emulator::Code::instruction.*?\n) ()is;
+  my sub stackTrace()                                                           # File numbers and line numbers of callers
+   {my @s;
+    for my $c(1..99)
+     {my @c = caller($c);
+      last unless @c;
+      push @s, [$c[1], $c[2]];
+     }
+    \@s
+   };
 
   if ($options{action} !~ m(\Avariable\Z)i)                                     # Non variable
    {push $block->code->@*, my $i = genHash("Zero::Emulator::Code::Instruction", # Instruction details
@@ -79,7 +85,7 @@ sub Zero::Emulator::Code::instruction($%)                                       
       target_area   => $options{target_area },                                  # Target area
       line          => $line,                                                   # Line in source file at which this instruction was encoded
       file          => fne $fileName,                                           # Source file in which instruction was encoded
-      context       => $context,                                                # The call context in which this instruction was created
+      context       => stackTrace(),                                            # The call context in which this instruction was created
       executed      => 0,                                                       # The number of times this instruction was executed
     );
     return $i;
@@ -196,13 +202,10 @@ sub Zero::Emulator::Code::assemble($%)                                          
   $Block
  }
 
-sub Zero::Emulator::Code::analyzeExecutionResults($%)                           # Analyze execution results
- {my ($code, %options) = @_;                                                    # Block of code, execution options
+sub Zero::Emulator::Execution::analyzeExecutionResultsLeast($%)                      # Analyze execution results for least used code
+ {my ($exec, %options) = @_;                                                    # Execution results, options
 
-  return '' unless my $N = $options{analyze};
-
-  my @r;                                                                        # Report
-  my @c = $code->code->@*;
+  my @c = $exec->code->code->@*;
   my %l;
   for my $i(@c)                                                                 # Count executions of each instruction
    {$l{$i->file}{$i->line} += $i->executed unless $i->action =~ m(\Aassert)i;
@@ -217,20 +220,39 @@ sub Zero::Emulator::Code::analyzeExecutionResults($%)                           
   my @l = sort {$$a[0] <=> $$b[0]}                                              # By frequency
           sort {$$a[2] <=> $$b[2]} @L;                                          # By line number
 
-  push @r, "Least executed";
-  my $l = 0;
-  for my $i(@l)
-   {push @r, sprintf "%4d at %s line %4d", $$i[0], $$i[1], $$i[2];
-    last if $l++ > $N;
-   }
+  my $N = $options{analyze};
+  $#l = $N if @l > $N;
+  map {sprintf "%4d at %s line %4d", $$_[0], $$_[1], $$_[2]} @l;
+ }
 
-  push @r, "Most executed";
-  my $h = 0;
-  for my $i(reverse @l)
-   {push @r, sprintf "%4d at %s line %4d", $$i[0], $$i[1], $$i[2];
-    last if $h++ > $N;
-   }
+sub Zero::Emulator::Execution::analyzeExecutionResultsMost($%)                  # Analyze execution results for most used code
+ {my ($exec, %options) = @_;                                                    # Execution results, options
 
+  my @c = $exec->code->code->@*;
+  my %m;
+  for my $i(@c)                                                                 # Count executions of each instruction
+   {my $t =                                                                     # Traceback
+     join "\n", map {sprintf "    at %s line %4d", $$_[0], $$_[1]} $i->context->@*;
+    $m{$t} += $i->executed;
+   }
+  my @m = reverse sort {$$a[1] <=> $$b[1]} map {[$_, $m{$_}]} keys %m;          # Sort a hash into value order
+  my $N = $options{analyze};
+  $#m = $N if @m > $N;
+  map{sprintf "%4d\n%s", $m[$_][1], $m[$_][0]} keys @m;
+ }
+
+sub Zero::Emulator::Execution::analyzeExecutionResults($%)                      # Analyze execution results
+ {my ($exec, %options) = @_;                                                    # Execution results, options
+
+  return '' unless my $N = $options{analyze};
+
+  my @r;                                                                        # Report
+  push @r, "Least executed:";
+  push @r, $exec->analyzeExecutionResultsLeast(%options);
+  push @r, "Most executed:";
+  push @r, $exec->analyzeExecutionResultsMost (%options);
+
+  push @r, join ' ', "Instructions executed:", $exec->count;
   join "\n", @r;
  }
 
@@ -321,7 +343,8 @@ sub Zero::Emulator::Code::execute($%)                                           
     stackTraceAndExit($i);
     my $l = $i->line;
     my $f = $i->file;
-    die "Invalid left area: ".dump($area)." address: ".dump($a)." stack=".&stackArea
+    die "Invalid left area: ".dump($area)." address: ".dump($a)." stack="
+     .&stackArea
      ." at $f line $l\n".dump(\%memory);
    }
 
@@ -630,7 +653,7 @@ sub Zero::Emulator::Code::execute($%)                                           
     delete $memory{$_} for $c->stackArea, $c->params, $c->return;
    }
 
-  if (my $r = $Code->analyzeExecutionResults(%options))
+  if (my $r = $exec->analyzeExecutionResults(%options))
    {say STDERR $r;
    }
 
@@ -1539,8 +1562,8 @@ if (1)                                                                          
  }
 
 
-#latest:;
-if (0)                                                                          #TProcedure
+latest:;
+if (1)                                                                          #TProcedure
  {Start 1;
   for my $i(1..10)
    {Out $i;
@@ -1551,5 +1574,5 @@ if (0)                                                                          
    };
   my $e = Execute;
   is_deeply $e->out, [1..10];
-  say STDERR $e->code->analyzeExecutionResults(analyze=>3);
+  say STDERR $e->analyzeExecutionResults(analyze=>3);
  }
