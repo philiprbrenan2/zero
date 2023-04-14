@@ -282,12 +282,10 @@ sub Zero::Emulator::Code::execute($%)                                           
     my $s = $options{suppressStackTracePrint};
     my $d = $options{debug};
     my @s;
-
     if ($d)
      {push @s, "Context\n";
-      for my $c(split /\n/, $i->context)
-       {$c =~ s(\A\t) ();
-        push @s, $c;
+      for my $c($i->context->@*)
+       {push @s, sprintf " at %s line %d", $$c[0], $$c[1];
        }
      }
 
@@ -323,7 +321,7 @@ sub Zero::Emulator::Code::execute($%)                                           
     if (defined(my $a = $rw{$area}[$address]))
      {if ($a > 0)
        {if ($options{doubleWrite})
-         {stackTraceAndExit(currentInstruction(), "Double write at:") ;
+         {stackTraceAndExit(currentInstruction(), "Double write at area: $area, address: $address") ;
          }
        }
      }
@@ -544,13 +542,13 @@ sub Zero::Emulator::Code::execute($%)                                           
 
     dump    => sub                                                              # Dump memory
      {my $i = currentInstruction;
-      my $d = $i->source;
-      my $D = ref $d;
-      if ($D =~ m(code)i)
-       {$d->($exec);
+      my $t = $i->source;                                                       # Title
+      my $o = $i->target;                                                       # Options
+      if ($$o{rw})
+       {say STDERR "rw: $t ", dump(\%rw);
        }
-      else
-       {say STDERR $d, dump(\%memory);
+      if ($$o{memory})
+       {say STDERR "memory: $t ", dump(\%memory);
        }
      },
 
@@ -598,7 +596,7 @@ sub Zero::Emulator::Code::execute($%)                                           
       my $p = $i->sourceArea // $calls[-2]->params;
       my $q = $i->source;
       my $t = left ($i->target, $i->targetArea);
-              right($q, $p);                                                    # The source will be read from
+              right(\$q, $p);                                                   # The source will be read from
       my $s = left ($q, $p);                                                    # The source has to be a left hand side because we want to address a memory area not get a constant
       $$t = $$s;
      },
@@ -615,7 +613,7 @@ sub Zero::Emulator::Code::execute($%)                                           
      {my $i = currentInstruction;
       my $p = $calls[-1]->return;
       my $t = left ($i->target, $i->targetArea);
-              right($i->source, $p);                                            # The source will be read from
+              right(\$i->source, $p);                                           # The source will be read from
       my $s = left ($i->source, $p);                                            # The source has to be a left hand side because we want to address a memory area not get a constant
       $$t = $$s;
      },
@@ -777,9 +775,9 @@ sub Confess()                                                                   
  {$assembly->instruction(action=>"confess");
  }
 
-sub Dump($)                                                                     # Dump memory
- {my ($title) = @_;                                                             # Title
-  $assembly->instruction(action=>"dump", source=>$title);
+sub Dump($%)                                                                    # Dump memory
+ {my ($title, %options) = @_;                                                   # Title, options
+  $assembly->instruction(action=>"dump", source=>$title, target=>{%options});
  }
 
 sub Dec($)                                                                      # Decrement the target
@@ -1361,7 +1359,7 @@ if (1)                                                                          
   Return;
   setLabel $start;
     Call $l;
-    ReturnGet \0, \0;
+    ReturnGet \0, 0;
     Out \0;
   ok Execute(out=>['ccc']);
  }
@@ -1377,7 +1375,7 @@ if (1)                                                                          
    };
   ParamsPut 0, 2;
   Call $add;
-  my $c = ReturnGet \0;
+  my $c = ReturnGet 0;
   Out $c;
   ok Execute(trace=>0, out=>[4]);
  }
@@ -1632,7 +1630,7 @@ if (1)                                                                          
   my $o = dump($e->out);
      $o =~ s(\s+line.*?\d+) ()s;
   is_deeply eval($o), [
-  "Double write at:",
+  "Double write at area: 0, address: 1",
   "    1     2 mov              at Emulator.pm\n",
 ];
  }
