@@ -92,6 +92,16 @@ sub Zero::Emulator::Code::instruction($%)                                       
    }
  }
 
+sub Zero::Emulator::Code::Instruction::contextString($%)                        # Stack trace back for this instruction
+ {my ($i, %options) = @_;                                                       # Instruction, options
+  my @s;
+  push @s, $options{title} // "Context\n";
+  for my $c($i->context->@*)
+   {push @s, sprintf "    at %s line %d", $$c[0], $$c[1];
+   }
+  join "\n", @s
+ }
+
 sub areaStructure($@)                                                           # Describe a data structure mapping a memory area
  {my ($structureName, @names) = @_;                                             # Structure name, fields names
 
@@ -252,7 +262,7 @@ sub Zero::Emulator::Execution::analyzeExecutionResults($%)                      
   push @r, "Most executed:";
   push @r, $exec->analyzeExecutionResultsMost (%options);
 
-  push @r, join ' ', $exec->count, " instructions executed";
+  push @r, join ' ', '#', $exec->count, "instructions executed";
   join "\n", @r;
  }
 
@@ -265,7 +275,8 @@ sub Zero::Emulator::Code::execute($%)                                           
   my @calls;                                                                    # Call stack of calls made
   my @out;                                                                      # Output area
   my %memory;                                                                   # Memory
-  my %rw;                                                                       # Last action on each memory location, read or write: two writes with no interveing read is bad.  Writes are represented as positive integers, reads as negative ones
+  my %rw;                                                                       # Last action on each memory location, read or write: two writes with no intervening read is bad.  Writes are represented as stack trace backs, reasd by undef
+  my %read;                                                                     # Records whether a memory location was ever read allowing us to find all the unused locations
 
   my $exec = genHash("Zero::Emulator::Execution",                               # Execution results
     calls  => \@calls,                                                          # Call stack
@@ -274,20 +285,21 @@ sub Zero::Emulator::Code::execute($%)                                           
     counts => {},                                                               # Executed instructions by name counts
     memory => \%memory,                                                         # Memory contents at the end of execution
     rw     => \%rw,                                                             # Read / write access to memory
+    read   => \%read,                                                           # Records whether a memory location was ever read allowing us to find all the unused locations
+    wNR    => undef,                                                            # Locations written but not read
     out    => \@out,                                                            # The out channel
    );
+
+  my sub currentInstruction()                                                   # Get the current instructionm
+   {$calls[-1]->instruction;
+   };
 
   my sub stackTraceAndExit($;$)                                                 # Print a stack trace and exit
    {my ($i, $title) = @_;                                                       # Instruction trace occurred at, title
     my $s = $options{suppressStackTracePrint};
     my $d = $options{debug};
     my @s;
-    if ($d)
-     {push @s, "Context\n";
-      for my $c($i->context->@*)
-       {push @s, sprintf " at %s line %d", $$c[0], $$c[1];
-       }
-     }
+    push @s, $i->context if $d;
 
     push    @s, $title // "Stack trace\n";
     for my $j(reverse keys @calls)
@@ -312,29 +324,24 @@ sub Zero::Emulator::Code::execute($%)                                           
     $a
    }
 
-  my sub currentInstruction()                                                   # Get the current instructionm
-   {$calls[-1]->instruction;
-   };
-
   my sub rwWrite($$)                                                            # Observe write to memory
    {my ($area, $address) = @_;                                                  # Area in memory, address within area
-    if (defined(my $a = $rw{$area}[$address]))
-     {if ($a > 0)
-       {if ($options{doubleWrite})
-         {stackTraceAndExit(currentInstruction(), "Double write at area: $area, address: $address") ;
-         }
+    if (defined(my $a = $rw{$area}{$address}))
+     {if ($options{doubleWrite})
+       {my $c = $a->contextString(title=>"PreviousLocation:");
+        stackTraceAndExit(currentInstruction(),
+         "Double write at area: $area, address: $address\n$c\n");
        }
      }
-    $rw{$area}[$address]++;
-
+    $rw{$area}{$address} = currentInstruction;
    }
 
   my sub rwRead($$)                                                             # Observe read from memory
    {my ($area, $address) = @_;                                                  # Area in memory, address within area
 
-    if (defined(my $a = $rw{$area}[$address]))
-     {my $l = \$rw{$area}[$address];
-      $$l = $a > 0 ? -1 : $$l-1;
+    if (defined(my $a = $rw{$area}{$address}))                                  # Can only read from locations that actually have something in them
+     {delete $rw{$area}{$address};                                              # Track last read/write operation
+           $read{$area}{$address}++;                                            # Track read
      }
    }
 
@@ -450,11 +457,21 @@ sub Zero::Emulator::Code::execute($%)                                           
      }
    }
 
+  my sub assign($$)                                                             # Assign - check for pointless assignments
+   {my ($target, $value) = @_;                                                  # Target of assign, value to assign
+    if ($options{doubleAssign})
+     {if (defined($$target) and $$target == $value)
+       {stackTraceAndExit(currentInstruction(), "Pointless assign of: $value") ;
+       }
+     }
+    $$target = $value;
+   }
+
   my %instructions =                                                            # Instruction definitions
    (add     => sub                                                              # Add the two source operands and store the result in the target
      {my $i = currentInstruction;
       my $t = left($i->target, $i->targetArea);
-      $$t = right($i->source) + right($i->source2);
+      assign($t, right($i->source) + right($i->source2));
      },
     subtract  => sub                                                            # Subtract the second source operand from the first and store the result in the target
      {my $i = currentInstruction;
@@ -504,7 +521,21 @@ sub Zero::Emulator::Code::execute($%)                                           
 
     free      => sub                                                            # Free the memory area named by the source operand
      {my $i = currentInstruction;
-      delete $memory{right($i->source, $i->sourceArea)};
+      my $area = right($i->source, $i->sourceArea);                             # Area
+      if ($options{readAnalysis})
+       {my @area = $memory{$area}->@*;
+        my %area = map {$_=>$area[$_]} keys @area;
+        if (my $r = $read{$area})
+         {for my $r(keys %$r)
+           {delete $area{$r};
+           }
+          $exec->wNR->{$area} = {%area};
+          if (keys %area)
+           {say STDERR "Read analysis for area $area", dump(\%area);
+           }
+         }
+       }
+      delete $memory{$area}
      },
 
     call      => sub                                                            # Call a subroutine
@@ -545,10 +576,14 @@ sub Zero::Emulator::Code::execute($%)                                           
       my $t = $i->source;                                                       # Title
       my $o = $i->target;                                                       # Options
       if ($$o{rw})
-       {say STDERR "rw: $t ", dump(\%rw);
+       {my $s = "rw: $t ". dump(\%rw);
+        say STDERR $s;
+        push @out, $s;
        }
       if ($$o{memory})
-       {say STDERR "memory: $t ", dump(\%memory);
+       {my $s = "memory: $t ". dump(\%memory);
+        say STDERR $s;
+        push @out, $s;
        }
      },
 
@@ -1425,8 +1460,12 @@ if (1)                                                                          
  {Start 1;
   my $a = Alloc "node";
   Out $a;
+  Mov [$a, 1], 1;
+  Mov [$a, 2], 2;
+  Mov 1, [$a, \1];
   Free $a;
-  ok Execute(memory => {}, out=>[3]);
+  my $e = Execute(debug=>1);
+  is_deeply $e->out,    [3];
  }
 
 #latest:;
@@ -1627,12 +1666,16 @@ if (1)                                                                          
   Mov 1, 1;
   Mov 1, 1;
   my $e = Execute(doubleWrite=>1);
-  my $o = dump($e->out);
-     $o =~ s(\s+line.*?\d+) ()s;
-  is_deeply eval($o), [
-  "Double write at area: 0, address: 1",
-  "    1     2 mov              at Emulator.pm\n",
-];
+  ok dump($e->out) =~ m(Double write at area: 0, address: 1);
+ }
+
+#latest:;
+if (1)                                                                          # double assign
+ {Start 1;
+  Add 2,  1, 1;
+  Add 2, \2, 0;
+  my $e = Execute(doubleWrite=>1, doubleAssign=>1);
+  ok dump($e->out) =~ m(Pointless assign of: 2);
  }
 
 
