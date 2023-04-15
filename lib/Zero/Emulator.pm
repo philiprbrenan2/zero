@@ -1,6 +1,6 @@
 #!/usr/bin/perl -I/home/phil/perl/cpan/DataTableText/lib/
 #-------------------------------------------------------------------------------
-# Assemble and execute the Zero programming language.
+# Assemble and execute the Zero programming language. Examples at the end.
 # Philip R Brenan at appaapps dot com, Appa Apps Ltd Inc., 2023
 #-------------------------------------------------------------------------------
 use v5.30;
@@ -11,7 +11,6 @@ use Carp qw(cluck confess);
 use Data::Dump qw(dump);
 use Data::Table::Text qw(:all);
 eval "use Test::More qw(no_plan)" unless caller;
-
 =pod
 
 Memory is addressed in areas.  Each method has its own current stack area,
@@ -220,7 +219,7 @@ sub Zero::Emulator::Code::assemble($%)                                          
   $Block
  }
 
-sub Zero::Emulator::Execution::analyzeExecutionResultsLeast($%)                      # Analyze execution results for least used code
+sub Zero::Emulator::Execution::analyzeExecutionResultsLeast($%)                 # Analyze execution results for least used code
  {my ($exec, %options) = @_;                                                    # Execution results, options
 
   my @c = $exec->code->code->@*;
@@ -266,7 +265,7 @@ sub Zero::Emulator::Execution::analyzeExecutionNotRead($%)                      
   my @f = map {$$r{$_}} keys %$r;                                               # Instruction associated with each unread memory location
   for   my $f(@f)                                                               # Frames with unread instructions
    {for my $i(values %$f)                                                       # unread instructions
-     {push @t, $i->contextString;                                                 # Stack trace for each unread instruction
+     {push @t, $i->contextString;                                               # Stack trace for each unread instruction
      }
    }
   join "\n", @t;
@@ -373,7 +372,7 @@ sub Zero::Emulator::Code::execute($%)                                           
   my sub rwWrite($$)                                                            # Observe write to memory
    {my ($area, $address) = @_;                                                  # Area in memory, address within area
     if (defined(my $a = $rw{$area}{$address}))
-     {if ($options{doubleWrite})
+     {#if ($options{doubleWrite})
        {my $c = currentInstruction;
         my $p = $a->contextString("Previous Location of double write:");
         my $q = $c->contextString("Current  Location of double write:");
@@ -383,11 +382,16 @@ sub Zero::Emulator::Code::execute($%)                                           
     $rw{$area}{$address} = currentInstruction;
    }
 
+  my sub markAsRead($$)                                                         # Mark a memory location as having been read from
+   {my ($area, $address) = @_;                                                  # Area in memory, address within area
+    delete $rw{$area}{$address};                                                # Clear last write operation
+   }
+
   my sub rwRead($$)                                                             # Observe read from memory
    {my ($area, $address) = @_;                                                  # Area in memory, address within area
     if (defined(my $a = $rw{$area}{$address}))                                  # Can only read from locations that actually have something in them
-     {delete $rw{$area}{$address};                                              # Track last read/write operation
-           $read{$area}{$address}++;                                            # Track read
+     {markAsRead $area, $address;                                               # Clear last write operation
+           $read{$area}{$address}++;                                            # Track reads
      }
    }
 
@@ -432,6 +436,36 @@ sub Zero::Emulator::Code::execute($%)                                           
     die "Invalid left area: ".dump($area)." address: ".dump($a)." stack="
      .&stackArea
      ." at $f line $l\n".dump(\%memory);
+   }
+
+  my sub leftSuppress($;$)                                                      # Idicate that a memory location has been read
+   {my ($A, $area) = @_;                                                        # Location, optional area
+    my $a = $A;
+       $a = \$A if isScalar $a;                                                 # Interpret constants as direct memory locations
+    if (isScalar $$a)
+     {if (!defined($area))                                                      # Current stack frame
+       {rwRead(        &stackArea, $$a);
+       }
+      elsif (isScalar($area))
+       {rwRead(        $area, $$a);
+       }
+      elsif (isScalar($$area))
+       {rwRead(        $memory{&stackArea}[$$area], $$a);
+       }
+     }
+    elsif (isScalar $$$a)
+     {my $s = stackArea;
+      my $m = $memory{&stackArea}[$$$a];
+      if (!defined($area))                                                      # Current stack frame
+       {rwRead(        &stackArea, $m);
+       }
+      elsif (isScalar($area))
+       {rwRead(        $area, $m);
+       }
+      elsif (isScalar($$area))
+       {rwRead(        $memory{&stackArea}[$$area], $m);
+       }
+     }
    }
 
   my sub right($;$)                                                             # Get a constant or a memory location
@@ -632,7 +666,7 @@ sub Zero::Emulator::Code::execute($%)                                           
 
     inc       => sub                                                            # Increment locations in memory. The first location is incremented by 1, the next by two, etc.
      {my $i = currentInstruction;
-      my $s = right($i->target, $i->targetArea);                                # Make sure there is something to increment
+      leftSuppress($i->target, $i->targetArea);                                 # Make sure there is something to increment
       my $t = left($i->target, $i->targetArea);
       $$t++;
      },
@@ -666,17 +700,18 @@ sub Zero::Emulator::Code::execute($%)                                           
      {my $i = currentInstruction;
       my $p = $i->sourceArea // $calls[-2]->params;
       my $q = $i->source;
-      my $t = left ($i->target, $i->targetArea);
-              right(\$q, $p);                                                   # The source will be read from
-      my $s = left ($q, $p);                                                    # The source has to be a left hand side because we want to address a memory area not get a constant
+      my $t = left ( $i->target, $i->targetArea);
+      leftSuppress ( $q, $p);                                                   # The source will be read from
+      my $s = left ( $q, $p);                                                   # The source has to be a left hand side because we want to address a memory area not get a constant
       $$t = $$s;
      },
 
     paramsPut => sub                                                            # Place a parameter in the current parameter block
      {my $i = currentInstruction;
       my $p = $i->targetArea // $calls[-1]->params;
-      my $t = left($i->target, $p);
-      my $s = right($i->source, $i->sourceArea);
+      leftSuppress ( $i->target, $p);
+      my $t = left ( $i->target, $p);
+      my $s = right( $i->source, $i->sourceArea);
       $$t = $s;
      },
 
@@ -725,7 +760,7 @@ sub Zero::Emulator::Code::execute($%)                                           
 
     shiftLeft => sub                                                            # Shift left
      {my $i = currentInstruction;
-              right($i->target);                                                # Make sure there something to shift
+      leftSuppress ($i->target);                                                # Make sure there something to shift
       my $t = left ($i->target);
       my $s = right($i->source);
       $$t = $$t << $s;
@@ -733,7 +768,7 @@ sub Zero::Emulator::Code::execute($%)                                           
 
     shiftRight => sub                                                           # Shift right
      {my $i = currentInstruction;
-              right($i->target);                                                # Make sure there something to shift
+      leftSuppress ($i->target);                                                # Make sure there something to shift
       my $t = left ($i->target);
       my $s = right($i->source);
       $$t = $$t >> $s;
@@ -947,6 +982,7 @@ sub Procedure($$)                                                               
   my $save_registers = $assembly->variables;
   $assembly->variables = $p->variables;
   &$source($p);                                                                 # Code of procedure called with start label as a parameter
+  &Return;
   $assembly->variables = $save_registers;
 
   setLabel $end;
@@ -1460,7 +1496,6 @@ if (1)                                                                          
  {Start 1;
   my $c = Procedure 'confess', sub
    {Confess;
-    Return;
    };
   Call $c;
   ok Execute(suppressStackTracePrint=>1, out=>
@@ -1726,12 +1761,24 @@ if (1)                                                                          
   ok $e->analyzeExecutionResults(analyze=>3) =~ m(1 variables not read);
  }
 
+#latest:;
+if (1)                                                                          #TAlloc #TMov #TCall
+ {Start 1;
+  my $set = Procedure 'set', sub
+   {my $a = ParamsGet 0;
+   };
+  ParamsPut 0, 1;
+  Call $set;
+  ParamsPut 0, 1;
+  Call $set;
+  my $e = Execute(notRead=>1, doubleWrite=>1, doubleAssign=>1, trace=>0);
+  is_deeply $e->out, [];
+ }
 
 =pod
-Chick peas, tinned cod, diced onion, olive oil, hard boild eggs. Mash together and eat on bread.
+Chick peas, tinned cod, diced onion, olive oil, hard boiled eggs. Mash together and eat on bread.
 
 Alternatively use tuna and black eye Frade beans.
 
 Fresh cottage cheese sliced, olive oil, salt, pepper on top.
-
 =cut
