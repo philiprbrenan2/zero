@@ -324,7 +324,7 @@ sub Zero::Emulator::Code::execute($%)                                           
 
   my sub stackTraceAndExit($;$)                                                 # Print a stack trace and exit
    {my ($i, $title) = @_;                                                       # Instruction trace occurred at, title
-    my $s = $options{suppressStackTracePrint};
+    my $s = $options{suppressErrors};
     my $d = $options{debug};
     my @s;
 
@@ -542,7 +542,7 @@ sub Zero::Emulator::Code::execute($%)                                           
     my $i = currentInstruction;
     my ($a, $b) = (right($i->source), right($i->source2));
     unless($sub->(right($a), right($b)))
-     {say STDERR "Assert $a $test $b failed" unless $options{suppressStackTracePrint};
+     {say STDERR "Assert $a $test $b failed" unless $options{suppressErrors};
       stackTraceAndExit($i);
      }
    }
@@ -566,7 +566,7 @@ sub Zero::Emulator::Code::execute($%)                                           
     subtract  => sub                                                            # Subtract the second source operand from the first and store the result in the target
      {my $i = currentInstruction;
       my $t = left($i->target, $i->targetArea);
-      $$t = right($i->source) - right($i->source2);
+      assign($t, right($i->source) - right($i->source2));
      },
 
     alloc     => sub                                                            # Create a new memory area and write its number into the location named by the target operand
@@ -577,12 +577,12 @@ sub Zero::Emulator::Code::execute($%)                                           
       $memory{$a} = [];
       bless $memory{$a}, $i->source;                                            # Useful becuase dump then printsthe type of each area for us
       $memoryType{$a} = $i->source;                                             # The reason for this allocation
-      $$t = $a;
+      assign($t, $a);
      },
 
     assert    =>   sub                                                          # Assert
      {my $i = currentInstruction;
-      say STDERR "Assert failed" unless $options{suppressStackTracePrint};
+      say STDERR "Assert failed" unless $options{suppressErrors};
       stackTraceAndExit($i);
      },
 
@@ -704,7 +704,7 @@ sub Zero::Emulator::Code::execute($%)                                           
      {my $i = currentInstruction;
       my $s = right($i->source, $i->sourceArea);
       my $t = left($i->target, $i->targetArea);
-      $$t = $s;
+      assign($t, $s);
      },
 
     paramsGet => sub                                                            # Get a parameter from the previous parameter block - this means that we must always have two entries on teh call stack - one representing the caller of the program, the second representing the current context of the program
@@ -714,7 +714,7 @@ sub Zero::Emulator::Code::execute($%)                                           
       my $t = left ( $i->target, $i->targetArea);
       leftSuppress ( $q, $p);                                                   # The source will be read from
       my $s = left ( $q, $p);                                                   # The source has to be a left hand side because we want to address a memory area not get a constant
-      $$t = $$s;
+      assign($t, $$s);
      },
 
     paramsPut => sub                                                            # Place a parameter in the current parameter block
@@ -723,7 +723,7 @@ sub Zero::Emulator::Code::execute($%)                                           
       leftSuppress ( $i->target, $p);
       my $t = left ( $i->target, $p);
       my $s = right( $i->source, $i->sourceArea);
-      $$t = $s;
+      assign($t, $s);
      },
 
     returnGet => sub                                                            # Get a word from the return area
@@ -732,7 +732,7 @@ sub Zero::Emulator::Code::execute($%)                                           
       my $t = left ($i->target, $i->targetArea);
               right(\$i->source, $p);                                           # The source will be read from
       my $s = left ($i->source, $p);                                            # The source has to be a left hand side because we want to address a memory area not get a constant
-      $$t = $$s;
+      assign($t, $$s);
      },
 
     returnPut => sub                                                            # Put a word ino the return area
@@ -740,7 +740,7 @@ sub Zero::Emulator::Code::execute($%)                                           
       my $p = $calls[-2]->return;
       my $t = left($i->target, $p);
       my $s = right($i->source, $i->sourceArea);
-      $$t = $s;
+      assign($t, $s);
      },
 
     nop       => sub                                                            # No operation
@@ -761,7 +761,7 @@ sub Zero::Emulator::Code::execute($%)                                           
        {confess($i);
        }
       my $t = left($i->target, $i->targetArea);
-      $$t = pop $memory{$p}->@*;                                                # Pop from memory area into indicated memory location
+      assign($t, pop $memory{$p}->@*);                                          # Pop from memory area into indicated memory location
      },
 
     push => sub                                                                 # Push a value onto the specified memory area
@@ -774,7 +774,7 @@ sub Zero::Emulator::Code::execute($%)                                           
       leftSuppress ($i->target);                                                # Make sure there something to shift
       my $t = left ($i->target);
       my $s = right($i->source);
-      $$t = $$t << $s;
+      assign($t, $$t << $s);
      },
 
     shiftRight => sub                                                           # Shift right
@@ -782,7 +782,7 @@ sub Zero::Emulator::Code::execute($%)                                           
       leftSuppress ($i->target);                                                # Make sure there something to shift
       my $t = left ($i->target);
       my $s = right($i->source);
-      $$t = $$t >> $s;
+      assign($t, $$t >> $s);
      },
    );
 
@@ -1509,7 +1509,7 @@ if (1)                                                                          
    {Confess;
    };
   Call $c;
-  ok Execute(suppressStackTracePrint=>1, out=>
+  ok Execute(suppressErrors=>1, out=>
 [
 "Stack trace\n",
   "    2     3 confess\n",
@@ -1641,7 +1641,7 @@ if (1)                                                                          
 if (1)                                                                          #TAssert
  {Start 1;
   Assert;
-  my $r = Execute(suppressStackTracePrint=>1);
+  my $r = Execute(suppressErrors=>1);
   is_deeply $r->out, [
 "Stack trace\n",
   "    1     1 assert\n",
@@ -1653,7 +1653,7 @@ if (1)                                                                          
  {Start 1;
   Mov 0, 1;
   AssertEq \0, 2;
-  my $r = Execute(suppressStackTracePrint=>1);
+  my $r = Execute(suppressErrors=>1);
   is_deeply $r->out, [
 "Stack trace\n",
   "    1     2 assertEq\n",
@@ -1750,7 +1750,7 @@ if (1)                                                                          
  {Start 1;
   Mov 1, 1;
   Mov 1, 1;
-  my $e = Execute(doubleWrite=>1, suppressStackTracePrint=>1);
+  my $e = Execute(doubleWrite=>1, suppressErrors=>1);
   ok dump($e->out) =~ m(Double write at area: 0 .unknown., address: 1\\nPrevious Location of double write:\\n);
  }
 
@@ -1759,7 +1759,7 @@ if (1)                                                                          
  {Start 1;
   Add 2,  1, 1;
   Add 2, \2, 0;
-  my $e = Execute(doubleWrite=>1, doubleAssign=>1, suppressStackTracePrint=>1);
+  my $e = Execute(doubleWrite=>1, doubleAssign=>1, suppressErrors=>1);
   ok dump($e->out) =~ m(Pointless assign of: 2);
  }
 
@@ -1768,7 +1768,7 @@ if (1)                                                                          
  {Start 1;
   my $a = Mov 1;
   my $b = Mov $a;
-  my $e = Execute(notRead=>1, doubleAssign=>1, suppressStackTracePrint=>0);
+  my $e = Execute(notRead=>1, doubleAssign=>1, suppressErrors=>0);
   ok $e->analyzeExecutionResults(analyze=>3) =~ m(1 variables not read);
  }
 
@@ -1782,8 +1782,8 @@ if (1)                                                                          
   Call $set;
   ParamsPut 0, 1;
   Call $set;
-  my $e = Execute(notRead=>1, doubleWrite=>1, doubleAssign=>1, trace=>0);
-  is_deeply $e->out, [];
+  my $e = Execute(notRead=>1, doubleWrite=>1, doubleAssign=>1, trace=>0, suppressErrors=>1);
+  ok dump($e->out) =~ m(Pointless assign of: 1);
  }
 
 =pod
