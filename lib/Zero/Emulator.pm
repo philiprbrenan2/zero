@@ -328,9 +328,10 @@ sub Zero::Emulator::Code::execute($%)                                           
    {my ($area, $address) = @_;                                                  # Area in memory, address within area
     if (defined(my $a = $rw{$area}{$address}))
      {if ($options{doubleWrite})
-       {my $c = $a->contextString(title=>"PreviousLocation:");
-        stackTraceAndExit(currentInstruction(),
-         "Double write at area: $area, address: $address\n$c\n");
+       {my $c = currentInstruction;
+        my $p = $a->contextString(title=>"Previous Location:");
+        my $q = $c->contextString(title=>"Current  Location:");
+        stackTraceAndExit($c, "Double write at area: $area, address: $address\n$p\n$q\n");
        }
      }
     $rw{$area}{$address} = currentInstruction;
@@ -1464,7 +1465,7 @@ if (1)                                                                          
   Mov [$a, 2], 2;
   Mov 1, [$a, \1];
   Free $a;
-  my $e = Execute(debug=>1);
+  my $e = Execute(debug=>0);
   is_deeply $e->out,    [3];
  }
 
@@ -1564,6 +1565,7 @@ if (1)                                                                          
 ];
  }
 
+#latest:;
 if (1)                                                                          #TAssertEq
  {Start 1;
   Mov 0, 1;
@@ -1657,7 +1659,7 @@ if (1)                                                                          
    };
   my $e = Execute;
   is_deeply $e->out, [1..10];
-  say STDERR $e->analyzeExecutionResults(analyze=>3);
+  ok $e->analyzeExecutionResults(analyze=>3) =~ m(# 12 instructions executed);
  }
 
 #latest:;
@@ -1665,7 +1667,7 @@ if (1)                                                                          
  {Start 1;
   Mov 1, 1;
   Mov 1, 1;
-  my $e = Execute(doubleWrite=>1);
+  my $e = Execute(doubleWrite=>1, suppressStackTracePrint=>1);
   ok dump($e->out) =~ m(Double write at area: 0, address: 1);
  }
 
@@ -1674,7 +1676,7 @@ if (1)                                                                          
  {Start 1;
   Add 2,  1, 1;
   Add 2, \2, 0;
-  my $e = Execute(doubleWrite=>1, doubleAssign=>1);
+  my $e = Execute(doubleWrite=>1, doubleAssign=>1, suppressStackTracePrint=>1);
   ok dump($e->out) =~ m(Pointless assign of: 2);
  }
 
