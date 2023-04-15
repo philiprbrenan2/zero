@@ -23,7 +23,7 @@ Well known locations are represented by negative area ids
 
 =cut
 
-#makeDieConfess;
+makeDieConfess;
 
 my sub maximumInstructionsToExecute {1e5}                                       # Maximum number of subroutines to execute
 
@@ -33,7 +33,7 @@ my sub Code(%)                                                                  
   genHash("Zero::Emulator::Code",                                               # Description of a call stack entry
     assembled    => undef,                                                      # Needs to be assembled unless this field is true
     code         => [],                                                         # An array of instructions
-    variables    => areaStructure("Variables"),                                 # Variables in this block of code
+    variables    => AreaStructure("Variables"),                                 # Variables in this block of code
     labels       => {},                                                         # Label name to instruction
     labelCounter => 0,                                                          # Label counter used to generate unique labels
     files        => [],                                                         # File number to file name
@@ -53,6 +53,7 @@ my sub stackFrame(%)                                                            
     return      => $options{return},                                            # Memory area conmtaining returned result
     line        => $options{line},                                              # The line number from which the call was made
     file        => $options{file},                                              # The file number from which the call was made - this could be folded into the line number but for reasons best known to themselves people who cannot program very well often scatter projects across several files a practice that is completely pointless in this day of git and so can only lead to chaos and confusion
+    variables   => $options{variables},                                         # Variables local to this stack frame
   );
  }
 
@@ -85,6 +86,7 @@ sub Zero::Emulator::Code::instruction($%)                                       
       target_area   => $options{target_area },                                  # Target area
       line          => $line,                                                   # Line in source file at which this instruction was encoded
       file          => fne $fileName,                                           # Source file in which instruction was encoded
+      variables     => $block->variables,                                       # The Area Structure currently in use when this instruction was created
       context       => stackTrace(),                                            # The call context in which this instruction was created
       executed      => 0,                                                       # The number of times this instruction was executed
     );
@@ -102,19 +104,25 @@ sub Zero::Emulator::Code::Instruction::contextString($%)                        
   join "\n", @s
  }
 
-sub areaStructure($@)                                                           # Describe a data structure mapping a memory area
+sub AreaStructure($@)                                                           # Describe a data structure mapping a memory area
  {my ($structureName, @names) = @_;                                             # Structure name, fields names
 
-  my $d = genHash("Zero::Emulator::areaStructure",                              # Description of a data structure mapping a memory area
+  my $d = genHash("Zero::Emulator::AreaStructure",                              # Description of a data structure mapping a memory area
     structureName => $structureName,                                            # Name of the structure
     fieldOrder    => [],                                                        # Order of the elements in the structure, in effect, giving the offset of each element in the data structure
     fieldNames    => {},                                                        # Maps the names of the fields to their offsets in the structure
+    instructions  => [],                                                        # The variable instruction associated with this variable
    );
   $d->field($_) for @names;                                                     # Add the field descriptions
   $d
  }
 
-sub Zero::Emulator::areaStructure::name($$)                                     # Add a field to a data structure
+sub Zero::Emulator::AreaStructure::count($)                                     # Add a field to a data structure
+ {my ($d) = @_;                                                                 # Area structure
+  scalar $d->fieldOrder->@*
+ }
+
+sub Zero::Emulator::AreaStructure::name($$)                                     # Add a field to a data structure
  {my ($d, $name) = @_;                                                          # Parameters
   if (!$d->fieldNames->{$name})
    {$d->fieldNames->{$name} = $d->fieldOrder->@*;
@@ -131,11 +139,11 @@ my sub procedure($%)                                                            
 
   genHash("Zero::Emulator::Procedure",                                          # Description of a procedure
     target       => $label,                                                     # Label to call to call this procedure
-    variables    => areaStructure("Procedure"),                                 # Registers local to this procedure
+    variables    => AreaStructure("Procedure"),                                 # Registers local to this procedure
   );
  }
 
-sub Zero::Emulator::areaStructure::registers($;$)                               # Create one or more temporary variables. Need to reuse registers no longer in use
+sub Zero::Emulator::AreaStructure::registers($;$)                               # Create one or more temporary variables. Need to reuse registers no longer in use
  {my ($d, $count) = @_;                                                         # Parameters
   if (!defined($count))
    {my $o = $d->fieldOrder->@*;
@@ -145,13 +153,13 @@ sub Zero::Emulator::areaStructure::registers($;$)                               
   map {__SUB__->($d)} 1..$count;                                                # Array of temporaries
  }
 
-sub Zero::Emulator::areaStructure::offset($$)                                   # Offset of a field in a data structure
+sub Zero::Emulator::AreaStructure::offset($$)                                   # Offset of a field in a data structure
  {my ($d, $name) = @_;                                                          # Parameters
   if (defined(my $n = $d->fieldNames->{$name})){return $n}
   confess "No such name: '$name' in structure: ".$d->structureName;
  }
 
-sub Zero::Emulator::areaStructure::address($$)                                  # Address of a field in a data structure
+sub Zero::Emulator::AreaStructure::address($$)                                  # Address of a field in a data structure
  {my ($d, $name) = @_;                                                          # Parameters
   if (defined(my $n = $d->fieldNames->{$name})){return \$n}
   confess "No such name: '$name' in structure: ".$d->structureName;
@@ -184,7 +192,7 @@ sub Zero::Emulator::Code::assemble($%)                                          
   my $vars = $Block->variables;                                                 # The varaibles refernced by the code
 
   my %labels;                                                                   # Load labels
-  my $stackFrame = areaStructure("Stack");                                      # The current stack frame we are creating variables in
+  my $stackFrame = AreaStructure("Stack");                                      # The current stack frame we are creating variables in
 
   for my $c(keys @$code)                                                        # Labels
    {my $i = $$code[$c];
@@ -193,9 +201,9 @@ sub Zero::Emulator::Code::assemble($%)                                          
     $labels{$i->source} = $i;                                                   # Point label to instruction
    }
 
-  for my $c(keys @$code)                                                        # Target jump / call instructions
+  for my $c(keys @$code)                                                        # Target jump and call instructions
    {my $i = $$code[$c];
-    next unless $i->action =~ m(\Aj|\Acall);
+    next unless $i->action =~ m(\A(j|call))i;
     if (my $l = $i->target)                                                     # Label
      {if (my $t = $labels{$l})                                                  # Found label
        {$i->target = $t->number - $c;                                           # Relative jump
@@ -251,16 +259,35 @@ sub Zero::Emulator::Execution::analyzeExecutionResultsMost($%)                  
   map{sprintf "%4d\n%s", $m[$_][1], $m[$_][0]} keys @m;
  }
 
+sub Zero::Emulator::Execution::analyzeExecutionNotRead($%)                      # Analyze execution results for variables never read
+ {my ($exec, %options) = @_;                                                    # Execution results, options
+  return '' unless my $r = $exec->notRead;
+  my @t;
+  my @f = map {$$r{$_}} keys %$r;                                               # Instruction associated with each unread memory location
+  for   my $f(@f)                                                               # Frames with unread instructions
+   {for my $i(values %$f)                                                       # unread instructions
+     {push @t, $i->contextString;                                                 # Stack trace for each unread instruction
+     }
+   }
+  join "\n", @t;
+ }
+
 sub Zero::Emulator::Execution::analyzeExecutionResults($%)                      # Analyze execution results
  {my ($exec, %options) = @_;                                                    # Execution results, options
 
   return '' unless my $N = $options{analyze};
 
-  my @r;                                                                        # Report
+  my @r = "Execution Results Analysis";                                         # Report title
   push @r, "Least executed:";
   push @r, $exec->analyzeExecutionResultsLeast(%options);
   push @r, "Most executed:";
   push @r, $exec->analyzeExecutionResultsMost (%options);
+
+  if ($exec->notRead)
+   {my   @v = $exec->analyzeExecutionNotRead(%options);
+    push @r, join ' ', scalar(@v), "variables not read";
+    push @r, @v;
+   }
 
   push @r, join ' ', '#', $exec->count, "instructions executed";
   join "\n", @r;
@@ -278,16 +305,16 @@ sub Zero::Emulator::Code::execute($%)                                           
   my %rw;                                                                       # Last action on each memory location, read or write: two writes with no intervening read is bad.  Writes are represented as stack trace backs, reasd by undef
   my %read;                                                                     # Records whether a memory location was ever read allowing us to find all the unused locations
 
-  my $exec = genHash("Zero::Emulator::Execution",                               # Execution results
-    calls  => \@calls,                                                          # Call stack
-    code   => $Code,                                                            # Code executed
-    count  => 0,                                                                # Executed instructions count
-    counts => {},                                                               # Executed instructions by name counts
-    memory => \%memory,                                                         # Memory contents at the end of execution
-    rw     => \%rw,                                                             # Read / write access to memory
-    read   => \%read,                                                           # Records whether a memory location was ever read allowing us to find all the unused locations
-    wNR    => undef,                                                            # Locations written but not read
-    out    => \@out,                                                            # The out channel
+  my $exec  = genHash("Zero::Emulator::Execution",                              # Execution results
+    calls   => \@calls,                                                         # Call stack
+    code    => $Code,                                                           # Code executed
+    count   => 0,                                                               # Executed instructions count
+    counts  => {},                                                              # Executed instructions by name counts
+    memory  => \%memory,                                                        # Memory contents at the end of execution
+    rw      => \%rw,                                                            # Read / write access to memory
+    read    => \%read,                                                          # Records whether a memory location was ever read allowing us to find all the unused locations
+    notRead => undef,                                                           # Locations written but not read
+    out     => \@out,                                                           # The out channel
    );
 
   my sub currentInstruction()                                                   # Get the current instructionm
@@ -299,7 +326,7 @@ sub Zero::Emulator::Code::execute($%)                                           
     my $s = $options{suppressStackTracePrint};
     my $d = $options{debug};
     my @s;
-    push @s, $i->context if $d;
+    push @s, $i->contextString if $d;
 
     push    @s, $title // "Stack trace\n";
     for my $j(reverse keys @calls)
@@ -308,6 +335,7 @@ sub Zero::Emulator::Code::execute($%)                                           
       push @s, sprintf "%5d  %4d %s\n", $j+1, $i->number+1, $i->action if $s;
       push @s, sprintf "%5d  %4d %-16s at %s line %d\n", $j+1, $i->number+1, $i->action, $i->file, $i->line, unless $s;
      }
+
     say STDERR join "\n", @s unless $s;
     push @out, @s;
     $instructionPointer = undef;                                                # Execution terminates as soon as undefined instuction is encountered
@@ -322,6 +350,24 @@ sub Zero::Emulator::Code::execute($%)                                           
    {my $a = $allocs++;
     $memory{$a} = [];
     $a
+   }
+
+  my sub notRead()                                                              # Record the unused memory locations in the current stack frame
+   {if ($options{notRead})
+     {my $area = &stackArea;
+      my @area = $memory{$area}->@*;                                            # Memory in area
+      my %r    = map {$_ => $calls[-1]->variables->instructions->[$_]} keys @area; # Location in stack frame => instruction defining vasriable
+      for my $a(keys @area)
+       {my $I  = $calls[-1]->variables->instructions->[$a];
+        my $i  = $$code[$I];
+        $r{$a} = $i;
+       }
+
+      if (my $r = $read{$area})                                                 # Locations in this area that have ben read
+       {delete $r{$_} for keys %$r;                                             # Delete locations that have been read from
+       }
+      $exec->notRead->{$area} = {%r};                                           # Record not read
+     }
    }
 
   my sub rwWrite($$)                                                            # Observe write to memory
@@ -339,7 +385,6 @@ sub Zero::Emulator::Code::execute($%)                                           
 
   my sub rwRead($$)                                                             # Observe read from memory
    {my ($area, $address) = @_;                                                  # Area in memory, address within area
-
     if (defined(my $a = $rw{$area}{$address}))                                  # Can only read from locations that actually have something in them
      {delete $rw{$area}{$address};                                              # Track last read/write operation
            $read{$area}{$address}++;                                            # Track read
@@ -523,19 +568,6 @@ sub Zero::Emulator::Code::execute($%)                                           
     free      => sub                                                            # Free the memory area named by the source operand
      {my $i = currentInstruction;
       my $area = right($i->source, $i->sourceArea);                             # Area
-      if ($options{readAnalysis})
-       {my @area = $memory{$area}->@*;
-        my %area = map {$_=>$area[$_]} keys @area;
-        if (my $r = $read{$area})
-         {for my $r(keys %$r)
-           {delete $area{$r};
-           }
-          $exec->wNR->{$area} = {%area};
-          if (keys %area)
-           {say STDERR "Read analysis for area $area", dump(\%area);
-           }
-         }
-       }
       delete $memory{$area}
      },
 
@@ -550,7 +582,7 @@ sub Zero::Emulator::Code::execute($%)                                           
        {$instructionPointer = $t;                                               # Absolute call
        }
       push @calls, stackFrame(target=>$code->[$instructionPointer],             # Create a new call stack entry
-        instruction=>$i,
+        instruction=>$i, variables=>$i->source->variables,
         stackArea=>allocMemory, params=>allocMemory, return=>allocMemory);
      },
 
@@ -565,7 +597,10 @@ sub Zero::Emulator::Code::execute($%)                                           
       else
        {$instructionPointer = undef;
        }
-      delete $memory{$$C{$_}} for qw(stackArea params return);                  # Remove memory areas associated with the current sdtack frame
+
+      notRead if $options{notRead};                                             # Record unread memory locations in teh cirrent stack frame
+
+      delete $memory{$$C{$_}} for qw(stackArea params return);                  # Remove memory areas associated with the current stack frame
      },
 
     confess => sub                                                              # Print the current call stack and stop
@@ -706,6 +741,7 @@ sub Zero::Emulator::Code::execute($%)                                           
    );
 
   push @calls, stackFrame(                                                      # Initial stack entries
+    variables => $Code->variables,                                              # Variables in initial stack frame
     stackArea => allocMemory,                                                   # Allocate data segment for current method
     params    => allocMemory,
     return    => allocMemory,
@@ -729,8 +765,10 @@ sub Zero::Emulator::Code::execute($%)                                           
      }
     confess "Out of instructions after $j" if $j >= maximumInstructionsToExecute;
    }
+
   if (1)                                                                        # Free first stack frame
    {my $c = $calls[0];
+    notRead if $options{notRead};                                               # Record unread memory locations in teh cirrent stack frame
     delete $memory{$_} for $c->stackArea, $c->params, $c->return;
    }
 
@@ -803,8 +841,8 @@ sub Free($)                                                                     
  }
 
 sub Call($)                                                                     # Call the subroutine at the target address
- {my ($target) = @_;                                                            # Target
-  $assembly->instruction(action=>"call", xTarget($target));
+ {my ($p) = @_;                                                                 # Procedure description
+  $assembly->instruction(action=>"call", target=>$p->target, source=>$p);
  }
 
 sub Confess()                                                                   # Confess
@@ -897,7 +935,6 @@ sub Out($)                                                                      
   $assembly->instruction(action=>"out", xSource($source))
  }
 
-
 sub Procedure($$)                                                               # Define a procedure
  {my ($name, $source) = @_;                                                     # Name of procedure, source code as a subroutine# $assembly->instruction(action=>"procedure", target=>$target, source=>$source);
   if ($name and my $n = $assembly->procedures->{$name})                         # Reuse existing named procedure
@@ -913,8 +950,7 @@ sub Procedure($$)                                                               
   $assembly->variables = $save_registers;
 
   setLabel $end;
-
-  $assembly->procedures->{$name} = $start                                       # Return the start of the procedure
+  $assembly->procedures->{$name} = $p;                                          # Return the start of the procedure
  }
 
 sub ParamsGet($;$)                                                              # Get a word from the parameters in the previous frame and store it in the current frame
@@ -1174,6 +1210,11 @@ sub Block(&%)                                                                   
 sub Var(;$)                                                                     # Create a variable initialized to the specified value
  {my ($value) = @_;                                                             # Value
   my $i = $assembly->registers;
+  my $a = $assembly->variables;
+  my $v = $a->count-1;
+  my $c = $assembly->code->@*;
+  $a->instructions->[$v] = $c;
+
   Mov $i, $value if defined $value;
   $i
  }
@@ -1204,7 +1245,7 @@ use vars qw(@ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
 
 @ISA         = qw(Exporter);
 @EXPORT      = qw();
-@EXPORT_OK   = qw(areaStructure Add Alloc Bad Block Call Confess Else Execute For Free Good Assert AssertEq AssertNe AssertGe AssertGt AssertLe AssertLt Dec Dump IfEq IfGe IfGt IfLe IfLt IfNe Ifx IfTrue IfFalse Inc Jeq Jge Jgt Jle Jlt Jmp Jne Label Mov Nop Out ParamsGet ParamsPut Pop Procedure Push Return ReturnGet ReturnPut ShiftLeft ShiftRight Start Subtract Then Var);
+@EXPORT_OK   = qw(AreaStructure Add Alloc Bad Block Call Confess Else Execute For Free Good Assert AssertEq AssertNe AssertGe AssertGt AssertLe AssertLt Dec Dump IfEq IfGe IfGt IfLe IfLt IfNe Ifx IfTrue IfFalse Inc Jeq Jge Jgt Jle Jlt Jmp Jne Label Mov Nop Out ParamsGet ParamsPut Pop Procedure Push Return ReturnGet ReturnPut ShiftLeft ShiftRight Start Subtract Then Var);
 %EXPORT_TAGS = (all=>[@EXPORT, @EXPORT_OK]);
 
 return 1 if caller;
@@ -1375,28 +1416,26 @@ if (1)                                                                          
 #latest:;
 if (1)                                                                          #TCall Call a subroutine with one parameter
  {Start 1;
-  Jmp (my $start = label());
-  my $w = setLabel 'write';
-    ParamsGet \0, 0;
+  my $w = Procedure 'write', sub
+   {ParamsGet \0, 0;
     Out \0;
-  Return;
-  setLabel $start;
-    ParamsPut 0, 'bbb';
-    Call $w;
+    Return;
+   };
+  ParamsPut 0, 'bbb';
+  Call $w;
   ok Execute(out=>['bbb'], trace=>0);
  }
 
 #latest:;
 if (1)                                                                          #TCall Call a subroutine returning one value
  {Start 1;
-  Jmp (my $start = label());
-  my $l = setLabel 'write';
-    ReturnPut 0, "ccc";
-  Return;
-  setLabel $start;
-    Call $l;
-    ReturnGet \0, 0;
-    Out \0;
+  my $w = Procedure 'write', sub
+   {ReturnPut 0, "ccc";
+    Return;
+   };
+  Call $w;
+  ReturnGet \0, 0;
+  Out \0;
   ok Execute(out=>['ccc']);
  }
 
@@ -1419,19 +1458,17 @@ if (1)                                                                          
 #latest:;
 if (1)                                                                          #TConfess
  {Start 1;
-  Jmp (my $start = label());
-  my $c = setLabel 'write';
-    Confess;
-  Return;
-  Label $start;
-    Call $c;
+  my $c = Procedure 'confess', sub
+   {Confess;
+    Return;
+   };
+  Call $c;
   ok Execute(suppressStackTracePrint=>1, out=>
 [
 "Stack trace\n",
   "    2     3 confess\n",
   "    1     6 call\n"]);
  }
-
 
 #latest:;
 if (1)                                                                          #TPush #TPop
@@ -1678,6 +1715,15 @@ if (1)                                                                          
   Add 2, \2, 0;
   my $e = Execute(doubleWrite=>1, doubleAssign=>1, suppressStackTracePrint=>1);
   ok dump($e->out) =~ m(Pointless assign of: 2);
+ }
+
+#latest:;
+if (1)                                                                          # unused variable
+ {Start 1;
+  my $a = Mov 1;
+  my $b = Mov $a;
+  my $e = Execute(notRead=>1, doubleAssign=>1, suppressStackTracePrint=>0);
+  ok $e->analyzeExecutionResults(analyze=>3) =~ m(1 variables not read);
  }
 
 
