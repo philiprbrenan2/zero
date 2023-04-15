@@ -15,7 +15,7 @@ eval "use Test::More qw(no_plan)" unless caller;
 
 Memory is addressed in areas.  Each method has its own current stack area,
 parameter area and return results area.  Each area can grow a much as is needed
-to hold data and can bve sparse.  Additional memory areas can be
+to hold data and can be sparse.  Additional memory areas can be
 allocated and freed as necessary.
 
 Well known locations are represented by negative area ids
@@ -301,19 +301,21 @@ sub Zero::Emulator::Code::execute($%)                                           
   my @calls;                                                                    # Call stack of calls made
   my @out;                                                                      # Output area
   my %memory;                                                                   # Memory
+  my %memoryType;                                                               # The reason for this allocation
   my %rw;                                                                       # Last action on each memory location, read or write: two writes with no intervening read is bad.  Writes are represented as stack trace backs, reasd by undef
   my %read;                                                                     # Records whether a memory location was ever read allowing us to find all the unused locations
 
-  my $exec  = genHash("Zero::Emulator::Execution",                              # Execution results
-    calls   => \@calls,                                                         # Call stack
-    code    => $Code,                                                           # Code executed
-    count   => 0,                                                               # Executed instructions count
-    counts  => {},                                                              # Executed instructions by name counts
-    memory  => \%memory,                                                        # Memory contents at the end of execution
-    rw      => \%rw,                                                            # Read / write access to memory
-    read    => \%read,                                                          # Records whether a memory location was ever read allowing us to find all the unused locations
-    notRead => undef,                                                           # Locations written but not read
-    out     => \@out,                                                           # The out channel
+  my $exec     =  genHash("Zero::Emulator::Execution",                          # Execution results
+    calls      => \@calls,                                                      # Call stack
+    code       => $Code,                                                        # Code executed
+    count      => 0,                                                            # Executed instructions count
+    counts     => {},                                                           # Executed instructions by name counts
+    memory     => \%memory,                                                     # Memory contents at the end of execution
+    memoryType => \%memoryType,                                                 # Memory contents at the end of execution
+    rw         => \%rw,                                                         # Read / write access to memory
+    read       => \%read,                                                       # Records whether a memory location was ever read allowing us to find all the unused locations
+    notRead    => undef,                                                        # Locations written but not read
+    out        => \@out,                                                        # The out channel
    );
 
   my sub currentInstruction()                                                   # Get the current instructionm
@@ -376,7 +378,8 @@ sub Zero::Emulator::Code::execute($%)                                           
        {my $c = currentInstruction;
         my $p = $a->contextString("Previous Location of double write:");
         my $q = $c->contextString("Current  Location of double write:");
-        stackTraceAndExit($c, "Double write at area: $area, address: $address\n$p\n$q\n");
+        my $t = $memoryType{$area}//'unknown';
+        stackTraceAndExit($c, "Double write at area: $area ($t), address: $address\n$p\n$q\n");
        }
      }
     $rw{$area}{$address} = currentInstruction;
@@ -447,23 +450,26 @@ sub Zero::Emulator::Code::execute($%)                                           
        {rwRead(        &stackArea, $$a);
        }
       elsif (isScalar($area))
-       {rwRead(        $area, $$a);
+       {rwRead(        $area,      $$a);
        }
       elsif (isScalar($$area))
-       {rwRead(        $memory{&stackArea}[$$area], $$a);
+       {rwRead(                &stackArea, $$area);
+        rwRead(        $memory{&stackArea}[$$area], $$a);
        }
      }
     elsif (isScalar $$$a)
      {my $s = stackArea;
+      rwRead         (&stackArea, $$$a);
       my $m = $memory{&stackArea}[$$$a];
       if (!defined($area))                                                      # Current stack frame
        {rwRead(        &stackArea, $m);
        }
       elsif (isScalar($area))
-       {rwRead(        $area, $m);
+       {rwRead(        $area,      $m);
        }
       elsif (isScalar($$area))
-       {rwRead(        $memory{&stackArea}[$$area], $m);
+       {rwRead(                &stackArea,  $area);
+        rwRead(        $memory{&stackArea}[$$area], $m);
        }
      }
    }
@@ -485,7 +491,8 @@ sub Zero::Emulator::Code::execute($%)                                           
         $r = $memory{$area}[$$a]                                                # Direct from constant area
        }
       elsif (isScalar($$area))
-       {if (defined(my $i = $memory{&stackArea}[$$area]))
+       {rwRead(                     &stackArea, $$area);
+        if (defined(my $i = $memory{&stackArea}[$$area]))
          {rwRead(      $i, $$a);
           $r = $memory{$i}[$$a];                                                # Direct from indirect area
          }
@@ -497,14 +504,17 @@ sub Zero::Emulator::Code::execute($%)                                           
         $r = $memory{&stackArea}[$memory{&stackArea}[$$$a]]                     # Indirect from stack area
        }
       elsif (isScalar($area))
-       {if (defined(my $i = $memory{&stackArea}[$$$a]))
+       {rwRead(                     &stackArea, $$$a);
+        if (defined(my $i = $memory{&stackArea}[$$$a]))
          {rwRead(      $area, $i);
           $r = $memory{$area}[$i]                                               # Indirect from constant area
          }
        }
       elsif (isScalar($$area))
-       {if (defined(my $i = $memory{&stackArea}[$$$a]))
-         {if (defined(my $j = $memory{&stackArea}[$$area]))
+       {rwRead(                     &stackArea, $$$a);
+        if (defined(my $i = $memory{&stackArea}[$$$a]))
+         {rwRead(                     &stackArea, $$area);
+          if (defined(my $j = $memory{&stackArea}[$$area]))
            {rwRead(      $j, $i);
             $r = $memory{$j}[$i]                                                # Indirect from indirect area
            }
@@ -565,7 +575,8 @@ sub Zero::Emulator::Code::execute($%)                                           
       my $t = left($i->target, $i->targetArea);
 
       $memory{$a} = [];
-      bless $memory{$a}, $i->source;
+      bless $memory{$a}, $i->source;                                            # Useful becuase dump then printsthe type of each area for us
+      $memoryType{$a} = $i->source;                                             # The reason for this allocation
       $$t = $a;
      },
 
@@ -1740,7 +1751,7 @@ if (1)                                                                          
   Mov 1, 1;
   Mov 1, 1;
   my $e = Execute(doubleWrite=>1, suppressStackTracePrint=>1);
-  ok dump($e->out) =~ m(Double write at area: 0, address: 1);
+  ok dump($e->out) =~ m(Double write at area: 0 .unknown., address: 1\\nPrevious Location of double write:\\n);
  }
 
 #latest:;
