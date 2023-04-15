@@ -94,10 +94,10 @@ sub Zero::Emulator::Code::instruction($%)                                       
    }
  }
 
-sub Zero::Emulator::Code::Instruction::contextString($%)                        # Stack trace back for this instruction
- {my ($i, %options) = @_;                                                       # Instruction, options
+sub Zero::Emulator::Code::Instruction::contextString($;$)                       # Stack trace back for this instruction
+ {my ($i, $title) = @_;                                                         # Instruction, options
   my @s;
-  push @s, $options{title} // "Context\n";
+  push @s, $title // "Context\n";
   for my $c($i->context->@*)
    {push @s, sprintf "    at %s line %d", $$c[0], $$c[1];
    }
@@ -326,9 +326,9 @@ sub Zero::Emulator::Code::execute($%)                                           
     my $s = $options{suppressStackTracePrint};
     my $d = $options{debug};
     my @s;
-    push @s, $i->contextString if $d;
 
-    push    @s, $title // "Stack trace\n";
+    push @s, $title // "Stack trace\n";
+    push @s, $i->contextString("Context of failing instruction") if $d;
     for my $j(reverse keys @calls)
      {my $c = $calls[$j];
       my $i = $c->instruction;
@@ -375,8 +375,8 @@ sub Zero::Emulator::Code::execute($%)                                           
     if (defined(my $a = $rw{$area}{$address}))
      {if ($options{doubleWrite})
        {my $c = currentInstruction;
-        my $p = $a->contextString(title=>"Previous Location:");
-        my $q = $c->contextString(title=>"Current  Location:");
+        my $p = $a->contextString("Previous Location of double write:");
+        my $q = $c->contextString("Current  Location of double write:");
         stackTraceAndExit($c, "Double write at area: $area, address: $address\n$p\n$q\n");
        }
      }
