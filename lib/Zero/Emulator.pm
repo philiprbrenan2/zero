@@ -265,10 +265,12 @@ sub Zero::Emulator::Execution::analyzeExecutionNotRead($%)                      
   my @f = map {$$r{$_}} keys %$r;                                               # Instruction associated with each unread memory location
   for   my $f(@f)                                                               # Frames with unread instructions
    {for my $i(values %$f)                                                       # unread instructions
-     {push @t, $i->contextString;                                               # Stack trace for each unread instruction
+     {if (defined $i)
+       {push @t, $i->contextString;                                             # Stack trace for each unread instruction
+       }
      }
    }
-  join "\n", @t;
+  @t;
  }
 
 sub Zero::Emulator::Execution::analyzeExecutionResults($%)                      # Analyze execution results
@@ -276,11 +278,14 @@ sub Zero::Emulator::Execution::analyzeExecutionResults($%)                      
 
   return '' unless my $N = $options{analyze};
 
-  my @r = "Execution Results Analysis";                                         # Report title
-  push @r, "Least executed:";
-  push @r, $exec->analyzeExecutionResultsLeast(%options);
-  push @r, "Most executed:";
-  push @r, $exec->analyzeExecutionResultsMost (%options);
+  my @r;
+  if ($options{mostLeast})
+   {push @r, "Execution Results Analysis";                                        # Report title
+    push @r, "Least executed:";
+    push @r, $exec->analyzeExecutionResultsLeast(%options);
+    push @r, "Most executed:";
+    push @r, $exec->analyzeExecutionResultsMost (%options);
+   }
 
   if ($exec->notRead)
    {my   @v = $exec->analyzeExecutionNotRead(%options);
@@ -359,9 +364,10 @@ sub Zero::Emulator::Code::execute($%)                                           
       my @area = $memory{$area}->@*;                                            # Memory in area
       my %r    = map {$_ => $calls[-1]->variables->instructions->[$_]} keys @area; # Location in stack frame => instruction defining vasriable
       for my $a(keys @area)
-       {my $I  = $calls[-1]->variables->instructions->[$a];
-        my $i  = $$code[$I];
-        $r{$a} = $i;
+       {if (my $I  = $calls[-1]->variables->instructions->[$a])
+         {my $i  = $$code[$I];
+          $r{$a} = $i;
+         }
        }
 
       if (my $r = $read{$area})                                                 # Locations in this area that have ben read
@@ -374,7 +380,7 @@ sub Zero::Emulator::Code::execute($%)                                           
   my sub rwWrite($$)                                                            # Observe write to memory
    {my ($area, $address) = @_;                                                  # Area in memory, address within area
     if (defined(my $a = $rw{$area}{$address}))
-     {#if ($options{doubleWrite})
+     {if ($options{doubleWrite})
        {my $c = currentInstruction;
         my $p = $a->contextString("Previous Location of double write:");
         my $q = $c->contextString("Current  Location of double write:");
@@ -481,7 +487,7 @@ sub Zero::Emulator::Code::execute($%)                                           
     my $r;
     if (isScalar($a))                                                           # Constant
      {#rwRead($area//&stackArea, $a) if $a =~ m(\A\-?\d+\Z);
-      return $a if defined $a;
+      return $a if defined $a;                                                  # Attempting to read a location that has never been set is an error
      }
     elsif (isScalar($$a))                                                       # Direct
      {if (!defined($area))
@@ -1257,7 +1263,8 @@ sub Block(&%)                                                                   
   my $b = $options{bad};
 
   setLabel($Start);                                                             # Start
-  &$block($Start, $Good, $Bad, $End);
+
+  &$block($Start, $Good, $Bad, $End);                                           # Code of block
 
   if ($g)                                                                       # Good
    {Jmp $End;
@@ -1311,7 +1318,7 @@ use vars qw(@ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
 
 @ISA         = qw(Exporter);
 @EXPORT      = qw();
-@EXPORT_OK   = qw(AreaStructure Add Alloc Bad Block Call Confess Else Execute For Free Good Assert AssertEq AssertNe AssertGe AssertGt AssertLe AssertLt Dec Dump IfEq IfGe IfGt IfLe IfLt IfNe Ifx IfTrue IfFalse Inc Jeq Jge Jgt Jle Jlt Jmp Jne Label Mov Nop Out ParamsGet ParamsPut Pop Procedure Push Return ReturnGet ReturnPut ShiftLeft ShiftRight Start Subtract Then Var);
+@EXPORT_OK   = qw(AreaStructure Add Alloc Bad Block Call Clear Confess Else Execute For Free Good Assert AssertEq AssertNe AssertGe AssertGt AssertLe AssertLt Dec Dump IfEq IfGe IfGt IfLe IfLt IfNe Ifx IfTrue IfFalse Inc Jeq Jge Jgt Jle Jlt Jmp Jne Label Mov Nop Out ParamsGet ParamsPut Pop Procedure Push Return ReturnGet ReturnPut ShiftLeft ShiftRight Start Subtract Then Var);
 %EXPORT_TAGS = (all=>[@EXPORT, @EXPORT_OK]);
 
 return 1 if caller;
