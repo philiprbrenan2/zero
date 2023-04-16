@@ -260,7 +260,7 @@ sub Zero::Emulator::Execution::analyzeExecutionResultsMost($%)                  
 
 sub Zero::Emulator::Execution::analyzeExecutionNotRead($%)                      # Analyze execution results for variables never read
  {my ($exec, %options) = @_;                                                    # Execution results, options
-  return '' unless my $r = $exec->notRead;
+  return () unless my $r = $exec->notRead;
   my @t;
   my @f = map {$$r{$_}} keys %$r;                                               # Instruction associated with each unread memory location
   for   my $f(@f)                                                               # Frames with unread instructions
@@ -279,18 +279,23 @@ sub Zero::Emulator::Execution::analyzeExecutionResults($%)                      
   return '' unless my $N = $options{analyze};
 
   my @r;
-  if ($options{mostLeast})
-   {push @r, "Execution Results Analysis";                                        # Report title
-    push @r, "Least executed:";
-    push @r, $exec->analyzeExecutionResultsLeast(%options);
-    push @r, "Most executed:";
-    push @r, $exec->analyzeExecutionResultsMost (%options);
+  if (1)
+   {my @l = $exec->analyzeExecutionResultsLeast(%options);
+    my @m = $exec->analyzeExecutionResultsMost (%options);
+    if (@l)
+     {push @r, "Least executed:";
+      push @r, @l;
+     }
+    if (@l)
+     {push @r, "Most executed:";
+      push @r, @m;
+     }
    }
 
-  if ($exec->notRead)
+  if (my $n = $options{notRead})
    {my   @v = $exec->analyzeExecutionNotRead(%options);
     push @r, join ' ', scalar(@v), "variables not read";
-    push @r, @v;
+    push @r, @v if $n > 1;
    }
 
   push @r, join ' ', '#', $exec->count, "instructions executed";
@@ -311,6 +316,7 @@ sub Zero::Emulator::Code::execute($%)                                           
   my %memoryType;                                                               # The reason for this allocation
   my %rw;                                                                       # Last action on each memory location, read or write: two writes with no intervening read is bad.  Writes are represented as stack trace backs, reasd by undef
   my %read;                                                                     # Whether a memory location was ever read allowing us to find all the unused locations
+  my %notRead;                                                                  # Memory locations never read
   my %doubleWrite1;                                                             # Source of double writes {instruction number} to count - an existing value was overwritten before it was used
   my %doubleWrite2;                                                             # Target of double writes {instruction number} to count - an existing value was overwritten before it was used
   my %doubleWrite12;                                                            # Source to target of double writes
@@ -325,7 +331,7 @@ sub Zero::Emulator::Code::execute($%)                                           
     memoryType      => \%memoryType,                                            # Memory contents at the end of execution
     rw              => \%rw,                                                    # Read / write access to memory
     read            => \%read,                                                  # Records whether a memory location was ever read allowing us to find all the unused locations
-    notRead         => undef,                                                   # Locations written but not read
+    notRead         => \%notRead,                                               # Memory locations never read
     out             => \@out,                                                   # The out channel
     doubleWrite1    => \%doubleWrite1,                                          # Source of double writes {instruction number} to count - an existing value was overwritten before it was used
     doubleWrite2    => \%doubleWrite2,                                          # Target of double writes {instruction number} to count - an existing value was overwritten before it was used
@@ -384,7 +390,7 @@ sub Zero::Emulator::Code::execute($%)                                           
       if (my $r = $read{$area})                                                 # Locations in this area that have ben read
        {delete $r{$_} for keys %$r;                                             # Delete locations that have been read from
        }
-      $exec->notRead->{$area} = {%r};                                           # Record not read
+      $notRead{$area} = {%r};                                                   # Record not read
      }
    }
 
@@ -1828,12 +1834,12 @@ if (1)                                                                          
  }
 
 #latest:;
-if (1)                                                                          # unused variable
+if (1)                                                                          #DnotRead
  {Start 1;
   my $a = Mov 1;
   my $b = Mov $a;
   my $e = Execute(notRead=>1, doubleAssign=>1, suppressErrors=>0);
-  ok $e->analyzeExecutionResults(analyze=>3) =~ m(1 variables not read);
+  ok $e->notRead->{0}{1}->number == 1;
  }
 
 #latest:;
