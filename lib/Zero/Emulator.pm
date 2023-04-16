@@ -380,12 +380,14 @@ sub Zero::Emulator::Code::execute($%)                                           
   my sub rwWrite($$)                                                            # Observe write to memory
    {my ($area, $address) = @_;                                                  # Area in memory, address within area
     if (defined(my $a = $rw{$area}{$address}))
-     {if ($options{doubleWrite})
+     {if (my $level = $options{doubleWrite})
        {my $c = currentInstruction;
         my $p = $a->contextString("Previous Location of double write:");
         my $q = $c->contextString("Current  Location of double write:");
         my $t = $memoryType{$area}//'unknown';
-        stackTraceAndExit($c, "Double write at area: $area ($t), address: $address\n$p\n$q\n");
+        my $m = "Double write at area: $area ($t), address: $address\n$p\n$q\n";# Message identifying location of failure
+        stackTraceAndExit($c, $m) if $level < 0;
+        say STDERR $m             if $level > 0;
        }
      }
     $rw{$area}{$address} = currentInstruction;
@@ -1785,8 +1787,9 @@ if (1)                                                                          
  {Start 1;
   Mov 1, 1;
   Mov 1, 1;
-  my $e = Execute(doubleWrite=>1, suppressErrors=>1);
-  ok dump($e->out) =~ m(Double write at area: 0 .unknown., address: 1\\nPrevious Location of double write:\\n);
+  Mov 1, 1;
+  my $e = Execute(doubleWrite=>-1, suppressErrors=>1);
+  ok dump($e->out) =~ m(Double write at area: 0 .unknown., address: 1);
  }
 
 #latest:;
@@ -1794,7 +1797,7 @@ if (1)                                                                          
  {Start 1;
   Add 2,  1, 1;
   Add 2, \2, 0;
-  my $e = Execute(doubleWrite=>1, doubleAssign=>1, suppressErrors=>1);
+  my $e = Execute(doubleWrite=>-1, doubleAssign=>1, suppressErrors=>1);
   ok dump($e->out) =~ m(Pointless assign of: 2);
  }
 
