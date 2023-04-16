@@ -297,6 +297,8 @@ sub Zero::Emulator::Execution::analyzeExecutionResults($%)                      
   join "\n", @r;
  }
 
+#D1 Execution                                                                   # Execute assembly code in the emulator
+
 sub Zero::Emulator::Code::execute($%)                                           # Execute a block of code
  {my ($Code, %options) = @_;                                                    # Block of code, execution options
   $Code->assemble;                                                              # Assemble if necessary
@@ -308,19 +310,27 @@ sub Zero::Emulator::Code::execute($%)                                           
   my %memory;                                                                   # Memory
   my %memoryType;                                                               # The reason for this allocation
   my %rw;                                                                       # Last action on each memory location, read or write: two writes with no intervening read is bad.  Writes are represented as stack trace backs, reasd by undef
-  my %read;                                                                     # Records whether a memory location was ever read allowing us to find all the unused locations
+  my %read;                                                                     # Whether a memory location was ever read allowing us to find all the unused locations
+  my %doubleWrite1;                                                             # Source of double writes {instruction number} to count - an existing value was overwritten before it was used
+  my %doubleWrite2;                                                             # Target of double writes {instruction number} to count - an existing value was overwritten before it was used
+  my %doubleWrite12;                                                            # Source to target of double writes
+  my %pointlessAssign;                                                          # Pointless assigns {instruction number} to count - location already has the specified value
 
-  my $exec     =  genHash("Zero::Emulator::Execution",                          # Execution results
-    calls      => \@calls,                                                      # Call stack
-    code       => $Code,                                                        # Code executed
-    count      => 0,                                                            # Executed instructions count
-    counts     => {},                                                           # Executed instructions by name counts
-    memory     => \%memory,                                                     # Memory contents at the end of execution
-    memoryType => \%memoryType,                                                 # Memory contents at the end of execution
-    rw         => \%rw,                                                         # Read / write access to memory
-    read       => \%read,                                                       # Records whether a memory location was ever read allowing us to find all the unused locations
-    notRead    => undef,                                                        # Locations written but not read
-    out        => \@out,                                                        # The out channel
+  my $exec          =  genHash("Zero::Emulator::Execution",                     # Execution results
+    calls           => \@calls,                                                 # Call stack
+    code            => $Code,                                                   # Code executed
+    count           => 0,                                                       # Executed instructions count
+    counts          => {},                                                      # Executed instructions by name counts
+    memory          => \%memory,                                                # Memory contents at the end of execution
+    memoryType      => \%memoryType,                                            # Memory contents at the end of execution
+    rw              => \%rw,                                                    # Read / write access to memory
+    read            => \%read,                                                  # Records whether a memory location was ever read allowing us to find all the unused locations
+    notRead         => undef,                                                   # Locations written but not read
+    out             => \@out,                                                   # The out channel
+    doubleWrite1    => \%doubleWrite1,                                          # Source of double writes {instruction number} to count - an existing value was overwritten before it was used
+    doubleWrite2    => \%doubleWrite2,                                          # Target of double writes {instruction number} to count - an existing value was overwritten before it was used
+    doubleWrite12   => \%doubleWrite12,                                         # Source to target of double writes
+    pointlessAssign => \%pointlessAssign,                                       # Location already has the specified value
    );
 
   my sub currentInstruction()                                                   # Get the current instructionm
@@ -339,7 +349,8 @@ sub Zero::Emulator::Code::execute($%)                                           
      {my $c = $calls[$j];
       my $i = $c->instruction;
       push @s, sprintf "%5d  %4d %s\n", $j+1, $i->number+1, $i->action if $s;
-      push @s, sprintf "%5d  %4d %-16s at %s line %d\n", $j+1, $i->number+1, $i->action, $i->file, $i->line, unless $s;
+      push @s, sprintf "%5d  %4d %-16s at %s line %d\n",
+        $j+1, $i->number+1, $i->action, $i->file, $i->line         unless $s;
      }
 
     say STDERR join "\n", @s unless $s;
@@ -379,15 +390,22 @@ sub Zero::Emulator::Code::execute($%)                                           
 
   my sub rwWrite($$)                                                            # Observe write to memory
    {my ($area, $address) = @_;                                                  # Area in memory, address within area
-    if (defined(my $a = $rw{$area}{$address}))
-     {if (my $level = $options{doubleWrite})
-       {my $c = currentInstruction;
-        my $p = $a->contextString("Previous Location of double write:");
-        my $q = $c->contextString("Current  Location of double write:");
-        my $t = $memoryType{$area}//'unknown';
-        my $m = "Double write at area: $area ($t), address: $address\n$p\n$q\n";# Message identifying location of failure
-        stackTraceAndExit($c, $m) if $level < 0;
-        say STDERR $m             if $level > 0;
+    if (defined(my $P = $rw{$area}{$address}))
+     {if ($options{doubleWrite})
+       {my $Q = currentInstruction;
+        $doubleWrite1{$P->number}++;
+        $doubleWrite2{$Q->number}++;
+        $doubleWrite12{$P->number} = $Q->number;
+
+        if ((my $stop = $options{stopOnError}) or my $debug = $options{debug})
+         {my $p = $P->contextString("Previous Location of double write:");
+          my $q = $Q->contextString("Current  Location of double write:");
+          my $t = $memoryType{$area}//'unknown';
+          my $m = "Double write at area: $area ($t), address: $address\n$p\n$q\n";# Message identifying location of failure
+
+          stackTraceAndExit($Q, $m) if $stop;
+          say STDERR $m if $debug > 0;
+         }
        }
      }
     $rw{$area}{$address} = currentInstruction;
@@ -564,7 +582,10 @@ sub Zero::Emulator::Code::execute($%)                                           
    {my ($target, $value) = @_;                                                  # Target of assign, value to assign
     if ($options{doubleAssign})
      {if (defined($$target) and $$target == $value)
-       {stackTraceAndExit(currentInstruction(), "Pointless assign of: $value") ;
+       {$pointlessAssign{currentInstruction->number}++;
+        if ($options{stopOnError=>1})
+         {stackTraceAndExit(currentInstruction(), "Pointless assign of: $value") ;
+         }
        }
      }
     $$target = $value;
@@ -1783,22 +1804,27 @@ if (1)                                                                          
  }
 
 #latest:;
-if (1)                                                                          # double write
+if (1)                                                                          #DdoubleWrite
  {Start 1;
   Mov 1, 1;
   Mov 1, 1;
-  Mov 1, 1;
-  my $e = Execute(doubleWrite=>-1, suppressErrors=>1);
-  ok dump($e->out) =~ m(Double write at area: 0 .unknown., address: 1);
+  Mov 2, 1;
+  Mov 3, 1;
+  Mov 3, 1;
+  my $e = Execute(doubleWrite=>1, suppressErrors=>1);
+
+  is_deeply $e->doubleWrite1,  { 0 => 1, 3 => 1 };
+  is_deeply $e->doubleWrite12, { 0 => 1, 3 => 4 };
+  is_deeply $e->doubleWrite2,  { 1 => 1, 4 => 1 };
  }
 
 #latest:;
-if (1)                                                                          # double assign
+if (1)                                                                          #DpointlessAssign
  {Start 1;
   Add 2,  1, 1;
   Add 2, \2, 0;
-  my $e = Execute(doubleWrite=>-1, doubleAssign=>1, suppressErrors=>1);
-  ok dump($e->out) =~ m(Pointless assign of: 2);
+  my $e = Execute(doubleWrite=>1, doubleAssign=>1, suppressErrors=>1);
+  is_deeply $e->pointlessAssign, { 1 => 1 };
  }
 
 #latest:;
