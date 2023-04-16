@@ -436,9 +436,11 @@ sub Zero::Emulator::Code::execute($%)                                           
     stackTraceAndExit($i);
     my $l = $i->line;
     my $f = $i->file;
-    die "Invalid left area: ".dump($area)." address: ".dump($a)." stack="
-     .&stackArea
-     ." at $f line $l\n".dump(\%memory);
+    my $c = $i->contextString;
+    die "Invalid left area: ".dump($area)
+     ." address: ".dump($a)
+     ." stack: ".  &stackArea
+     ." at $f line $l\n$c\n";
    }
 
   my sub leftSuppress($;$)                                                      # Idicate that a memory location has been read
@@ -526,8 +528,11 @@ sub Zero::Emulator::Code::execute($%)                                           
       stackTraceAndExit($i);
       my $l = $i->line;
       my $f = $i->file;
-      die "Invalid right area: ".dump($area)." address: ".dump($a)." stack=".&stackArea
-       ." at $f line $l\n".dump(\%memory);
+      my $c = $i->contextString("Failing instruction:");
+      die "Invalid right area: ".dump($area)
+       ." address: ".dump($a)
+       ." stack: "  .&stackArea
+       ." at $f line $l\n$c\n";
      }
     $r
    }
@@ -698,6 +703,15 @@ sub Zero::Emulator::Code::execute($%)                                           
 
     label     => sub                                                            # Label - no operation
      {my ($i) = @_;                                                             # Instruction
+     },
+
+    clear     => sub                                                            # Clear the first bytes of an area as specified by the taregt operand
+     {my $i = currentInstruction;
+      my $n = right($i->target);
+      for my $a(0..$n-1)
+       {my $t = left($a, $i->targetArea);
+        $$t = 0;
+       }
      },
 
     mov       => sub                                                            # Move data moves data from one part of memory to another - "set", by contrast, sets variables from constant values
@@ -948,6 +962,11 @@ sub Jne($$$)                                                                    
 sub Label($)                                                                    # Create a lable
  {my ($source) = @_;                                                            # Name of label
   $assembly->instruction(action=>"label", source=>$source);
+ }
+
+sub Clear($)                                                                    # Clear the first bytes of an area.  The area is specified by the first elelemnt of the address, the number of locations to clear is specified by the second element of the target address.
+ {my ($target) = @_;                                                             # Target location, source location
+  $assembly->instruction(action=>"clear", xTarget($target));
  }
 
 sub Mov($;$)                                                                    # Copy a constant or memory location to the target location
@@ -1695,6 +1714,15 @@ if (1)                                                                          
  }
 
 #latest:;
+if (1)                                                                          #TAlloc #TClear
+ {Start 1;
+  my $a = Alloc "aaa";
+  Clear [$a, 10];
+  my $e = Execute();
+  is_deeply $e->memory->{3}, [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+ }
+
+#latest:;
 if (1)                                                                          #TBlock
  {Start 1;
   Block
@@ -1782,8 +1810,16 @@ if (1)                                                                          
   Call $set;
   ParamsPut 0, 1;
   Call $set;
-  my $e = Execute(notRead=>1, doubleWrite=>1, doubleAssign=>1, trace=>0, suppressErrors=>1);
-  ok dump($e->out) =~ m(Pointless assign of: 1);
+  my $e = Execute;
+  is_deeply $e->out, [];
+ }
+
+#latest:;
+if (1)                                                                          # invalid address
+ {Start 1;
+  Mov 1, \0;
+  my $e = eval {Execute suppressErrors=>1};
+  ok $@ =~ m"Invalid right area: undef address: \\0 stack: 0 at";
  }
 
 =pod
