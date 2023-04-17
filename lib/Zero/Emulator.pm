@@ -321,17 +321,17 @@ sub Zero::Emulator::Execution::analyzeExecutionResults($%)                      
    {my $d = @d;
     @d = () unless $options{doubleWrite};
     push @r, @d;
-    push @r, sprintf "# %4d double writes", $d;
+    push @r, sprintf "# %8d double writes", $d;
    }
 
   if (my @n = $exec->analyzeExecutionNotRead(%options))                         # Variables not read
    {my $n = @n;
     @n = () unless $options{doubleWrite};
     push @r, @n;
-    push @r, sprintf "# %4d variables not read", $n;
+    push @r, sprintf "# %8d variables not read", $n;
    }
 
-  push @r,   sprintf "# %4d instructions executed", $exec->count;
+  push @r,   sprintf "# %8d instructions executed", $exec->count;
   join "\n", @r;
  }
 
@@ -1812,7 +1812,7 @@ if (1)                                                                          
    };
   my $e = Execute;
   is_deeply $e->out, [1..10];
-  ok $e->analyzeExecutionResults(analyze=>3) =~ m(#   12 instructions executed);
+  ok $e->analyzeExecutionResults(analyze=>3) =~ m(#       12 instructions executed);
  }
 
 #latest:;
