@@ -263,12 +263,12 @@ sub Zero::Emulator::Execution::analyzeExecutionNotRead($%)                      
 
   my @t;
   my $n = $exec->notRead;
-  for my $areaK(keys %$n)
+  for my $areaK(sort keys %$n)
    {my $area = $$n{$areaK};
-    for my $addressK(keys %$area)
+    for my $addressK(sort keys %$area)
      {my $address = $$area{$addressK};
-      my $context = $exec->code->[$address]->contextString;
-      push @t, "Not read from area: $area, address: $address in context\n"
+      my $context = $exec->code->code->[$addressK]->contextString;
+      push @t, "Not read from area: $area, address: $address in context\n$context";
      }
    }
   @t;
@@ -289,8 +289,8 @@ sub Zero::Emulator::Execution::analyzeExecutionResultsDoubleWrite($%)           
          {my $first = $$address{$firstK};
           for my $secondK(keys %$first)
            {my $second = $$first{$secondK};
-            push @r, "First  write\n", $exec->code->[$firstK] ->contextString;
-            push @r, "Second write\n", $exec->code->[$secondK]->contextString;
+            push @r, "First  write\n", $exec->code->code->[$firstK] ->contextString;
+            push @r, "Second write\n", $exec->code->code->[$secondK]->contextString;
            }
          }
        }
@@ -307,30 +307,31 @@ sub Zero::Emulator::Execution::analyzeExecutionResults($%)                      
   if (1)
    {my @l = $exec->analyzeExecutionResultsLeast(%options);                      # Least/most executed
     my @m = $exec->analyzeExecutionResultsMost (%options);
-    if (@l)
+    if (@l and $options{leastExecuted})
      {push @r, "Least executed:";
       push @r, @l;
      }
-    if (@l)
+    if (@l and $options{mostExecuted})
      {push @r, "Most executed:";
       push @r, @m;
      }
    }
 
   if (my @d = $exec->analyzeExecutionResultsDoubleWrite(%options))              # Analyze execution results - double writes
-   {push @r, "Double writes";
+   {my $d = @d;
+    @d = () unless $options{doubleWrite};
     push @r, @d;
+    push @r, sprintf "# %4d double writes", $d;
    }
 
-  if (1)                                                                        # Variables not read
-   {my   @v = $exec->analyzeExecutionNotRead(%options);
-    push @r, join ' ', scalar(@v), "variables not read";
-    if (my $n = $options{notRead})
-     {push @r, @v if $n > 1;
-     }
+  if (my @n = $exec->analyzeExecutionNotRead(%options))                         # Variables not read
+   {my $n = @n;
+    @n = () unless $options{doubleWrite};
+    push @r, @n;
+    push @r, sprintf "# %4d variables not read", $n;
    }
 
-  push @r, join ' ', '#', $exec->count, "instructions executed";
+  push @r,   sprintf "# %4d instructions executed", $exec->count;
   join "\n", @r;
  }
 
@@ -406,7 +407,7 @@ sub Zero::Emulator::Code::execute($%)                                           
   my sub notRead()                                                              # Record the unused memory locations in the current stack frame
    {my $area = &stackArea;
     my @area = $memory{$area}->@*;                                              # Memory in area
-    my %r    = map {$_ => $calls[-1]->variables->instructions->[$_]} keys @area;# Location in stack frame => instruction defining vasriable
+    my %r;                                                                      # Location in stack frame => instruction defining vasriable
     for my $a(keys @area)
      {if (my $I  = $calls[-1]->variables->instructions->[$a])
        {$r{$a} = $I;                                                            # Number of instruction creating variable
@@ -416,7 +417,8 @@ sub Zero::Emulator::Code::execute($%)                                           
     if (my $r = $read{$area})                                                   # Locations in this area that have ben read
      {delete $r{$_} for keys %$r;                                               # Delete locations that have been read from
      }
-    $notRead{$area} = {%r};                                                     # Record not read
+
+    $notRead{$area} = {%r} if keys %r;                                          # Record not read
    }
 
   my sub rwWrite($$)                                                            # Observe write to memory
@@ -1810,7 +1812,7 @@ if (1)                                                                          
    };
   my $e = Execute;
   is_deeply $e->out, [1..10];
-  ok $e->analyzeExecutionResults(analyze=>3) =~ m(# 12 instructions executed);
+  ok $e->analyzeExecutionResults(analyze=>3) =~ m(#   12 instructions executed);
  }
 
 #latest:;
