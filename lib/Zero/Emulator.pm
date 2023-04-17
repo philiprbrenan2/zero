@@ -284,10 +284,7 @@ sub Zero::Emulator::Execution::analyzeExecutionResultsDoubleWrite($%)           
      {my $area = $exec->doubleWrite->{$areaK};
       for my $addressK(keys %$area)
        {my $address = $$area{$addressK};
-        my $name = $exec->memoryType->{$area} // 'unknown';
-say STDERR "AAAA", dump($exec->memory);
-say STDERR "BBBB", dump($exec->memoryType);
-say STDERR "CCCC", dump($exec->doubleWrite);
+        my $name = $exec->memoryType->{$areaK} // 'unknown';
         push @r, sprintf "Double write into area %4d ($name), address: %4d", $areaK, $addressK;
         for my $firstK(keys %$address)
          {my $first = $$address{$firstK};
@@ -408,9 +405,11 @@ sub Zero::Emulator::Code::execute($%)                                           
    }
 
   my $allocs = 0;
-  my sub allocMemory()                                                          # Create the name of a new memory area
-   {my $a = $allocs++;
+  my sub allocMemory($)                                                         # Create the name of a new memory area
+   {my ($name) = @_;                                                            # Name of allocation
+    my $a = $allocs++;
     $memory{$a} = [];
+    $memoryType{$a} = $name;
     $a
    }
 
@@ -638,13 +637,11 @@ sub Zero::Emulator::Code::execute($%)                                           
 
     alloc     => sub                                                            # Create a new memory area and write its number into the location named by the target operand
      {my $i = currentInstruction;
-      my $a = allocMemory;
+      my $a = allocMemory($i->source);                                          # The reason for this allocation
       my $t = left($i->target, $i->targetArea);
 
       $memory{$a} = [];
       bless $memory{$a}, $i->source;                                            # Useful becuase dump then printsthe type of each area for us
-      $memoryType{$a} = $i->source;                                             # The reason for this allocation
-say STDERR "DDDD ", dump($i->source);
       assign($t, $a);
      },
 
@@ -696,7 +693,9 @@ say STDERR "DDDD ", dump($i->source);
        }
       push @calls, stackFrame(target=>$code->[$instructionPointer],             # Create a new call stack entry
         instruction=>$i, variables=>$i->source->variables,
-        stackArea=>allocMemory, params=>allocMemory, return=>allocMemory);
+        stackArea => allocMemory("stackArea"),
+        params    => allocMemory("params"),
+        return    => allocMemory("return"));
      },
 
     return    => sub                                                            # Return from a subroutine call via the call stack
@@ -865,9 +864,9 @@ say STDERR "DDDD ", dump($i->source);
 
   push @calls, stackFrame(                                                      # Initial stack entries
     variables => $Code->variables,                                              # Variables in initial stack frame
-    stackArea => allocMemory,                                                   # Allocate data segment for current method
-    params    => allocMemory,
-    return    => allocMemory,
+    stackArea => allocMemory("stackArea"),                                      # Allocate data segment for current method
+    params    => allocMemory("params"),
+    return    => allocMemory("return"),
   ) for 1..1;
 
   my $mi = $options{maximumInstructionsToExecute} //                            # Prevent run away executions
