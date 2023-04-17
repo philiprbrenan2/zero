@@ -237,7 +237,7 @@ sub Zero::Emulator::Execution::analyzeExecutionResultsLeast($%)                 
   my @l = sort {$$a[0] <=> $$b[0]}                                              # By frequency
           sort {$$a[2] <=> $$b[2]} @L;                                          # By line number
 
-  my $N = $options{analyze};
+  my $N = $options{least}//1;
   $#l = $N if @l > $N;
   map {sprintf "%4d at %s line %4d", $$_[0], $$_[1], $$_[2]} @l;
  }
@@ -253,7 +253,7 @@ sub Zero::Emulator::Execution::analyzeExecutionResultsMost($%)                  
     $m{$t} += $i->executed;
    }
   my @m = reverse sort {$$a[1] <=> $$b[1]} map {[$_, $m{$_}]} keys %m;          # Sort a hash into value order
-  my $N = $options{analyze};
+  my $N = $options{most}//1;
   $#m = $N if @m > $N;
   map{sprintf "%4d\n%s", $m[$_][1], $m[$_][0]} keys @m;
  }
@@ -276,8 +276,6 @@ sub Zero::Emulator::Execution::analyzeExecutionNotRead($%)                      
 sub Zero::Emulator::Execution::analyzeExecutionResults($%)                      # Analyze execution results
  {my ($exec, %options) = @_;                                                    # Execution results, options
 
-  return '' unless my $N = $options{analyze};
-
   my @r;
   if (1)
    {my @l = $exec->analyzeExecutionResultsLeast(%options);
@@ -292,10 +290,10 @@ sub Zero::Emulator::Execution::analyzeExecutionResults($%)                      
      }
    }
 
+  my   @v = $exec->analyzeExecutionNotRead(%options);
+  push @r, join ' ', scalar(@v), "variables not read";
   if (my $n = $options{notRead})
-   {my   @v = $exec->analyzeExecutionNotRead(%options);
-    push @r, join ' ', scalar(@v), "variables not read";
-    push @r, @v if $n > 1;
+   {push @r, @v if $n > 1;
    }
 
   push @r, join ' ', '#', $exec->count, "instructions executed";
@@ -317,9 +315,7 @@ sub Zero::Emulator::Code::execute($%)                                           
   my %rw;                                                                       # Last action on each memory location, read or write: two writes with no intervening read is bad.  Writes are represented as stack trace backs, reasd by undef
   my %read;                                                                     # Whether a memory location was ever read allowing us to find all the unused locations
   my %notRead;                                                                  # Memory locations never read
-  my %doubleWrite1;                                                             # Source of double writes {instruction number} to count - an existing value was overwritten before it was used
-  my %doubleWrite2;                                                             # Target of double writes {instruction number} to count - an existing value was overwritten before it was used
-  my %doubleWrite12;                                                            # Source to target of double writes
+  my %doubleWrite;                                                              # Double writes: earlier instruction number to later instruction number
   my %pointlessAssign;                                                          # Pointless assigns {instruction number} to count - location already has the specified value
 
   my $exec          =  genHash("Zero::Emulator::Execution",                     # Execution results
@@ -333,9 +329,7 @@ sub Zero::Emulator::Code::execute($%)                                           
     read            => \%read,                                                  # Records whether a memory location was ever read allowing us to find all the unused locations
     notRead         => \%notRead,                                               # Memory locations never read
     out             => \@out,                                                   # The out channel
-    doubleWrite1    => \%doubleWrite1,                                          # Source of double writes {instruction number} to count - an existing value was overwritten before it was used
-    doubleWrite2    => \%doubleWrite2,                                          # Target of double writes {instruction number} to count - an existing value was overwritten before it was used
-    doubleWrite12   => \%doubleWrite12,                                         # Source to target of double writes
+    doubleWrite     => \%doubleWrite,                                           # Source of double writes {instruction number} to count - an existing value was overwritten before it was used
     pointlessAssign => \%pointlessAssign,                                       # Location already has the specified value
    );
 
@@ -399,15 +393,13 @@ sub Zero::Emulator::Code::execute($%)                                           
     if (defined(my $P = $rw{$area}{$address}))
      {if ($options{doubleWrite})
        {my $Q = currentInstruction;
-        $doubleWrite1{$P->number}++;
-        $doubleWrite2{$Q->number}++;
-        $doubleWrite12{$P->number} = $Q->number;
+        $doubleWrite{$P->number}{$Q->number}++;
 
         if ((my $stop = $options{stopOnError}) or my $debug = $options{debug})
          {my $p = $P->contextString("Previous Location of double write:");
-          my $q = $Q->contextString("Current  Location of double write:");
+          #my $q = $Q->contextString("Current  Location of double write:");     # Stack trace gives us the current location
           my $t = $memoryType{$area}//'unknown';
-          my $m = "Double write at area: $area ($t), address: $address\n$p\n$q\n";# Message identifying location of failure
+          my $m = "Double write at area: $area ($t), address: $address\n$p\n";  # Message identifying location of failure
 
           stackTraceAndExit($Q, $m) if $stop;
           say STDERR $m if $debug > 0;
@@ -865,10 +857,6 @@ sub Zero::Emulator::Code::execute($%)                                           
    {my $c = $calls[0];
     notRead if $options{notRead};                                               # Record unread memory locations in teh cirrent stack frame
     delete $memory{$_} for $c->stackArea, $c->params, $c->return;
-   }
-
-  if (my $r = $exec->analyzeExecutionResults(%options))
-   {say STDERR $r;
    }
 
   $exec
@@ -1818,10 +1806,7 @@ if (1)                                                                          
   Mov 3, 1;
   Mov 3, 1;
   my $e = Execute(doubleWrite=>1, suppressErrors=>1);
-
-  is_deeply $e->doubleWrite1,  { 0 => 1, 3 => 1 };
-  is_deeply $e->doubleWrite12, { 0 => 1, 3 => 4 };
-  is_deeply $e->doubleWrite2,  { 1 => 1, 4 => 1 };
+  is_deeply $e->doubleWrite,  { "0" => { 1 => 1 }, "3" => { 4 => 1 } };
  }
 
 #latest:;
@@ -1839,7 +1824,7 @@ if (1)                                                                          
   my $a = Mov 1;
   my $b = Mov $a;
   my $e = Execute(notRead=>1, doubleAssign=>1, suppressErrors=>0);
-  ok $e->notRead->{0}{1}->number == 1;
+  ok $e->notRead->{0}{1}->number == 1;                                          # Area 0 == stack, variable 1 == $b generated by instruction 1
  }
 
 #latest:;
