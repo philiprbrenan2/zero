@@ -268,7 +268,7 @@ sub Zero::Emulator::Execution::analyzeExecutionNotRead($%)                      
     for my $addressK(sort keys %$area)
      {my $address = $$area{$addressK};
       my $context = $exec->code->code->[$addressK]->contextString;
-      push @t, "Not read from area: $area, address: $address in context\n$context";
+      push @t, "Not read from area: $areaK, address: $addressK in context\n$context";
      }
    }
   @t;
@@ -284,13 +284,23 @@ sub Zero::Emulator::Execution::analyzeExecutionResultsDoubleWrite($%)           
      {my $area = $exec->doubleWrite->{$areaK};
       for my $addressK(keys %$area)
        {my $address = $$area{$addressK};
-        push @r, sprintf "Double write into area %4d, address: %4d", $areaK, $addressK;
+        my $name = $exec->memoryType->{$area} // 'unknown';
+say STDERR "AAAA", dump($exec->memory);
+say STDERR "BBBB", dump($exec->memoryType);
+say STDERR "CCCC", dump($exec->doubleWrite);
+        push @r, sprintf "Double write into area %4d ($name), address: %4d", $areaK, $addressK;
         for my $firstK(keys %$address)
          {my $first = $$address{$firstK};
           for my $secondK(keys %$first)
            {my $second = $$first{$secondK};
-            push @r, "First  write\n", $exec->code->code->[$firstK] ->contextString;
-            push @r, "Second write\n", $exec->code->code->[$secondK]->contextString;
+            if ($firstK == $secondK)
+             {push @r, "First  and second write occurred: $second times\n",
+                $exec->code->code->[$firstK] ->contextString;
+             }
+            else
+             {push @r, "First  write occurred: $second times:\n", $exec->code->code->[$firstK] ->contextString;
+              push @r, "Second write occurred: $second times:\n", $exec->code->code->[$secondK]->contextString;
+             }
            }
          }
        }
@@ -317,18 +327,18 @@ sub Zero::Emulator::Execution::analyzeExecutionResults($%)                      
      }
    }
 
+  if (my @n = $exec->analyzeExecutionNotRead(%options))                         # Variables not read
+   {my $n = @n;
+    @n = () unless $options{notRead};
+    push @r, @n;
+    push @r, sprintf "# %8d variables not read", $n;
+   }
+
   if (my @d = $exec->analyzeExecutionResultsDoubleWrite(%options))              # Analyze execution results - double writes
    {my $d = @d;
     @d = () unless $options{doubleWrite};
     push @r, @d;
     push @r, sprintf "# %8d double writes", $d;
-   }
-
-  if (my @n = $exec->analyzeExecutionNotRead(%options))                         # Variables not read
-   {my $n = @n;
-    @n = () unless $options{doubleWrite};
-    push @r, @n;
-    push @r, sprintf "# %8d variables not read", $n;
    }
 
   push @r,   sprintf "# %8d instructions executed", $exec->count;
@@ -423,9 +433,13 @@ sub Zero::Emulator::Code::execute($%)                                           
 
   my sub rwWrite($$)                                                            # Observe write to memory
    {my ($area, $address) = @_;                                                  # Area in memory, address within area
-    if (defined(my $P = $rw{$area}{$address}))
-     {my $Q = currentInstruction;
-      $doubleWrite{$area}{$address}{$P->number}{$Q->number}++;
+    my $P = $rw{$area}{$address};
+    if (defined($P))
+     {my $M = $memory{$area}[$address];                                         # If the memory location is zero we will assume that it has been cleared rather than set.
+      if ($M)
+       {my $Q = currentInstruction;
+        $doubleWrite{$area}{$address}{$P->number}{$Q->number}++;
+       }
      }
     $rw{$area}{$address} = currentInstruction;
    }
@@ -457,7 +471,8 @@ sub Zero::Emulator::Code::execute($%)                                           
         return \$memory{$area}[$$a]                                             # Specified constant area
        }
       elsif (isScalar($$area))
-       {rwWrite(        $memory{&stackArea}[$$area], $$a);
+       {rwRead (                &stackArea, $$area);
+        rwWrite(        $memory{&stackArea}[$$area], $$a);
         return \$memory{$memory{&stackArea}[$$area]}[$$a]                       # Indirect area
        }
      }
@@ -473,7 +488,8 @@ sub Zero::Emulator::Code::execute($%)                                           
         return \$memory{$area}[$m]                                              # Specified constant area
        }
       elsif (isScalar($$area))
-       {rwWrite(        $memory{&stackArea}[$$area], $m);
+       {rwRead (                &stackArea, $$area);
+        rwWrite(        $memory{&stackArea}[$$area], $m);
         return \$memory{$memory{&stackArea}[$$area]}[$m]                        # Indirect area
        }
      }
@@ -628,6 +644,7 @@ sub Zero::Emulator::Code::execute($%)                                           
       $memory{$a} = [];
       bless $memory{$a}, $i->source;                                            # Useful becuase dump then printsthe type of each area for us
       $memoryType{$a} = $i->source;                                             # The reason for this allocation
+say STDERR "DDDD ", dump($i->source);
       assign($t, $a);
      },
 
