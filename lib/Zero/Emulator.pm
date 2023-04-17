@@ -260,25 +260,52 @@ sub Zero::Emulator::Execution::analyzeExecutionResultsMost($%)                  
 
 sub Zero::Emulator::Execution::analyzeExecutionNotRead($%)                      # Analyze execution results for variables never read
  {my ($exec, %options) = @_;                                                    # Execution results, options
-  return () unless my $r = $exec->notRead;
+
   my @t;
-  my @f = map {$$r{$_}} keys %$r;                                               # Instruction associated with each unread memory location
-  for   my $f(@f)                                                               # Frames with unread instructions
-   {for my $i(values %$f)                                                       # unread instructions
-     {if (defined $i)
-       {push @t, $i->contextString;                                             # Stack trace for each unread instruction
-       }
+  my $n = $exec->notRead;
+  for my $areaK(keys %$n)
+   {my $area = $$n{$areaK};
+    for my $addressK(keys %$area)
+     {my $address = $$area{$addressK};
+      my $context = $exec->code->[$address]->contextString;
+      push @t, "Not read from area: $area, address: $address in context\n"
      }
    }
   @t;
+ }
+
+sub Zero::Emulator::Execution::analyzeExecutionResultsDoubleWrite($%)           # Analyze execution results - double writes
+ {my ($exec, %options) = @_;                                                    # Execution results, options
+
+  my @r;
+
+  if (my @area = keys $exec->doubleWrite->%*)
+   {for my $areaK(@area)
+     {my $area = $exec->doubleWrite->{$areaK};
+      for my $addressK(keys %$area)
+       {my $address = $$area{$addressK};
+        push @r, sprintf "Double write into area %4d, address: %4d", $areaK, $addressK;
+        for my $firstK(keys %$address)
+         {my $first = $$address{$firstK};
+          for my $secondK(keys %$first)
+           {my $second = $$first{$secondK};
+            push @r, "First  write\n", $exec->code->[$firstK] ->contextString;
+            push @r, "Second write\n", $exec->code->[$secondK]->contextString;
+           }
+         }
+       }
+     }
+   }
+  @r
  }
 
 sub Zero::Emulator::Execution::analyzeExecutionResults($%)                      # Analyze execution results
  {my ($exec, %options) = @_;                                                    # Execution results, options
 
   my @r;
+
   if (1)
-   {my @l = $exec->analyzeExecutionResultsLeast(%options);
+   {my @l = $exec->analyzeExecutionResultsLeast(%options);                      # Least/most executed
     my @m = $exec->analyzeExecutionResultsMost (%options);
     if (@l)
      {push @r, "Least executed:";
@@ -290,10 +317,17 @@ sub Zero::Emulator::Execution::analyzeExecutionResults($%)                      
      }
    }
 
-  my   @v = $exec->analyzeExecutionNotRead(%options);
-  push @r, join ' ', scalar(@v), "variables not read";
-  if (my $n = $options{notRead})
-   {push @r, @v if $n > 1;
+  if (my @d = $exec->analyzeExecutionResultsDoubleWrite(%options))              # Analyze execution results - double writes
+   {push @r, "Double writes";
+    push @r, @d;
+   }
+
+  if (1)                                                                        # Variables not read
+   {my   @v = $exec->analyzeExecutionNotRead(%options);
+    push @r, join ' ', scalar(@v), "variables not read";
+    if (my $n = $options{notRead})
+     {push @r, @v if $n > 1;
+     }
    }
 
   push @r, join ' ', '#', $exec->count, "instructions executed";
@@ -370,41 +404,26 @@ sub Zero::Emulator::Code::execute($%)                                           
    }
 
   my sub notRead()                                                              # Record the unused memory locations in the current stack frame
-   {if ($options{notRead})
-     {my $area = &stackArea;
-      my @area = $memory{$area}->@*;                                            # Memory in area
-      my %r    = map {$_ => $calls[-1]->variables->instructions->[$_]} keys @area; # Location in stack frame => instruction defining vasriable
-      for my $a(keys @area)
-       {if (my $I  = $calls[-1]->variables->instructions->[$a])
-         {my $i  = $$code[$I];
-          $r{$a} = $i;
-         }
+   {my $area = &stackArea;
+    my @area = $memory{$area}->@*;                                              # Memory in area
+    my %r    = map {$_ => $calls[-1]->variables->instructions->[$_]} keys @area;# Location in stack frame => instruction defining vasriable
+    for my $a(keys @area)
+     {if (my $I  = $calls[-1]->variables->instructions->[$a])
+       {$r{$a} = $I;                                                            # Number of instruction creating variable
        }
-
-      if (my $r = $read{$area})                                                 # Locations in this area that have ben read
-       {delete $r{$_} for keys %$r;                                             # Delete locations that have been read from
-       }
-      $notRead{$area} = {%r};                                                   # Record not read
      }
+
+    if (my $r = $read{$area})                                                   # Locations in this area that have ben read
+     {delete $r{$_} for keys %$r;                                               # Delete locations that have been read from
+     }
+    $notRead{$area} = {%r};                                                     # Record not read
    }
 
   my sub rwWrite($$)                                                            # Observe write to memory
    {my ($area, $address) = @_;                                                  # Area in memory, address within area
     if (defined(my $P = $rw{$area}{$address}))
-     {if ($options{doubleWrite})
-       {my $Q = currentInstruction;
-        $doubleWrite{$P->number}{$Q->number}++;
-
-        if ((my $stop = $options{stopOnError}) or my $debug = $options{debug})
-         {my $p = $P->contextString("Previous Location of double write:");
-          #my $q = $Q->contextString("Current  Location of double write:");     # Stack trace gives us the current location
-          my $t = $memoryType{$area}//'unknown';
-          my $m = "Double write at area: $area ($t), address: $address\n$p\n";  # Message identifying location of failure
-
-          stackTraceAndExit($Q, $m) if $stop;
-          say STDERR $m if $debug > 0;
-         }
-       }
+     {my $Q = currentInstruction;
+      $doubleWrite{$area}{$address}{$P->number}{$Q->number}++;
      }
     $rw{$area}{$address} = currentInstruction;
    }
@@ -578,12 +597,10 @@ sub Zero::Emulator::Code::execute($%)                                           
 
   my sub assign($$)                                                             # Assign - check for pointless assignments
    {my ($target, $value) = @_;                                                  # Target of assign, value to assign
-    if ($options{doubleAssign})
-     {if (defined($$target) and $$target == $value)
-       {$pointlessAssign{currentInstruction->number}++;
-        if ($options{stopOnError=>1})
-         {stackTraceAndExit(currentInstruction(), "Pointless assign of: $value") ;
-         }
+    if (defined($$target) and $$target == $value)
+     {$pointlessAssign{currentInstruction->number}++;
+      if ($options{stopOnError=>1})
+       {stackTraceAndExit(currentInstruction(), "Pointless assign of: $value") ;
        }
      }
     $$target = $value;
@@ -675,7 +692,7 @@ sub Zero::Emulator::Code::execute($%)                                           
        {$instructionPointer = undef;
        }
 
-      notRead if $options{notRead};                                             # Record unread memory locations in teh cirrent stack frame
+      notRead;                                                                  # Record unread memory locations in the current stack frame
 
       delete $memory{$$C{$_}} for qw(stackArea params return);                  # Remove memory areas associated with the current stack frame
      },
@@ -748,7 +765,7 @@ sub Zero::Emulator::Code::execute($%)                                           
       assign($t, $s);
      },
 
-    paramsGet => sub                                                            # Get a parameter from the previous parameter block - this means that we must always have two entries on teh call stack - one representing the caller of the program, the second representing the current context of the program
+    paramsGet => sub                                                            # Get a parameter from the previous parameter block - this means that we must always have two entries on the call stack - one representing the caller of the program, the second representing the current context of the program
      {my $i = currentInstruction;
       my $p = $i->sourceArea // $calls[-2]->params;
       my $q = $i->source;
@@ -855,7 +872,7 @@ sub Zero::Emulator::Code::execute($%)                                           
 
   if (1)                                                                        # Free first stack frame
    {my $c = $calls[0];
-    notRead if $options{notRead};                                               # Record unread memory locations in teh cirrent stack frame
+    notRead;                                                                    # Record unread memory locations in the current stack frame
     delete $memory{$_} for $c->stackArea, $c->params, $c->return;
    }
 
@@ -876,7 +893,7 @@ my sub setLabel(;$)                                                             
  }
 
 my sub xAddress($$)                                                             # Expand an address argument
- {my ($f, $s) = @_;                                                             # Field name, source expression - either a single location ion the currnt stack frame or a refernce to an array conatyaining anInstruction pair containing the area id followed by the location
+ {my ($f, $s) = @_;                                                             # Field name, source expression - either a single location in the currunt stack frame or a refernce to an array conatyaining anInstruction pair containing the area id followed by the location
   return ($f=>$s) unless ref($s) =~ m(array)i;                                  # Single field
  ($f=>$$s[1], $f."Area"=>$$s[0]);                                               # Pair of fields
  }
@@ -1437,7 +1454,7 @@ if (1)                                                                          
   Inc     [-1,  0];
   Mov  0, [-1, \0];
   Out \0;
-  ok Execute(out=>[5], trace=>0);
+  ok Execute(out=>[5]);
  }
 
 #latest:;
@@ -1513,7 +1530,7 @@ if (1)                                                                          
    };
   ParamsPut 0, 'bbb';
   Call $w;
-  ok Execute(out=>['bbb'], trace=>0);
+  ok Execute(out=>['bbb']);
  }
 
 #latest:;
@@ -1542,7 +1559,7 @@ if (1)                                                                          
   Call $add;
   my $c = ReturnGet 0;
   Out $c;
-  ok Execute(trace=>0, out=>[4]);
+  ok Execute(out=>[4]);
  }
 
 #latest:;
@@ -1591,8 +1608,7 @@ if (1)                                                                          
   Mov [$a, 2], 2;
   Mov 1, [$a, \1];
   Free $a;
-  my $e = Execute(debug=>0);
-  is_deeply $e->out,    [3];
+  ok Execute(out=>[3]);
  }
 
 #latest:;
@@ -1733,7 +1749,7 @@ if (1)                                                                          
   my $V = Mov [$a, \$i];
   AssertEq $v, $V;
   Out [$a, \$i];
-  my $e = Execute(trace=>0);
+  my $e = Execute;
   is_deeply $e->out, [11];
  }
 
@@ -1742,7 +1758,7 @@ if (1)                                                                          
  {Start 1;
   my $a = Alloc "aaa";
   Clear [$a, 10];
-  my $e = Execute();
+  my $e = Execute;
   is_deeply $e->memory->{3}, [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
  }
 
@@ -1805,8 +1821,9 @@ if (1)                                                                          
   Mov 2, 1;
   Mov 3, 1;
   Mov 3, 1;
-  my $e = Execute(doubleWrite=>1, suppressErrors=>1);
-  is_deeply $e->doubleWrite,  { "0" => { 1 => 1 }, "3" => { 4 => 1 } };
+  my $e = Execute;
+  is_deeply $e->doubleWrite, {0=> {1=> {0=> {1=> 1}},                           # In area 0, variable 1 was first written by instruction 0 then again by instruction 1 once.
+                                   3=> {3=> {4=> 1}}}};
  }
 
 #latest:;
@@ -1814,7 +1831,7 @@ if (1)                                                                          
  {Start 1;
   Add 2,  1, 1;
   Add 2, \2, 0;
-  my $e = Execute(doubleWrite=>1, doubleAssign=>1, suppressErrors=>1);
+  my $e = Execute;
   is_deeply $e->pointlessAssign, { 1 => 1 };
  }
 
@@ -1823,8 +1840,8 @@ if (1)                                                                          
  {Start 1;
   my $a = Mov 1;
   my $b = Mov $a;
-  my $e = Execute(notRead=>1, doubleAssign=>1, suppressErrors=>0);
-  ok $e->notRead->{0}{1}->number == 1;                                          # Area 0 == stack, variable 1 == $b generated by instruction 1
+  my $e = Execute;
+  ok $e->notRead->{0}{1} == 1;                                                  # Area 0 == stack, variable 1 == $b generated by instruction 1
  }
 
 #latest:;
