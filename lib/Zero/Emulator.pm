@@ -477,6 +477,7 @@ sub Zero::Emulator::Code::execute($%)                                           
      }
     if (isScalar $$$a)
      {my $s = stackArea;
+      rwRead (        &stackArea, $$$a);
       my $m = $memory{&stackArea}[$$$a];
       if (!defined($area))                                                      # Current stack frame
        {rwWrite(        &stackArea, $m);
