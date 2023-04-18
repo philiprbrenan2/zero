@@ -3,7 +3,8 @@
 # Assemble and execute the Zero programming language. Examples at the end.
 # Philip R Brenan at appaapps dot com, Appa Apps Ltd Inc., 2023
 #-------------------------------------------------------------------------------
-# Pointless adds and subtracts by 0. Perhaps we shoul d flag adds and subtracts by  1 as wel lso we can have an instriction optimzied bythis,
+# Pointless adds and subtracts by 0. Perhaps we should flag adds and subtracts by  1 as wel lso we can have an instriction optimzied bythis,
+# collapse target,targetArea now that we have addresses
 use v5.30;
 package Zero::Emulator;
 use warnings FATAL => qw(all);
@@ -168,6 +169,55 @@ sub Zero::Emulator::AreaStructure::address($$)                                  
 sub Zero::Emulator::Procedure::registers($$)                                    # Allocate registers within a procedure
  {my ($procedure, $number) = @_;                                                # Procedure description
   $procedure->variables->registers($number);
+ }
+
+sub Zero::Emulator::Address::print($)                                           # Print the value of an address
+ {my ($address) = @_;                                                           # Address specification
+  my $e  = $address->exec;
+  my $m  = $e->memory;
+  my $t  = $e->memoryType;
+  my $a  = $address->area;
+  my $l  = $address->location;
+  my $s  = "area: $a";
+     $s .= "(".($$t{$a} // "unknown")."), ";
+     $s .= "location: $l";
+ }
+
+sub Zero::Emulator::Address::get($)                                             # Get the value of an address at the specified location in memory
+ {my ($address) = @_;                                                           # Address specification
+  my $e = $address->exec;
+  my $m = $e->memory;
+  my $a = $address->area;
+  my $l = $address->location;
+  $$m{$a}[$l]
+ }
+
+sub Zero::Emulator::Address::at($)                                              # Reference to the specified location in memory
+ {my ($address) = @_;                                                           # Address specification
+  my $e = $address->exec;
+  my $m = $e->memory;
+  my $a = $address->area;
+  my $l = $address->location;
+  \$$m{$a}[$l]
+ }
+
+sub Zero::Emulator::Address::set($$)                                            # Set the value of an address at the specified location in memory
+ {my ($address, $value) = @_;                                                   # Address specification, value
+  my $e = $address->exec;
+  my $m = $e->memory;
+  my $a = $address->area;
+  my $l = $address->location;
+  $$m{$a}[$l] = $value
+ }
+
+sub Zero::Emulator::Address::areaContent($)                                     # Content of an area containing a location
+ {my ($address) = @_;                                                           # Address specification
+  my $e = $address->exec;
+  my $m = $e->memory;
+  my $a = $address->area;
+  my $A = $$m{$a};
+  return () unless defined $A;
+  @$A
  }
 
 sub Zero::Emulator::Procedure::call($)                                          # Call a procedure.  Arguments are supplied by the ParamsPut and Get commands, return values are supplied by the ReturnPut and Get commands.
@@ -457,6 +507,15 @@ sub Zero::Emulator::Code::execute($%)                                           
      }
    }
 
+  my sub address($$$)                                                           # Create a new address
+   {my ($area, $location, $exec) = @_;                                          # Area, location in area, memory, execution
+    genHash("Zero::Emulator::Address",                                          # Address memory
+      exec     => $exec,                                                        # Execution
+      area     => $area,                                                        # Area in memory
+      location => $location,                                                    # Location within area
+     );
+   };
+
   my sub left($;$$)                                                             # Address a memory location
    {my ($A, $area, $extra) = @_;                                                # Location, optional area, an opytional extra offset to add or subtract to the final memory address
     my $a = $A;
@@ -471,17 +530,17 @@ sub Zero::Emulator::Code::execute($%)                                           
          ." extra:".dump($e));
        }
       elsif (!defined($area))                                                   # Current stack frame
-       {rwWrite(        &stackArea, $m);
-        return \$memory{&stackArea}[$m]                                         # Stack frame
+       {rwWrite(       &stackArea, $m);
+        return address(&stackArea, $m, $exec);                                  # Stack frame
        }
       elsif (isScalar($area))
-       {rwWrite(        $area, $m);
-        return \$memory{$area}[$m]                                              # Specified constant area
+       {rwWrite(       $area, $m);
+        return address($area, $m, $exec)                                        # Specified constant area
        }
       elsif (isScalar($$area))
-       {rwRead (                &stackArea, $$area);
-        rwWrite(        $memory{&stackArea}[$$area], $m);
-        return \$memory{$memory{&stackArea}[$$area]}[$m]                        # Indirect area
+       {rwRead (               &stackArea, $$area);
+        rwWrite(       $memory{&stackArea}[$$area], $m);
+        return address($memory{&stackArea}[$$area], $m, $exec)                  # Indirect area
        }
      }
     if (isScalar $$$a)
@@ -495,17 +554,17 @@ sub Zero::Emulator::Code::execute($%)                                           
          ." extra:".dump($e));
        }
       if (!defined($area))                                                      # Current stack frame
-       {rwWrite(        &stackArea, $M);
-        return \$memory{&stackArea}[$M]                                         # Stack frame
+       {rwWrite(       &stackArea, $M);
+        return address(&stackArea, $M, $exec)                                   # Stack frame
        }
       elsif (isScalar($area))
-       {rwWrite(        $area, $M);
-        return \$memory{$area}[$M]                                              # Specified constant area
+       {rwWrite(       $area, $M);
+        return address($area, $M, $exec)                                        # Specified constant area
        }
       elsif (isScalar($$area))
-       {rwRead (                &stackArea, $$area);
-        rwWrite(        $memory{&stackArea}[$$area], $M);
-        return \$memory{$memory{&stackArea}[$$area]}[$M]                        # Indirect area
+       {rwRead (               &stackArea, $$area);
+        rwWrite(       $memory{&stackArea}[$$area], $M);
+        return address($memory{&stackArea}[$$area], $M, $exec);                 # Indirect area
        }
      }
     my $i = currentInstruction;
@@ -631,13 +690,17 @@ sub Zero::Emulator::Code::execute($%)                                           
 
   my sub assign($$)                                                             # Assign - check for pointless assignments
    {my ($target, $value) = @_;                                                  # Target of assign, value to assign
-    if (defined($$target) and $$target == $value)
+    defined($value) or confess "Cannot assign an undefined value";
+    my $currently = $target->get;
+    if (defined($currently) and $currently == $value)
      {$pointlessAssign{currentInstruction->number}++;
       if ($options{stopOnError=>1})
-       {stackTraceAndExit(currentInstruction(), "Pointless assign of: $value") ;
+       {my $a = $target->area;
+        my $l = $target->location;
+        stackTraceAndExit(currentInstruction(), "Pointless assign of: $currently to area: $a, at ") ;
        }
      }
-    $$target = $value;
+    $target->set($value);
    }
 
   my %instructions =                                                            # Instruction definitions
@@ -754,16 +817,16 @@ sub Zero::Emulator::Code::execute($%)                                           
 
     dec     => sub                                                              # Decrement locations in memory. The first location is incremented by 1, the next by two, etc.
      {my $i = currentInstruction;
-      my $s = right($i->target, $i->targetArea);                                # Make sure there is something to decrement
-      my $t = left ($i->target, $i->targetArea);
-      $$t--;
+      leftSuppress($i->target, $i->targetArea);                                 # Make sure there is something to decrement
+      my $t = left($i->target, $i->targetArea);
+      ${$t->at}--;
      },
 
     inc       => sub                                                            # Increment locations in memory. The first location is incremented by 1, the next by two, etc.
      {my $i = currentInstruction;
       leftSuppress($i->target, $i->targetArea);                                 # Make sure there is something to increment
       my $t = left($i->target, $i->targetArea);
-      $$t++;
+      ${$t->at}++;
      },
 
     jmp       => sub                                                            # Jump to the target location
@@ -789,7 +852,7 @@ sub Zero::Emulator::Code::execute($%)                                           
       my $n = right($i->target);
       for my $a(0..$n-1)
        {my $t = left($a, $i->targetArea);
-        $$t = 0;
+        $t->set(0);
        }
      },
 
@@ -807,7 +870,7 @@ sub Zero::Emulator::Code::execute($%)                                           
       my $t = left ( $i->target, $i->targetArea);
       leftSuppress ( $q, $p);                                                   # The source will be read from
       my $s = left ( $q, $p);                                                   # The source has to be a left hand side because we want to address a memory area not get a constant
-      assign($t, $$s);
+      assign($t, $s->get);
      },
 
     paramsPut => sub                                                            # Place a parameter in the current parameter block
@@ -825,7 +888,7 @@ sub Zero::Emulator::Code::execute($%)                                           
       my $t = left ($i->target, $i->targetArea);
               right(\$i->source, $p);                                           # The source will be read from
       my $s = left ($i->source, $p);                                            # The source has to be a left hand side because we want to address a memory area not get a constant
-      assign($t, $$s);
+      assign($t, $s->get);
      },
 
     returnPut => sub                                                            # Put a word ino the return area
@@ -867,7 +930,7 @@ sub Zero::Emulator::Code::execute($%)                                           
       leftSuppress ($i->target, $i->targetArea);                                # Make sure there something to shift
       my $t = left ($i->target, $i->targetArea);
       my $s = right($i->source, $i->sourceArea);
-      assign($t, $$t << $s);
+      assign($t, $t->get << $s);
      },
 
     shiftRight => sub                                                           # Shift right within an element
@@ -875,26 +938,30 @@ sub Zero::Emulator::Code::execute($%)                                           
       leftSuppress ($i->target, $i->targetArea);                                # Make sure there something to shift
       my $t = left ($i->target, $i->targetArea);
       my $s = right($i->source, $i->sourceArea);
-      assign($t, $$t >> $s);
+      assign($t, $t->get >> $s);
      },
 
     shiftUp => sub                                                              # Shift an element up in a memory area
      {my $i = currentInstruction;
-      my $l = right($i->source, $i->sourceArea);
-      for my $j(reverse 1..$l)                                                  # Each element in specified range
-       {my $s = left($i->target, $i->targetArea, $j - 1);
+      my $t = left($i->target, $i->targetArea);
+      my $L = $t->areaContent;                                                  # Length of area
+      my $l = $t->location;
+      for my $j(reverse 1..$L-$l)
+       {my $s = left($i->target, $i->targetArea, $j-1);
         my $t = left($i->target, $i->targetArea, $j);
-        assign($t, $$s);
+        assign($t, $s->get);
        }
      },
 
     shiftDown => sub                                                            # Shift an element down in a memory area
      {my $i = currentInstruction;
-      my $l = right($i->source, $i->sourceArea);
+      my $t = left($i->target, $i->targetArea);
+      my $L = $t->areaContent;                                                  # Length of area
+      my $l = $t->location;
       for my $j(1..$l)                                                          # Each element in specified range
-       {my $s = left($i->target, $i->targetArea, $j-1);
-        my $t = left($i->target, $i->targetArea, $j-2);
-        assign($t, $$s);
+       {my $s = left(0, $i->targetArea, $j);
+        my $t = left(0, $i->targetArea, $j-1);
+        assign($t, $s->get);
        }
      },
    );
@@ -1954,7 +2021,7 @@ if (1)                                                                          
   Mov [$a, 2], 2;
   ShiftDown [$a, 1], 2;
   my $e = Execute;
-  is_deeply $e->memory, {3=>[1, 2, 2]};
+  is_deeply $e->memory, {3=>[1, 1, 2]};
  }
 
 =pod
