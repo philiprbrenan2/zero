@@ -3,6 +3,7 @@
 # Assemble and execute the Zero programming language. Examples at the end.
 # Philip R Brenan at appaapps dot com, Appa Apps Ltd Inc., 2023
 #-------------------------------------------------------------------------------
+# Pointless adds and subtracts by 0. Perhaps we shoul d flag adds and subtracts by  1 as wel lso we can have an instriction optimzied bythis,
 use v5.30;
 package Zero::Emulator;
 use warnings FATAL => qw(all);
@@ -96,7 +97,7 @@ sub Zero::Emulator::Code::instruction($%)                                       
 sub Zero::Emulator::Code::Instruction::contextString($;$)                       # Stack trace back for this instruction
  {my ($i, $title) = @_;                                                         # Instruction, options
   my @s;
-  push @s, $title // "Context\n";
+  push @s, $title // '';
   for my $c($i->context->@*)
    {push @s, sprintf "    at %s line %d", $$c[0], $$c[1];
    }
@@ -456,30 +457,20 @@ sub Zero::Emulator::Code::execute($%)                                           
      }
    }
 
-  my sub left($;$)                                                              # Address a memory location
-   {my ($A, $area) = @_;                                                        # Location, optional area
+  my sub left($;$$)                                                             # Address a memory location
+   {my ($A, $area, $extra) = @_;                                                # Location, optional area, an opytional extra offset to add or subtract to the final memory address
     my $a = $A;
        $a = \$A if isScalar $a;                                                 # Interpret constants as direct memory locations
+    my $e = $extra // 0;                                                        # Default is to use the address as supplied without locating a nearby address
     if (isScalar $$a)
-     {if (!defined($area))                                                      # Current stack frame
-       {rwWrite(        &stackArea, $$a);
-        return \$memory{&stackArea}[$$a]                                        # Stack frame
+     {my $m = $$a+$e;
+      if ($m < 0)
+       {stackTraceAndExit(currentInstruction,
+         "Negative address for area: ".dump($area)
+         .", address: ".dump($a)
+         ." extra:".dump($e));
        }
-      elsif (isScalar($area))
-       {rwWrite(        $area, $$a);
-        return \$memory{$area}[$$a]                                             # Specified constant area
-       }
-      elsif (isScalar($$area))
-       {rwRead (                &stackArea, $$area);
-        rwWrite(        $memory{&stackArea}[$$area], $$a);
-        return \$memory{$memory{&stackArea}[$$area]}[$$a]                       # Indirect area
-       }
-     }
-    if (isScalar $$$a)
-     {my $s = stackArea;
-      rwRead (        &stackArea, $$$a);
-      my $m = $memory{&stackArea}[$$$a];
-      if (!defined($area))                                                      # Current stack frame
+      elsif (!defined($area))                                                   # Current stack frame
        {rwWrite(        &stackArea, $m);
         return \$memory{&stackArea}[$m]                                         # Stack frame
        }
@@ -493,6 +484,30 @@ sub Zero::Emulator::Code::execute($%)                                           
         return \$memory{$memory{&stackArea}[$$area]}[$m]                        # Indirect area
        }
      }
+    if (isScalar $$$a)
+     {my $s = stackArea;
+      rwRead (        &stackArea, $$$a);
+      my $M = $memory{&stackArea}[$$$a]+$e;
+      if ($M < 0)
+       {stackTraceAndExit(currentInstruction,
+         "Negative address for area: ".dump($area)
+         .", address: ".dump($a)
+         ." extra:".dump($e));
+       }
+      if (!defined($area))                                                      # Current stack frame
+       {rwWrite(        &stackArea, $M);
+        return \$memory{&stackArea}[$M]                                         # Stack frame
+       }
+      elsif (isScalar($area))
+       {rwWrite(        $area, $M);
+        return \$memory{$area}[$M]                                              # Specified constant area
+       }
+      elsif (isScalar($$area))
+       {rwRead (                &stackArea, $$area);
+        rwWrite(        $memory{&stackArea}[$$area], $M);
+        return \$memory{$memory{&stackArea}[$$area]}[$M]                        # Indirect area
+       }
+     }
     my $i = currentInstruction;
     stackTraceAndExit($i);
     my $l = $i->line;
@@ -500,6 +515,7 @@ sub Zero::Emulator::Code::execute($%)                                           
     my $c = $i->contextString;
     die "Invalid left area: ".dump($area)
      ." address: ".dump($a)
+     .(defined($extra) ? " + extra: ".dump($extra) : '')
      ." stack: ".  &stackArea
      ." at $f line $l\n$c\n";
    }
@@ -846,20 +862,40 @@ sub Zero::Emulator::Code::execute($%)                                           
       push $memory{right($i->target)}->@*, right($i->source, $i->sourceArea);
      },
 
-    shiftLeft => sub                                                            # Shift left
+    shiftLeft => sub                                                            # Shift left within an element
      {my $i = currentInstruction;
-      leftSuppress ($i->target);                                                # Make sure there something to shift
-      my $t = left ($i->target);
-      my $s = right($i->source);
+      leftSuppress ($i->target, $i->targetArea);                                # Make sure there something to shift
+      my $t = left ($i->target, $i->targetArea);
+      my $s = right($i->source, $i->sourceArea);
       assign($t, $$t << $s);
      },
 
-    shiftRight => sub                                                           # Shift right
+    shiftRight => sub                                                           # Shift right within an element
      {my $i = currentInstruction;
-      leftSuppress ($i->target);                                                # Make sure there something to shift
-      my $t = left ($i->target);
-      my $s = right($i->source);
+      leftSuppress ($i->target, $i->targetArea);                                # Make sure there something to shift
+      my $t = left ($i->target, $i->targetArea);
+      my $s = right($i->source, $i->sourceArea);
       assign($t, $$t >> $s);
+     },
+
+    shiftUp => sub                                                              # Shift an element up in a memory area
+     {my $i = currentInstruction;
+      my $l = right($i->source, $i->sourceArea);
+      for my $j(reverse 1..$l)                                                  # Each element in specified range
+       {my $s = left($i->target, $i->targetArea, $j - 1);
+        my $t = left($i->target, $i->targetArea, $j);
+        assign($t, $$s);
+       }
+     },
+
+    shiftDown => sub                                                            # Shift an element down in a memory area
+     {my $i = currentInstruction;
+      my $l = right($i->source, $i->sourceArea);
+      for my $j(1..$l)                                                          # Each element in specified range
+       {my $s = left($i->target, $i->targetArea, $j-1);
+        my $t = left($i->target, $i->targetArea, $j-2);
+        assign($t, $$s);
+       }
      },
    );
 
@@ -1134,15 +1170,27 @@ sub Push($$)                                                                    
   $assembly->instruction(action=>"push", target=>$target, xSource($source));
  }
 
-sub ShiftLeft($;$)                                                              # Shift left
+sub ShiftLeft($;$)                                                              # Shift left within an element
  {my ($target, $source) = @_;                                                   # Target to shift, amount to shift
   $assembly->instruction(action=>"shiftLeft", xTarget($target), xSource($source));
   $target
  }
 
-sub ShiftRight($;$)                                                             # Shift right
+sub ShiftRight($;$)                                                             # Shift right with an element
  {my ($target, $source) = @_;                                                   # Target to shift, amount to shift
   $assembly->instruction(action=>"shiftRight", xTarget($target), xSource($source));
+  $target
+ }
+
+sub ShiftUp($;$)                                                                # Shift an element up one in an area
+ {my ($target, $source) = @_;                                                   # Target to shift, amount to shift
+  $assembly->instruction(action=>"shiftUp", xTarget($target), xSource($source));
+  $target
+ }
+
+sub ShiftDown($;$)                                                              # Shift an element down opne in an area
+ {my ($target, $source) = @_;                                                   # Target to shift, amount to shift
+  $assembly->instruction(action=>"shiftDown", xTarget($target), xSource($source));
   $target
  }
 
@@ -1883,6 +1931,30 @@ if (1)                                                                          
   Mov 1, \0;
   my $e = eval {Execute suppressErrors=>1};
   ok $@ =~ m"Invalid right area: undef address: \\0 stack: 0 at";
+ }
+
+#latest:;
+if (1)                                                                          #TShiftUp
+ {Start 1;
+  my $a = Alloc "array";
+  Mov [$a, 0], 0;
+  Mov [$a, 1], 1;
+  Mov [$a, 2], 2;
+  ShiftUp [$a, 1], 2;
+  my $e = Execute;
+  is_deeply $e->memory, {3=>[0, 1, 1, 2]};
+ }
+
+#latest:;
+if (1)                                                                          #TShiftDown
+ {Start 1;
+  my $a = Alloc "array";
+  Mov [$a, 0], 0;
+  Mov [$a, 1], 1;
+  Mov [$a, 2], 2;
+  ShiftDown [$a, 1], 2;
+  my $e = Execute;
+  is_deeply $e->memory, {3=>[1, 2, 2]};
  }
 
 =pod
