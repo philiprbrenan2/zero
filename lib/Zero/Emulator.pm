@@ -179,6 +179,15 @@ my sub Reference($)                                                             
   );
  }
 
+sub Zero::Emulator::Execution::address($$$)                                     # Record a reference to memory
+ {my ($exec, $area, $location) = @_;                                            # Execution, area, location in area, memory
+  genHash("Zero::Emulator::Address",                                            # Address memory
+    exec     => $exec,                                                          # Execution
+    area     => $area,                                                          # Area in memory
+    location => $location,                                                      # Location within area
+   );
+ }
+
 sub Zero::Emulator::Address::print($)                                           # Print the value of an address
  {my ($address) = @_;                                                           # Address specification
   my $e  = $address->exec;
@@ -515,15 +524,6 @@ sub Zero::Emulator::Code::execute($%)                                           
      }
    }
 
-  my sub address($$$)                                                           # Create a new address
-   {my ($area, $location, $exec) = @_;                                          # Area, location in area, memory, execution
-    genHash("Zero::Emulator::Address",                                          # Address memory
-      exec     => $exec,                                                        # Execution
-      area     => $area,                                                        # Area in memory
-      location => $location,                                                    # Location within area
-     );
-   };
-
   my sub left($;$)                                                              # Address a memory location
    {my ($ref, $extra) = @_;                                                     # Reference, an optional extra offset to add or subtract to the final memory address
     my $a    =  $ref->address;
@@ -539,17 +539,17 @@ sub Zero::Emulator::Code::execute($%)                                           
          ." extra:".dump($e));
        }
       elsif (!defined($area))                                                   # Current stack frame
-       {rwWrite(       &stackArea, $m);
-        return address(&stackArea, $m, $exec);                                  # Stack frame
+       {rwWrite(              &stackArea, $m);
+        return $exec->address(&stackArea, $m);                                  # Stack frame
        }
       elsif (isScalar($area))
        {rwWrite(       $area, $m);
-        return address($area, $m, $exec)                                        # Specified constant area
+        return $exec->address($area, $m)                                        # Specified constant area
        }
       elsif (isScalar($$area))
-       {rwRead (               &stackArea, $$area);
-        rwWrite(       $memory{&stackArea}[$$area], $m);
-        return address($memory{&stackArea}[$$area], $m, $exec)                  # Indirect area
+       {rwRead (                      &stackArea, $$area);
+        rwWrite(              $memory{&stackArea}[$$area], $m);
+        return $exec->address($memory{&stackArea}[$$area], $m)                  # Indirect area
        }
      }
     if (isScalar $$$a)
@@ -563,17 +563,17 @@ sub Zero::Emulator::Code::execute($%)                                           
          ." extra:".dump($e));
        }
       if (!defined($area))                                                      # Current stack frame
-       {rwWrite(       &stackArea, $M);
-        return address(&stackArea, $M, $exec)                                   # Stack frame
+       {rwWrite(              &stackArea, $M);
+        return $exec->address(&stackArea, $M)                                   # Stack frame
        }
       elsif (isScalar($area))
-       {rwWrite(       $area, $M);
-        return address($area, $M, $exec)                                        # Specified constant area
+       {rwWrite(              $area, $M);
+        return $exec->address($area, $M)                                        # Specified constant area
        }
       elsif (isScalar($$area))
-       {rwRead (               &stackArea, $$area);
-        rwWrite(       $memory{&stackArea}[$$area], $M);
-        return address($memory{&stackArea}[$$area], $M, $exec);                 # Indirect area
+       {rwRead (                      &stackArea, $$area);
+        rwWrite(              $memory{&stackArea}[$$area], $M);
+        return $exec->address($memory{&stackArea}[$$area], $M);                 # Indirect area
        }
      }
     my $i = currentInstruction;
@@ -703,6 +703,7 @@ sub Zero::Emulator::Code::execute($%)                                           
 
   my sub assign($$)                                                             # Assign - check for pointless assignments
    {my ($target, $value) = @_;                                                  # Target of assign, value to assign
+    ref($target) =~ m(Address)i or confess "Not an address: ".dump($target);
     defined($value) or confess "Cannot assign an undefined value";
     my $currently = $target->get;
     if (defined($currently) and $currently == $value)
@@ -865,8 +866,8 @@ sub Zero::Emulator::Code::execute($%)                                           
      {my $i = currentInstruction;
       my $n = right($i->target);
       for my $a(0..$n-1)
-       {my $t = left(Reference([$i->target->area, $a]));
-        $t->set(0);
+       {my $A = left(Reference([$i->target->area, $a]));
+        $A->set(0);
        }
      },
 
