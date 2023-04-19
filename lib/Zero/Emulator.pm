@@ -628,6 +628,7 @@ sub Zero::Emulator::Code::execute($%)                                           
     my $a    = $ref->address;
     my $area = $ref->area;
     my $r;
+
     if (isScalar($a))                                                           # Constant
      {#rwRead($area//&stackArea, $a) if $a =~ m(\A\-?\d+\Z);
       return $a if defined $a;                                                  # Attempting to read a location that has never been set is an error
