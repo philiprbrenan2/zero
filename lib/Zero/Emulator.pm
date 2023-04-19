@@ -972,11 +972,12 @@ sub Zero::Emulator::Code::execute($%)                                           
       my $t = left($i->target, $i->targetArea);
       my $L = $t->areaContent;                                                  # Length of area
       my $l = $t->location;
-      for my $j(1..$l)                                                          # Each element in specified range
-       {my $s = left(Reference([$i->target->area, $j]));
-        my $t = left(Reference([$i->target->area, $j-1]));
+      for my $j($l..$L-2)                                                       # Each element in specified range
+       {my $s = left(Reference([$i->target->area, $j+1]));
+        my $t = left(Reference([$i->target->area, $j]));
         assign($t, $s->get);
        }
+      pop $memory{$t->area}->@*;
      },
    );
 
@@ -2021,7 +2022,7 @@ if (1)                                                                          
   Mov [$a, 0], 0;
   Mov [$a, 1], 1;
   Mov [$a, 2], 2;
-  ShiftUp [$a, 1], 2;
+  ShiftUp [$a, 1];
   my $e = Execute;
   is_deeply $e->memory, {3=>[0, 1, 1, 2]};
  }
@@ -2035,7 +2036,7 @@ if (1)                                                                          
   Mov [$a, 2], 2;
   ShiftDown [$a, 1], 2;
   my $e = Execute;
-  is_deeply $e->memory, {3=>[1, 1, 2]};
+  is_deeply $e->memory, {3=>[0, 2]};
  }
 
 =pod
