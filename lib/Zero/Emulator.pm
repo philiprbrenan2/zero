@@ -543,6 +543,19 @@ sub Zero::Emulator::Code::execute($%)                                           
     my $area = $ref->area;
     my $e = $extra // 0;                                                        # Default is to use the address as supplied without locating a nearby address
 
+    my sub invalid()
+     {my $i = currentInstruction;
+      stackTraceAndExit($i);
+      my $l = $i->line;
+      my $f = $i->file;
+      my $c = $i->contextString;
+      die "Invalid left area: ".dump($area)
+       ." address: ".dump($a)
+       .(defined($extra) ? " + extra: ".dump($extra) : '')
+       ." stack: ".  &stackArea
+       ." at $f line $l\n$c\n";
+     };
+
     if (isScalar $$a)
      {my $m = $$a+$e;
       if ($m < 0)
@@ -589,16 +602,7 @@ sub Zero::Emulator::Code::execute($%)                                           
         return  address($memory{&stackArea}[$$area], $M);                       # Indirect area
        }
      }
-    my $i = currentInstruction;
-    stackTraceAndExit($i);
-    my $l = $i->line;
-    my $f = $i->file;
-    my $c = $i->contextString;
-    die "Invalid left area: ".dump($area)
-     ." address: ".dump($a)
-     .(defined($extra) ? " + extra: ".dump($extra) : '')
-     ." stack: ".  &stackArea
-     ." at $f line $l\n$c\n";
+    invalid();
    }
 
   my sub leftSuppress($)                                                        # Indicate that a memory location has been read
@@ -899,6 +903,20 @@ sub Zero::Emulator::Code::execute($%)                                           
        }
      },
 
+    leAddress => sub                                                            # Load the address component of a reference
+     {my $i = currentInstruction;
+      my $s = left($i->source);
+      my $t = left($i->target);
+      assign($t, $s->location);
+     },
+
+    leArea    => sub                                                            # Load the area component of an address
+     {my $i = currentInstruction;
+      my $s = left($i->source);
+      my $t = left($i->target);
+      assign($t, $s->area);
+     },
+
     mov       => sub                                                            # Move data moves data from one part of memory to another - "set", by contrast, sets variables from constant values
      {my $i = currentInstruction;
       my $s = right($i->source);
@@ -1175,8 +1193,40 @@ sub Label($)                                                                    
  }
 
 sub Clear($)                                                                    # Clear the first bytes of an area.  The area is specified by the first elelemnt of the address, the number of locations to clear is specified by the second element of the target address.
- {my ($target) = @_;                                                             # Target location, source location
+ {my ($target) = @_;                                                            # Target location, source location
   $assembly->instruction(action=>"clear", xTarget($target));
+ }
+
+sub LeAddress($;$)                                                              # Load the address component
+ {if (@_ == 1)
+   {my ($source) = @_;                                                          # Target location, source location
+    my $t = &Var();
+    $assembly->instruction(action=>"leAddress", target=>Reference($t), xSource($source));
+    return $t;
+   }
+  elsif (@ == 2)
+   {my ($target, $source) = @_;                                                 # Target location, source location
+    $assembly->instruction(action=>"leAddress", xTarget($target), xSource($source));
+   }
+  else
+   {confess "One or two parameters required";
+   }
+ }
+
+sub LeArea($;$)                                                                 # Load the address component
+ {if (@_ == 1)
+   {my ($source) = @_;                                                          # Target location, source location
+    my $t = &Var();
+    $assembly->instruction(action=>"leArea", target=>Reference($t), xSource($source));
+    return $t;
+   }
+  elsif (@ == 2)
+   {my ($target, $source) = @_;                                                 # Target location, source location
+    $assembly->instruction(action=>"leArea", xTarget($target), xSource($source));
+   }
+  else
+   {confess "One or two parameters required";
+   }
  }
 
 sub Mov($;$)                                                                    # Copy a constant or memory location to the target location
@@ -1193,12 +1243,6 @@ sub Mov($;$)                                                                    
   else
    {confess "One or two parameters required";
    }
- }
-
-sub Mov2($$)                                                                    # Copy a constant or memory location to the target location
- {my ($target, $source) = @_;                                                   # Target location, source location
-  my $i = $assembly->instruction(action=>"mov2", xTarget($target), xSource($source));
-  $i
  }
 
 sub Nop()                                                                       # Do nothing (but do it well!)
@@ -2073,13 +2117,21 @@ if (1)                                                                          
  }
 
 #latest:;
-if (1)                                                                          # Index
+if (1)                                                                          #TLeArea #TLeAddress
  {Start 1;
   my $a = Alloc "array";
   my $b = Mov 2;
+  my $c = Mov 5;
+  my $d = LeAddress $c;
+  my $f = LeArea    $c;
+  Out $d;
+  Out $f;
   Mov [$a, \$b], 22;
+  Mov [$a, \$c], 33;
+  Mov [$a, \$d], 44;
   my $e = Execute;
-  is_deeply $e->memory, { 3 => bless([undef, undef, 22], "array") };
+  is_deeply $e->out,    [2,0];
+  is_deeply $e->memory, {3=>[undef, undef, 44, undef, undef, 33]};
  }
 
 =pod
