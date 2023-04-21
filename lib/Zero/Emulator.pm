@@ -98,7 +98,7 @@ sub Zero::Emulator::Code::instruction($%)                                       
 sub Zero::Emulator::Code::Instruction::contextString($;$)                       # Stack trace back for this instruction
  {my ($i, $title) = @_;                                                         # Instruction, options
   my @s;
-  push @s, $title // '';
+  push @s, $title if defined $title;
   for my $c($i->context->@*)
    {push @s, sprintf "    at %s line %d", $$c[0], $$c[1];
    }
@@ -348,6 +348,29 @@ sub Zero::Emulator::Execution::analyzeExecutionResultsDoubleWrite($%)           
 
   my @r;
 
+  my $W = $exec->doubleWrite;
+  if (keys %$W)
+   {for my $p(sort keys %$W)
+     {for my $q(keys $$W{$p}->%*)
+       {push @r, sprintf "Double write occured %d  times", $$W{$p}{$q};
+        if ($p eq $q)
+         {push @r, "First  and second write\n$p\n";
+         }
+        else
+         {push @r, "First  write:\n$p\n";
+          push @r, "Second write:\n$q\n";
+         }
+       }
+     }
+   }
+  @r
+ }
+
+sub Zero::Emulator::Execution::analyzeExecutionResultsDoubleWrite22($%)           # Analyze execution results - double writes
+ {my ($exec, %options) = @_;                                                    # Execution results, options
+
+  my @r;
+
   if (my @area = keys $exec->doubleWrite->%*)
    {for my $areaK(@area)
      {my $area = $exec->doubleWrite->{$areaK};
@@ -516,7 +539,8 @@ sub Zero::Emulator::Code::execute($%)                                           
      {my $M = $memory{$area}[$address];                                         # If the memory location is zero we will assume that it has been cleared rather than set.
       if ($M)
        {my $Q = currentInstruction;
-        $doubleWrite{$area}{$address}{$P->number}{$Q->number}++;
+       #$doubleWrite{$area}{$address}{$P->number}{$Q->number}++;
+        $doubleWrite{$P->contextString}{$Q->contextString}++;
        }
      }
     $rw{$area}{$address} = currentInstruction;
@@ -2011,8 +2035,7 @@ if (1)                                                                          
   Mov 3, 1;
   Mov 3, 1;
   my $e = Execute;
-  is_deeply $e->doubleWrite, {0=> {1=> {0=> {1=> 1}},                           # In area 0, variable 1 was first written by instruction 0 then again by instruction 1 once.
-                                   3=> {3=> {4=> 1}}}};
+  ok keys($e->doubleWrite->%*) == 2;                                            # In area 0, variable 1 was first written by instruction 0 then again by instruction 1 once.
  }
 
 #latest:;
