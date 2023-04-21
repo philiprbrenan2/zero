@@ -556,53 +556,36 @@ sub Zero::Emulator::Code::execute($%)                                           
        ." at $f line $l\n$c\n";
      };
 
+    my $M;                                                                      # Memory location
     if (isScalar $$a)
-     {my $m = $$a+$e;
-      if ($m < 0)
-       {stackTraceAndExit(currentInstruction,
-         "Negative address for area: ".dump($area)
-         .", address: ".dump($a)
-         ." extra:".dump($e));
-       }
-      elsif (!defined($area))                                                   # Current stack frame
-       {rwWrite(        &stackArea, $m);
-        return  address(&stackArea, $m);                                        # Stack frame
-       }
-      elsif (isScalar($area))
-       {rwWrite(        $area, $m);
-        return  address($area, $m)                                              # Specified constant area
-       }
-      elsif (isScalar($$area))
-       {rwRead (                &stackArea, $$area);
-        rwWrite(        $memory{&stackArea}[$$area], $m);
-        return  address($memory{&stackArea}[$$area], $m)                        # Indirect area
-       }
+     {$M = $$a+$e
      }
-    if (isScalar $$$a)
-     {my $s = stackArea;
-      rwRead (        &stackArea, $$$a);
-      my $M = $memory{&stackArea}[$$$a]+$e;
-      if ($M < 0)
-       {stackTraceAndExit(currentInstruction,
-         "Negative address for area: ".dump($area)
-         .", address: ".dump($a)
-         ." extra:".dump($e));
-       }
-      if (!defined($area))                                                      # Current stack frame
-       {rwWrite(        &stackArea, $M);
-        return  address(&stackArea, $M)                                         # Stack frame
-       }
-      elsif (isScalar($area))
-       {rwWrite(        $area, $M);
-        return  address($area, $M)                                              # Specified constant area
-       }
-      elsif (isScalar($$area))
-       {rwRead (                &stackArea, $$area);
-        rwWrite(        $memory{&stackArea}[$$area], $M);
-        return  address($memory{&stackArea}[$$area], $M);                       # Indirect area
-       }
+    elsif (isScalar $$$a)
+     {$M = $memory{&stackArea}[$$$a]+$e
      }
-    invalid();
+    else
+     {invalid
+     }
+
+    if ($M < 0)                                                                 # Disallow negative addresses because they mean something special to Perl
+     {stackTraceAndExit(currentInstruction,
+       "Negative address for area: ".dump($area)
+       .", address: ".dump($a)
+       ." extra:".dump($e));
+     }
+    elsif (!defined($area))                                                     # Current stack frame
+     {rwWrite(        &stackArea, $M);
+      return  address(&stackArea, $M);                                          # Stack frame
+     }
+    elsif (isScalar($area))
+     {rwWrite(        $area, $M);
+      return  address($area, $M)                                                # Specified constant area
+     }
+    elsif (isScalar($$area))
+     {rwRead (                &stackArea, $$area);
+      rwWrite(        $memory{&stackArea}[$$area], $M);
+      return  address($memory{&stackArea}[$$area], $M)                          # Indirect area
+     }
    }
 
   my sub leftSuppress($)                                                        # Indicate that a memory location has been read
@@ -644,63 +627,9 @@ sub Zero::Emulator::Code::execute($%)                                           
    {my ($ref) = @_;                                                               # Location, optional area
     my $a    = $ref->address;
     my $area = $ref->area;
-    my $r; my $e; my $tAddress; my $tArea;
+    my $r; my $e = 0; my $tAddress; my $tArea;
 
-    if (isScalar($a))                                                           # Constant
-     {#rwRead($area//&stackArea, $a) if $a =~ m(\A\-?\d+\Z);
-      return $a if defined $a;                                                  # Attempting to read a location that has never been set is an error
-     }
-    elsif (isScalar($$a))                                                       # Direct
-     {if (!defined($area))
-       {rwRead(      &stackArea, $$a);
-        $r = $memory{&stackArea}[$$a];                                           # Direct from stack area
-        $e = 1; $tAddress = $$a; $tArea = &stackArea;
-       }
-      elsif (isScalar($area))
-       {rwRead(      $area, $$a);
-        $r = $memory{$area}[$$a];                                                # Direct from constant area
-        $e = 2; $tAddress = $$a; $tArea = $area;
-       }
-      elsif (isScalar($$area))
-       {rwRead(                     &stackArea, $$area);
-        $e = 3;
-        if (defined(my $i = $memory{&stackArea}[$$area]))
-         {rwRead(      $i, $$a);
-          $r = $memory{$i}[$$a];                                                # Direct from indirect area
-          $e = 4; $tAddress = $$a; $tArea = $i;
-         }
-       }
-     }
-    elsif (isScalar($$$a))                                                      # Indirect
-     {if (!defined($area))
-       {my $m = $memory{&stackArea}[$$$a];
-        rwRead(      &stackArea, $m);
-        $r = $memory{&stackArea}[$m];                                           # Indirect from stack area
-        $e = 5;  $tAddress = $m; $tArea = &stackArea;
-       }
-      elsif (isScalar($area))
-       {rwRead(                     &stackArea, $$$a);
-        if (defined(my $i = $memory{&stackArea}[$$$a]))
-         {rwRead(      $area, $i);
-          $r = $memory{$area}[$i];                                               # Indirect from constant area
-          $e = 6;  $tAddress = $i; $tArea = &stackArea;
-         }
-       }
-      elsif (isScalar($$area))
-       {rwRead(                     &stackArea, $$$a);
-        $e = 7;
-        if (defined(my $i = $memory{&stackArea}[$$$a]))
-         {rwRead(                     &stackArea, $$area);
-          $e = 8;
-          if (defined(my $j = $memory{&stackArea}[$$area]))
-           {rwRead(      $j, $i);
-            $r = $memory{$j}[$i];                                               # Indirect from indirect area
-            $e = 9; $tAddress = $i; $tArea = $j;
-           }
-         }
-       }
-     }
-    if (!defined($r))
+    my sub invalid()
      {my $i = currentInstruction;
       stackTraceAndExit($i);
       my $l = $i->line;
@@ -715,6 +644,41 @@ sub Zero::Emulator::Code::execute($%)                                           
        ." at $f line $l\n$c\n"
        .dump(\%memory);
      }
+
+    if (isScalar($a))                                                           # Constant
+     {#rwRead($area//&stackArea, $a) if $a =~ m(\A\-?\d+\Z);
+      return $a if defined $a;                                                  # Attempting to read a location that has never been set is an error
+     }
+
+    my $m;
+    if (isScalar($$a))                                                          # Direct
+     {$m = $$a;
+     }
+    elsif (isScalar($$$a))                                                      # Indirect
+     {$m = $memory{&stackArea}[$$$a];
+     }
+    if (!defined($m))
+     {invalid;
+     }
+
+    if (!defined($area))
+     {rwRead(      &stackArea, $m);
+      $r = $memory{&stackArea}[$m];                                             # Indirect from stack area
+      $e = 1;  $tAddress = $m; $tArea = &stackArea;
+     }
+    elsif (isScalar($area))
+     {rwRead(      $area, $m);
+      $r = $memory{$area}[$m];                                                  # Indirect from constant area
+      $e = 2;  $tAddress = $m; $tArea = $area;
+     }
+    elsif (isScalar($$area))
+     {if (defined(my $j = $memory{&stackArea}[$$area]))
+       {rwRead(      $j, $m);
+        $r = $memory{$j}[$m];                                                   # Indirect from indirect area
+        $e = 9; $tAddress = $m; $tArea = $j;
+       }
+     }
+    invalid if !defined $r;
     $r
    }
 
