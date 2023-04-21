@@ -541,7 +541,8 @@ sub Zero::Emulator::Code::execute($%)                                           
     my $a    =  $r;
        $a    = \$r if isScalar $a;                                              # Interpret constants as direct memory locations
     my $area = $ref->area;
-    my $e = $extra // 0;                                                        # Default is to use the address as supplied without locating a nearby address
+    my $x = $extra // 0;                                                        # Default is to use the address as supplied without locating a nearby address
+    my $S = &stackArea;                                                         # Current stack frame
 
     my sub invalid()
      {my $i = currentInstruction;
@@ -552,16 +553,16 @@ sub Zero::Emulator::Code::execute($%)                                           
       die "Invalid left area: ".dump($area)
        ." address: ".dump($a)
        .(defined($extra) ? " + extra: ".dump($extra) : '')
-       ." stack: ".  &stackArea
-       ." at $f line $l\n$c\n";
+       ." stack: $S at $f line $l\n$c\n";
      };
 
     my $M;                                                                      # Memory location
     if (isScalar $$a)
-     {$M = $$a+$e
+     {$M = $$a+$x
      }
     elsif (isScalar $$$a)
-     {$M = $memory{&stackArea}[$$$a]+$e
+     {rwRead($S, $$$a);
+      $M = $memory{$S}[$$$a]+$x
      }
     else
      {invalid
@@ -571,20 +572,21 @@ sub Zero::Emulator::Code::execute($%)                                           
      {stackTraceAndExit(currentInstruction,
        "Negative address for area: ".dump($area)
        .", address: ".dump($a)
-       ." extra:".dump($e));
+       ." extra:".dump($x));
      }
     elsif (!defined($area))                                                     # Current stack frame
-     {rwWrite(        &stackArea, $M);
-      return  address(&stackArea, $M);                                          # Stack frame
+     {rwWrite(        $S, $M);
+      return  address($S, $M);                                                  # Stack frame
      }
     elsif (isScalar($area))
      {rwWrite(        $area, $M);
       return  address($area, $M)                                                # Specified constant area
      }
     elsif (isScalar($$area))
-     {rwRead (                &stackArea, $$area);
-      rwWrite(        $memory{&stackArea}[$$area], $M);
-      return  address($memory{&stackArea}[$$area], $M)                          # Indirect area
+     {rwRead (        $S, $$area);
+      my $A = $memory{$S}[$$area];
+      rwWrite(        $A, $M);
+      return  address($A, $M)                                                   # Indirect area
      }
    }
 
@@ -650,7 +652,8 @@ sub Zero::Emulator::Code::execute($%)                                           
      {$m = $$a;
      }
     elsif (isScalar($$$a))                                                      # Indirect
-     {$m = $memory{&stackArea}[$$$a];
+     {#rwRead(      &stackArea, $$$a);
+      $m = $memory{&stackArea}[$$$a];
      }
     if (!defined($m))
      {invalid;
@@ -712,12 +715,12 @@ sub Zero::Emulator::Code::execute($%)                                           
   my %instructions =                                                            # Instruction definitions
    (add     => sub                                                              # Add the two source operands and store the result in the target
      {my $i = currentInstruction;
-      my $t = left($i->target, $i->targetArea);
+      my $t = left($i->target);
       assign($t, right($i->source) + right($i->source2));
      },
     subtract  => sub                                                            # Subtract the second source operand from the first and store the result in the target
      {my $i = currentInstruction;
-      my $t = left($i->target, $i->targetArea);
+      my $t = left($i->target);
       assign($t, right($i->source) - right($i->source2));
      },
 
@@ -2110,6 +2113,23 @@ if (1)                                                                          
   my $e = Execute(trace=>0);
   is_deeply $e->analyzeExecutionResults(doubleWrite=>3), "#       33 instructions executed";
   is_deeply $e->memory, { 3 => bless([4], "aaa"), 4 => bless([99], "bbb") };
+ }
+
+#latest:;
+if (1)                                                                          #TAlloc #TMov
+ {Start 1;
+  my $a = Alloc "aaa";
+  my $b = Mov 2; # Location to move to in a
+  Mov [$b, 0], 99;
+  For 3, sub
+   {my ($i, $check, $next, $end) = @_;
+    Mov [$a, \$b], 1;
+    Jeq $next, [$a, \$b], 1;
+   };
+  my $e = Execute(trace=>0);
+  #say STDERR $e->analyzeExecutionResults(doubleWrite=>3);
+  is_deeply $e->analyzeExecutionResults(doubleWrite=>3), "#       29 instructions executed";
+  is_deeply $e->memory, { 3 => bless([undef, undef, 1], "aaa") };
  }
 
 =pod
