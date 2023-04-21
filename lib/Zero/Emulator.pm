@@ -1192,7 +1192,7 @@ sub Label($)                                                                    
   $assembly->instruction(action=>"label", xSource($source));
  }
 
-sub Clear($)                                                                    # Clear the first bytes of an area.  The area is specified by the first elelemnt of the address, the number of locations to clear is specified by the second element of the target address.
+sub Clear($)                                                                    # Clear the first bytes of an area.  The area is specified by the first element of the address, the number of locations to clear is specified by the second element of the target address.
  {my ($target) = @_;                                                            # Target location, source location
   $assembly->instruction(action=>"clear", xTarget($target));
  }
@@ -2123,14 +2123,14 @@ if (1)                                                                          
   my $b = Mov 2;
   my $c = Mov 5;
   my $d = LeAddress $c;
-  my $f = LeArea    $c;
+  my $f = LeArea    [$a, 0];
   Out $d;
   Out $f;
   Mov [$a, \$b], 22;
   Mov [$a, \$c], 33;
-  Mov [$a, \$d], 44;
-  my $e = Execute;
-  is_deeply $e->out,    [2,0];
+  Mov [$f, \$d], 44;
+  my $e = Execute(trace=>0);
+  is_deeply $e->out,    [2,3];
   is_deeply $e->memory, {3=>[undef, undef, 44, undef, undef, 33]};
  }
 
