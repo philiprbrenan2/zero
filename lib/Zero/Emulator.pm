@@ -4,7 +4,7 @@
 # Philip R Brenan at appaapps dot com, Appa Apps Ltd Inc., 2023
 #-------------------------------------------------------------------------------
 # Pointless adds and subtracts by 0. Perhaps we should flag adds and subtracts by  1 as wel lso we can have an instriction optimzied bythis,
-# collapse target,targetArea now that we have addresses
+# standardize location/address
 use v5.30;
 package Zero::Emulator;
 use warnings FATAL => qw(all);
@@ -173,10 +173,19 @@ sub Zero::Emulator::Procedure::registers($$)                                    
 
 my sub Reference($)                                                             # Record a reference to memory
  {my ($r) = @_;                                                                 # Reference
+
   genHash("Zero::Emulator::Reference",
     area    => ref($r) =~ m(array)i ? $$r[0] : undef,
     address => ref($r) =~ m(array)i ? $$r[1] : $r,
   );
+ }
+
+sub Zero::Emulator::Reference::print($)                                         # Print the value of an address
+ {my ($ref) = @_;                                                               # Reference specification
+  my $a  = dump($ref->area);
+  my $l  = dump($ref->address);
+  my $s  = "Reference area: $a, address: $l";
+  say STDERR $s;
  }
 
 sub Zero::Emulator::Address::print($)                                           # Print the value of an address
@@ -186,7 +195,7 @@ sub Zero::Emulator::Address::print($)                                           
   my $t  = $e->memoryType;
   my $a  = $address->area;
   my $l  = $address->location;
-  my $s  = "area: $a";
+  my $s  = "Address area: $a";
      $s .= "(".($$t{$a} // "unknown")."), ";
      $s .= "location: $l";
  }
@@ -215,6 +224,7 @@ sub Zero::Emulator::Address::set($$)                                            
   my $m = $e->memory;
   my $a = $address->area;
   my $l = $address->location;
+  $address->print;
   $$m{$a}[$l] = $value
  }
 
@@ -418,6 +428,7 @@ sub Zero::Emulator::Code::execute($%)                                           
   my %notRead;                                                                  # Memory locations never read
   my %doubleWrite;                                                              # Double writes: earlier instruction number to later instruction number
   my %pointlessAssign;                                                          # Pointless assigns {instruction number} to count - location already has the specified value
+  my $debug;                                                                    # Debug
 
   my $exec          =  genHash("Zero::Emulator::Execution",                     # Execution results
     calls           => \@calls,                                                 # Call stack
@@ -526,10 +537,12 @@ sub Zero::Emulator::Code::execute($%)                                           
 
   my sub left($;$)                                                              # Address a memory location
    {my ($ref, $extra) = @_;                                                     # Reference, an optional extra offset to add or subtract to the final memory address
-    my $a    =  $ref->address;
-       $a    = \$ref->address if isScalar $a;                                   # Interpret constants as direct memory locations
+    my $r    =  $ref->address;
+    my $a    =  $r;
+       $a    = \$r if isScalar $a;                                              # Interpret constants as direct memory locations
     my $area = $ref->area;
     my $e = $extra // 0;                                                        # Default is to use the address as supplied without locating a nearby address
+
     if (isScalar $$a)
      {my $m = $$a+$e;
       if ($m < 0)
@@ -627,7 +640,7 @@ sub Zero::Emulator::Code::execute($%)                                           
    {my ($ref) = @_;                                                               # Location, optional area
     my $a    = $ref->address;
     my $area = $ref->area;
-    my $r;
+    my $r; my $e; my $tAddress; my $tArea;
 
     if (isScalar($a))                                                           # Constant
      {#rwRead($area//&stackArea, $a) if $a =~ m(\A\-?\d+\Z);
@@ -636,39 +649,49 @@ sub Zero::Emulator::Code::execute($%)                                           
     elsif (isScalar($$a))                                                       # Direct
      {if (!defined($area))
        {rwRead(      &stackArea, $$a);
-        $r = $memory{&stackArea}[$$a]                                           # Direct from stack area
+        $r = $memory{&stackArea}[$$a];                                           # Direct from stack area
+        $e = 1; $tAddress = $$a; $tArea = &stackArea;
        }
       elsif (isScalar($area))
        {rwRead(      $area, $$a);
-        $r = $memory{$area}[$$a]                                                # Direct from constant area
+        $r = $memory{$area}[$$a];                                                # Direct from constant area
+        $e = 2; $tAddress = $$a; $tArea = $area;
        }
       elsif (isScalar($$area))
        {rwRead(                     &stackArea, $$area);
+        $e = 3;
         if (defined(my $i = $memory{&stackArea}[$$area]))
          {rwRead(      $i, $$a);
           $r = $memory{$i}[$$a];                                                # Direct from indirect area
+          $e = 4; $tAddress = $$a; $tArea = $i;
          }
        }
      }
     elsif (isScalar($$$a))                                                      # Indirect
      {if (!defined($area))
-       {rwRead(      &stackArea, $memory{&stackArea}[$$$a]);
-        $r = $memory{&stackArea}[$memory{&stackArea}[$$$a]]                     # Indirect from stack area
+       {my $m = $memory{&stackArea}[$$$a];
+        rwRead(      &stackArea, $m);
+        $r = $memory{&stackArea}[$m];                                           # Indirect from stack area
+        $e = 5;  $tAddress = $m; $tArea = &stackArea;
        }
       elsif (isScalar($area))
        {rwRead(                     &stackArea, $$$a);
         if (defined(my $i = $memory{&stackArea}[$$$a]))
          {rwRead(      $area, $i);
-          $r = $memory{$area}[$i]                                               # Indirect from constant area
+          $r = $memory{$area}[$i];                                               # Indirect from constant area
+          $e = 6;  $tAddress = $i; $tArea = &stackArea;
          }
        }
       elsif (isScalar($$area))
        {rwRead(                     &stackArea, $$$a);
+        $e = 7;
         if (defined(my $i = $memory{&stackArea}[$$$a]))
          {rwRead(                     &stackArea, $$area);
+          $e = 8;
           if (defined(my $j = $memory{&stackArea}[$$area]))
            {rwRead(      $j, $i);
-            $r = $memory{$j}[$i]                                                # Indirect from indirect area
+            $r = $memory{$j}[$i];                                               # Indirect from indirect area
+            $e = 9; $tAddress = $i; $tArea = $j;
            }
          }
        }
@@ -680,9 +703,13 @@ sub Zero::Emulator::Code::execute($%)                                           
       my $f = $i->file;
       my $c = $i->contextString("Failing instruction:");
       die "Invalid right area: ".dump($area)
-       ." address: ".dump($a)
-       ." stack: "  .&stackArea
-       ." at $f line $l\n$c\n";
+       ." address: "    .dump($a)
+       ." stack: "      .&stackArea
+       ." error: "      .dump($e)
+       ." target Area: ".dump($tArea)
+       ." address: "    .dump($tAddress)
+       ." at $f line $l\n$c\n"
+       .dump(\%memory);
      }
     $r
    }
@@ -815,20 +842,20 @@ sub Zero::Emulator::Code::execute($%)                                           
      {stackTraceAndExit(currentInstruction);
      },
 
+    debug   => sub                                                              # Set debug
+     {my $i = currentInstruction;
+      my $s = right($i->source);
+      $debug = !!$s;
+      say STDERR "Debug $debug";
+     },
+
     dump    => sub                                                              # Dump memory
      {my $i = currentInstruction;
       my $t = $i->source;                                                       # Title
       my $o = $i->target;                                                       # Options
-      if ($$o{rw})
-       {my $s = "rw: $t ". dump(\%rw);
-        say STDERR $s;
-        push @out, $s;
-       }
-      if ($$o{memory})
-       {my $s = "memory: $t ". dump(\%memory);
-        say STDERR $s;
-        push @out, $s;
-       }
+      my $s = "memory: $t ". dump(\%memory);
+      say STDERR $s;
+      push @out, $s;
      },
 
     dec     => sub                                                              # Decrement locations in memory. The first location is incremented by 1, the next by two, etc.
@@ -865,8 +892,8 @@ sub Zero::Emulator::Code::execute($%)                                           
 
     clear     => sub                                                            # Clear the first bytes of an area as specified by the taregt operand
      {my $i = currentInstruction;
-      my $n = right($i->target);
-      for my $a(0..$n-1)
+      my $n = left($i->target);
+      for my $a(0..$n->location-1)
        {my $A = left(Reference([$i->target->area, $a]));
         $A->set(0);
        }
@@ -1090,6 +1117,11 @@ sub Confess()                                                                   
 sub Dump($%)                                                                    # Dump memory
  {my ($title, %options) = @_;                                                   # Title, options
   $assembly->instruction(action=>"dump", source=>$title, target=>{%options});
+ }
+
+sub Debug($)                                                                    # Debug
+ {my ($source) = @_;                                                            # Debug setting, options
+  $assembly->instruction(action=>"debug", xSource($source));
  }
 
 sub Dec($)                                                                      # Decrement the target
@@ -1502,7 +1534,7 @@ use vars qw(@ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
 
 @ISA         = qw(Exporter);
 @EXPORT      = qw();
-@EXPORT_OK   = qw(AreaStructure Add Alloc Bad Block Call Clear Confess Else Execute For Free Good Assert AssertEq AssertNe AssertGe AssertGt AssertLe AssertLt Dec Dump IfEq IfGe IfGt IfLe IfLt IfNe Ifx IfTrue IfFalse Inc Jeq Jge Jgt Jle Jlt Jmp Jne Label Mov Nop Out ParamsGet ParamsPut Pop Procedure Push Return ReturnGet ReturnPut ShiftLeft ShiftRight Start Subtract Then Var);
+@EXPORT_OK   = qw(AreaStructure Add Alloc Bad Block Call Clear Confess Debug Else Execute For Free Good Assert AssertEq AssertNe AssertGe AssertGt AssertLe AssertLt Dec Dump IfEq IfGe IfGt IfLe IfLt IfNe Ifx IfTrue IfFalse Inc Jeq Jge Jgt Jle Jlt Jmp Jne Label Mov Nop Out ParamsGet ParamsPut Pop Procedure Push Return ReturnGet ReturnPut ShiftLeft ShiftRight Start Subtract Then Var);
 %EXPORT_TAGS = (all=>[@EXPORT, @EXPORT_OK]);
 
 return 1 if caller;
@@ -2013,7 +2045,7 @@ if (1)                                                                          
  {Start 1;
   Mov 1, \0;
   my $e = eval {Execute suppressErrors=>1};
-  ok $@ =~ m"Invalid right area: undef address: \\0 stack: 0 at";
+  ok $@ =~ m"Invalid right area: undef address: \\0 stack: 0 ";
  }
 
 #latest:;
@@ -2038,6 +2070,16 @@ if (1)                                                                          
   ShiftDown [$a, 1], 2;
   my $e = Execute;
   is_deeply $e->memory, {3=>[0, 2]};
+ }
+
+#latest:;
+if (1)                                                                          # Index
+ {Start 1;
+  my $a = Alloc "array";
+  my $b = Mov 2;
+  Mov [$a, \$b], 22;
+  my $e = Execute;
+  is_deeply $e->memory, { 3 => bless([undef, undef, 22], "array") };
  }
 
 =pod
