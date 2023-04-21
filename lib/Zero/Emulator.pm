@@ -594,37 +594,32 @@ sub Zero::Emulator::Code::execute($%)                                           
     my $area  = $ref->area;
     my $a = $A;
        $a = \$A if isScalar $a;                                                 # Interpret constants as direct memory locations
-    if (isScalar $$a)
-     {if (!defined($area))                                                      # Current stack frame
-       {rwRead(        &stackArea, $$a);
-       }
-      elsif (isScalar($area))
-       {rwRead(        $area,      $$a);
-       }
-      elsif (isScalar($$area))
-       {rwRead(                &stackArea, $$area);
-        rwRead(        $memory{&stackArea}[$$area], $$a);
-       }
+
+    my $m;
+    if (isScalar $$a)                                                           # Direct
+     {$m = $$a;
      }
-    elsif (isScalar $$$a)
-     {my $s = stackArea;
-      rwRead         (&stackArea, $$$a);
-      my $m = $memory{&stackArea}[$$$a];
-      if (!defined($area))                                                      # Current stack frame
-       {rwRead(        &stackArea, $m);
+    elsif (isScalar $$$a)                                                       # Indirect
+     {rwRead      (&stackArea, $$$a);
+      $m = $memory{&stackArea}[$$$a];
+     }
+
+    if (defined($m))
+     {if (!defined($area))                                                      # Current stack frame
+       {rwRead(&stackArea, $m);
        }
-      elsif (isScalar($area))
-       {rwRead(        $area,      $m);
+      elsif (isScalar($area))                                                   # Direct area
+       {rwRead($area, $m);
        }
-      elsif (isScalar($$area))
-       {rwRead(                &stackArea,  $area);
-        rwRead(        $memory{&stackArea}[$$area], $m);
+      elsif (isScalar($$area))                                                  # Indirect area
+       {rwRead(        &stackArea,  $area);
+        rwRead($memory{&stackArea}[$$area], $m);
        }
      }
    }
 
   my sub right($)                                                               # Get a constant or a memory location
-   {my ($ref) = @_;                                                               # Location, optional area
+   {my ($ref) = @_;                                                             # Location, optional area
     my $a    = $ref->address;
     my $area = $ref->area;
     my $r; my $e = 0; my $tAddress; my $tArea;
@@ -672,7 +667,8 @@ sub Zero::Emulator::Code::execute($%)                                           
       $e = 2;  $tAddress = $m; $tArea = $area;
      }
     elsif (isScalar($$area))
-     {if (defined(my $j = $memory{&stackArea}[$$area]))
+     {rwRead(&stackArea, $$area);                                               # Mark the location holding the area as having been read
+      if (defined(my $j = $memory{&stackArea}[$$area]))
        {rwRead(      $j, $m);
         $r = $memory{$j}[$m];                                                   # Indirect from indirect area
         $e = 9; $tAddress = $m; $tArea = $j;
@@ -2096,6 +2092,24 @@ if (1)                                                                          
   my $e = Execute(trace=>0);
   is_deeply $e->out,    [2,3];
   is_deeply $e->memory, {3=>[undef, undef, 44, undef, undef, 33]};
+ }
+
+#latest:;
+if (1)                                                                          #TAlloc #TMov
+ {Start 1;
+  my $a = Alloc "aaa";
+  my $b = Alloc "bbb";
+  Mov [$a, 0], $b;
+  Mov [$b, 0], 99;
+  For 3, sub
+   {my ($i, $check, $next, $end) = @_;
+    my $c = Mov [$a, \0];
+    my $d = Mov [$c, \0];
+    Jeq $next, $d, $d;
+   };
+  my $e = Execute(trace=>0);
+  is_deeply $e->analyzeExecutionResults(doubleWrite=>3), "#       33 instructions executed";
+  is_deeply $e->memory, { 3 => bless([4], "aaa"), 4 => bless([99], "bbb") };
  }
 
 =pod
