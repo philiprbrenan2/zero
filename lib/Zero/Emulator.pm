@@ -253,6 +253,23 @@ sub Zero::Emulator::Code::registers($$)                                         
   $code->variables->registers($number)
  }
 
+sub Zero::Emulator::Execution::dumpMemory($$;$)                                 # Dump memory
+ {my ($exec, $i, $title) = @_;                                                  # Execution, Instruction, title
+
+  my %memory = $exec->memory->%*;
+
+  my @m;
+  for my $m(sort {$a <=> $b} keys %memory)
+   {next if ref($m) =~ m(\Astack\Z)i;
+    my $l = dump($memory{$m});
+    $l = substr($l, 0, 100) if length($l) > 100;
+    push @m, "$m=$l";
+   }
+
+  my $t = $title ? " $title" : '';
+  "memory$t:\n". dump(\@m);
+ }
+
 sub Zero::Emulator::Code::assemble($%)                                          # Assemble a block of code to prepare it for execution
  {my ($Block, %options) = @_;                                                   # Code block, assembly options
   return $Block if $Block->assembled;                                           # Already assembled
@@ -810,11 +827,9 @@ sub Zero::Emulator::Code::execute($%)                                           
 
     dump    => sub                                                              # Dump memory
      {my $i = currentInstruction;
-      my $t = $i->source;                                                       # Title
-      my $o = $i->target;                                                       # Options
-      my $s = "memory: $t ". dump(\%memory);
-      say STDERR $s;
-      push @out, $s;
+      my $d = $exec->dumpMemory($i->source);
+      say STDERR $d;
+      push @out, $d;
      },
 
     dec     => sub                                                              # Decrement locations in memory. The first location is incremented by 1, the next by two, etc.
@@ -962,10 +977,13 @@ sub Zero::Emulator::Code::execute($%)                                           
       my $t = left($i->target);
       my $L = $t->areaContent;                                                  # Length of area
       my $l = $t->location;
+say STDERR "AAAA";
+$exec->dumpMemory("AAAA");
       for my $j(reverse 1..$L-$l)
        {my $s = left($i->target, $j-1);
         my $t = left($i->target, $j);
         assign($t, $s->get);
+$exec->dumpMemory("BBBB");
        }
       assign($t, $s);
      },
@@ -2140,6 +2158,35 @@ if (1)                                                                          
   #say STDERR $e->analyzeExecutionResults(doubleWrite=>3);
   is_deeply $e->analyzeExecutionResults(doubleWrite=>3), "#       29 instructions executed";
   is_deeply $e->memory, { 3 => bless([undef, undef, 1], "aaa") };
+ }
+
+#latest:;
+if (1)                                                                          #TAlloc #TMov
+ {Start 1;
+  my $a = Alloc "aaa";
+
+  ShiftUp [$a, 0],  3;
+  ShiftUp [$a, 0],  2;
+  ShiftUp [$a, 0],  1;
+  ShiftUp [$a, 1], 99;
+  my $e = Execute(trace=>0);
+  #say STDERR "AAAA", dump($e->memory);
+  is_deeply $e->memory, {3 => bless([1, 99, 2, 3], "aaa")};
+ }
+
+#latest:;
+if (1)                                                                          #TAlloc #TMov
+ {Start 1;
+  my $a = Alloc "aaa";
+  my $b = Mov 1;
+  ShiftUp [$a, 0],  3;
+  ShiftUp [$a, 0],  2;
+  ShiftUp [$a, 0],  1;
+  ShiftUp [$a, $b], 99;
+  Dump "AAAA";
+  my $e = Execute(trace=>0);
+  #say STDERR "AAAA", dump($e->memory);
+  is_deeply $e->memory, {3 => bless([1, 99, 2, 3], "aaa")};
  }
 
 =pod
