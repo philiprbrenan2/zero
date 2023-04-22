@@ -234,7 +234,7 @@ sub Zero::Emulator::Address::areaContent($)                                     
   my $m = $e->memory;
   my $a = $address->area;
   my $A = $$m{$a};
-  return () unless defined $A;
+  confess "Invalid area: ".dump($a)."\n".dump($e->memory) unless defined $A;
   @$A
  }
 
@@ -266,7 +266,7 @@ sub Zero::Emulator::Code::assemble($%)                                          
    {my $i = $$code[$c];
     $i->number = $c;
     next unless $i->action eq "label";
-    $labels{$i->source->address} = $i;                                                   # Point label to instruction
+    $labels{$i->source->address} = $i;                                          # Point label to instruction
    }
 
   for my $c(keys @$code)                                                        # Target jump and call instructions
@@ -352,45 +352,13 @@ sub Zero::Emulator::Execution::analyzeExecutionResultsDoubleWrite($%)           
   if (keys %$W)
    {for my $p(sort keys %$W)
      {for my $q(keys $$W{$p}->%*)
-       {push @r, sprintf "Double write occured %d  times", $$W{$p}{$q};
+       {push @r, sprintf "Double write occured %d  times. ", $$W{$p}{$q};
         if ($p eq $q)
          {push @r, "First  and second write\n$p\n";
          }
         else
          {push @r, "First  write:\n$p\n";
           push @r, "Second write:\n$q\n";
-         }
-       }
-     }
-   }
-  @r
- }
-
-sub Zero::Emulator::Execution::analyzeExecutionResultsDoubleWrite22($%)           # Analyze execution results - double writes
- {my ($exec, %options) = @_;                                                    # Execution results, options
-
-  my @r;
-
-  if (my @area = keys $exec->doubleWrite->%*)
-   {for my $areaK(@area)
-     {my $area = $exec->doubleWrite->{$areaK};
-      for my $addressK(keys %$area)
-       {my $address = $$area{$addressK};
-        my $name = $exec->memoryType->{$areaK} // 'unknown';
-        push @r, sprintf "Double write into area %4d ($name), address: %4d", $areaK, $addressK;
-        for my $firstK(keys %$address)
-         {my $first = $$address{$firstK};
-          for my $secondK(keys %$first)
-           {my $second = $$first{$secondK};
-            if ($firstK == $secondK)
-             {push @r, "First  and second write occurred: $second times\n",
-                $exec->code->code->[$firstK] ->contextString;
-             }
-            else
-             {push @r, "First  write occurred: $second times:\n", $exec->code->code->[$firstK] ->contextString;
-              push @r, "Second write occurred: $second times:\n", $exec->code->code->[$secondK]->contextString;
-             }
-           }
          }
        }
      }
@@ -410,7 +378,7 @@ sub Zero::Emulator::Execution::analyzeExecutionResults($%)                      
      {push @r, "Least executed:";
       push @r, @l;
      }
-    if (@l and $options{mostExecuted})
+    if (@m and $options{mostExecuted})
      {push @r, "Most executed:";
       push @r, @m;
      }
@@ -427,7 +395,7 @@ sub Zero::Emulator::Execution::analyzeExecutionResults($%)                      
    {my $d = @d;
     @d = () unless $options{doubleWrite};
     push @r, @d;
-    push @r, sprintf "# %8d double writes", $d;
+    push @r, sprintf "# %8d double writes", $d/2;
    }
 
   push @r,   sprintf "# %8d instructions executed", $exec->count;
@@ -539,7 +507,6 @@ sub Zero::Emulator::Code::execute($%)                                           
      {my $M = $memory{$area}[$address];                                         # If the memory location is zero we will assume that it has been cleared rather than set.
       if ($M)
        {my $Q = currentInstruction;
-       #$doubleWrite{$area}{$address}{$P->number}{$Q->number}++;
         $doubleWrite{$P->contextString}{$Q->contextString}++;
        }
      }
@@ -612,6 +579,7 @@ sub Zero::Emulator::Code::execute($%)                                           
       rwWrite(        $A, $M);
       return  address($A, $M)                                                   # Indirect area
      }
+    invalid;
    }
 
   my sub leftSuppress($)                                                        # Indicate that a memory location has been read
@@ -676,7 +644,7 @@ sub Zero::Emulator::Code::execute($%)                                           
      {$m = $$a;
      }
     elsif (isScalar($$$a))                                                      # Indirect
-     {#rwRead(      &stackArea, $$$a);
+     {rwRead(      &stackArea, $$$a);
       $m = $memory{&stackArea}[$$$a];
      }
     if (!defined($m))
@@ -990,7 +958,8 @@ sub Zero::Emulator::Code::execute($%)                                           
 
     shiftUp => sub                                                              # Shift an element up in a memory area
      {my $i = currentInstruction;
-      my $t = left($i->target, $i->targetArea);
+      my $s = right($i->source);
+      my $t = left($i->target);
       my $L = $t->areaContent;                                                  # Length of area
       my $l = $t->location;
       for my $j(reverse 1..$L-$l)
@@ -998,19 +967,23 @@ sub Zero::Emulator::Code::execute($%)                                           
         my $t = left($i->target, $j);
         assign($t, $s->get);
        }
+      assign($t, $s);
      },
 
     shiftDown => sub                                                            # Shift an element down in a memory area
      {my $i = currentInstruction;
-      my $t = left($i->target, $i->targetArea);
+      my $s = left($i->source)->get;
+      my $t = left($i->source);
       my $L = $t->areaContent;                                                  # Length of area
       my $l = $t->location;
       for my $j($l..$L-2)                                                       # Each element in specified range
-       {my $s = left(Reference([$i->target->area, $j+1]));
-        my $t = left(Reference([$i->target->area, $j]));
+       {my $s = left(Reference([$i->source->area, $j+1]));
+        my $t = left(Reference([$i->source->area, $j]));
         assign($t, $s->get);
        }
       pop $memory{$t->area}->@*;
+      my $T = left($i->target);
+      assign($T, $s);
      },
    );
 
@@ -1335,9 +1308,20 @@ sub ShiftUp($;$)                                                                
  }
 
 sub ShiftDown($;$)                                                              # Shift an element down opne in an area
- {my ($target, $source) = @_;                                                   # Target to shift, amount to shift
-  $assembly->instruction(action=>"shiftDown", xTarget($target), xSource($source));
-  $target
+ {if (@_ == 1)                                                                  # Create a variable
+   {my ($source) = @_;                                                          # Memory location to place return value in, return value to get
+    my $p = &Var();
+    $assembly->instruction(action=>"shiftDown", target=>Reference($p), xSource($source));
+    return $p;
+   }
+  elsif (@_ == 2)
+   {my ($target, $source) = @_;                                                 # Memory location to place return value in, return value to get
+    $assembly->instruction(action=>"shiftDown", xTarget($target), xSource($source));
+    return $target;
+   }
+  else
+   {confess "One or two parameters required";
+   }
  }
 
 sub Then(&)                                                                     # Then block
@@ -1565,7 +1549,7 @@ use vars qw(@ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
 
 @ISA         = qw(Exporter);
 @EXPORT      = qw();
-@EXPORT_OK   = qw(AreaStructure Add Alloc Bad Block Call Clear Confess Debug Else Execute For Free Good Assert AssertEq AssertNe AssertGe AssertGt AssertLe AssertLt Dec Dump IfEq IfGe IfGt IfLe IfLt IfNe Ifx IfTrue IfFalse Inc Jeq Jge Jgt Jle Jlt Jmp Jne Label Mov Nop Out ParamsGet ParamsPut Pop Procedure Push Return ReturnGet ReturnPut ShiftLeft ShiftRight Start Subtract Then Var);
+@EXPORT_OK   = qw(AreaStructure Add Alloc Bad Block Call Clear Confess Debug Else Execute For Free Good Assert AssertEq AssertNe AssertGe AssertGt AssertLe AssertLt Dec Dump IfEq IfGe IfGt IfLe IfLt IfNe Ifx IfTrue IfFalse Inc Jeq Jge Jgt Jle Jlt Jmp Jne Label Mov Nop Out ParamsGet ParamsPut Pop Procedure Push Return ReturnGet ReturnPut ShiftLeft ShiftRight ShiftUp ShiftDown Start Subtract Then Var);
 %EXPORT_TAGS = (all=>[@EXPORT, @EXPORT_OK]);
 
 return 1 if caller;
@@ -2030,12 +2014,13 @@ if (1)                                                                          
 if (1)                                                                          #DdoubleWrite
  {Start 1;
   Mov 1, 1;
-  Mov 1, 1;
   Mov 2, 1;
   Mov 3, 1;
   Mov 3, 1;
+  Mov 1, 1;
   my $e = Execute;
   ok keys($e->doubleWrite->%*) == 2;                                            # In area 0, variable 1 was first written by instruction 0 then again by instruction 1 once.
+  say STDERR $e->analyzeExecutionResultsDoubleWrite(doubleWrite=>1);
  }
 
 #latest:;
@@ -2085,9 +2070,9 @@ if (1)                                                                          
   Mov [$a, 0], 0;
   Mov [$a, 1], 1;
   Mov [$a, 2], 2;
-  ShiftUp [$a, 1];
+  ShiftUp [$a, 1], 99;
   my $e = Execute;
-  is_deeply $e->memory, {3=>[0, 1, 1, 2]};
+  is_deeply $e->memory, {3=>[0, 99, 1, 2]};
  }
 
 #latest:;
@@ -2095,11 +2080,13 @@ if (1)                                                                          
  {Start 1;
   my $a = Alloc "array";
   Mov [$a, 0], 0;
-  Mov [$a, 1], 1;
+  Mov [$a, 1], 99;
   Mov [$a, 2], 2;
-  ShiftDown [$a, 1], 2;
+  my $b = ShiftDown [$a, 1];
+  Out $b;
   my $e = Execute;
   is_deeply $e->memory, {3=>[0, 2]};
+  is_deeply $e->out,    [99];
  }
 
 #latest:;
