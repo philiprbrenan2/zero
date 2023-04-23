@@ -40,9 +40,6 @@ perform the looks ups. Being able to deliver such looks up faster than can be
 done with conventional software solutions might prove profitable in much the
 same way as graphics chips and other chips used at scale.
 
-If you would like to be involved with this project, please raise an issue
-saying so!
-
 [Instruction Set](https://github.com/philiprbrenan/zero/blob/187123c96f55515c58807e98af8d187f36ae8cfb/lib/Zero/Emulator.pm#L1109)
 
 [Examples](https://github.com/philiprbrenan/zero/blob/187123c96f55515c58807e98af8d187f36ae8cfb/lib/Zero/Emulator.pm#L1638)
@@ -62,3 +59,7 @@ indirect addresses by scalars with two levels of dereferncing.  The combination
 of an area and offset with an area are represented as an [array](https://en.wikipedia.org/wiki/Dynamic_array) reference with
 two entries. A reference to a location in teh current stack frame is
 represented as a single scalar with the appropriate levels of dereferencing.
+
+
+If you would like to be involved with this interesting project, please raise an
+issue saying so!
