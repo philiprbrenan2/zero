@@ -27,12 +27,12 @@ unique by assigning a unique 64 [bit](https://en.wikipedia.org/wiki/Bit) number 
 a second such [string](https://en.wikipedia.org/wiki/String_(computer_science)) can be easily recognized.  Once such a long [string](https://en.wikipedia.org/wiki/String_(computer_science)) has
 been represented by unique number it can be located in one descent through the [tree](https://en.wikipedia.org/wiki/Tree_(data_structure)) although a single traversal of the [tree](https://en.wikipedia.org/wiki/Tree_(data_structure)) will no longer yield such [strings](https://en.wikipedia.org/wiki/String_(computer_science)) in alphabetic order.
 
-All communications with the chip will be done via usb .  Incoming read requests
+All communications with the chip will be done via [USB](https://en.wikipedia.org/wiki/USB) .  Incoming read requests
 can be done in parallel as long as there are processors left to assign work to.
 An update will have to wait for all existing finds to finish while stalling all
 trailing actions until the update is complete.
 
-Associative look ups are the 'sine qua non' of all turing complete programming
+Associative look ups are the 'sine qua non' of all [Turing](https://en.wikipedia.org/wiki/Alan_Turing) complete programming
 languages. This arrangement should produce very fast associate look ups - much
 faster than can be performed by any system reliant on external software. Usage
 of power and silicon surface area should be reduced by having a minimal CPU to
