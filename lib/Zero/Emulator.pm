@@ -1671,27 +1671,25 @@ if (1)
 #latest:;
 if (1)                                                                          #TAdd
  {Start 1;
-  Add  \1, 3, 2;
-  Out  \1;
+  my $a = Add 3, 2;
+  Out  $a;
   ok Execute(out=>[5]);
  }
 
 #latest:;
 if (1)                                                                          #TAdd #TSubtract
  {Start 1;
-  my $a = Add      1, 2;
-  my $b = Subtract 4, 2;
+  my $a = Subtract 4, 2;
   Out $a;
-  Out $b;
-  ok Execute(out=>[3,2]);
+  ok Execute(out=>[2]);
  }
 
 #latest:;
 if (1)                                                                          #TDec
  {Start 1;
-  Mov  1, 3;
-  Dec \1;
-  Out \1;
+  my $a = Mov 3;
+  Dec $a;
+  Out $a;
   ok Execute(out=>[2]);
  }
 
