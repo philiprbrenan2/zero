@@ -42,3 +42,9 @@ same way as graphics chips and other chips used at scale.
 
 If you would like to be involved with this project, please raise an issue
 saying so!
+
+[Instruction Set](https://github.com/philiprbrenan/zero/blob/187123c96f55515c58807e98af8d187f36ae8cfb/lib/Zero/Emulator.pm#L1109)
+
+[Examples](https://github.com/philiprbrenan/zero/blob/187123c96f55515c58807e98af8d187f36ae8cfb/lib/Zero/Emulator.pm#L1638)
+
+[Emulator](https://github.com/philiprbrenan/zero/blob/187123c96f55515c58807e98af8d187f36ae8cfb/lib/Zero/Emulator.pm#L444)
