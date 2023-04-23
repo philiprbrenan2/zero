@@ -12,7 +12,7 @@ use strict;
 use Carp qw(cluck confess);
 use Data::Dump qw(dump);
 use Data::Table::Text qw(:all);
-eval "use Test::More tests=>52" unless caller;
+eval "use Test::More tests=>53" unless caller;
 =pod
 
 Memory is addressed in areas.  Each method has its own current stack area,
@@ -1721,16 +1721,6 @@ if (1)                                                                          
  }
 
 #latest:;
-if (1)                                                                          #TInc
- {Start 1;
-  Mov     [-1,  0], 4;
-  Inc     [-1,  0];
-  Mov  0, [-1, \0];
-  Out \0;
-  ok Execute(out=>[5]);
- }
-
-#latest:;
 if (1)                                                                          #TJmp
  {Start 1;
   Jmp (my $a = label);
@@ -1902,19 +1892,45 @@ if (1)                                                                          
  }
 
 #latest:;
-if (1)                                                                          #TIfEq
+if (1)                                                                          #TIfEq  #TIfNe  #TIfLt #TIfLe  #TIfGt  #TIfGe
  {Start 1;
   my $a = Mov 1;
   my $b = Mov 2;
-  IfEq $a, $a,
-  Then
-   {Out "\\$a == \\$a";
-   };
-  IfEq $a, $b,
-  Then
-   {Out "$a == $b";
-   };
-  ok Execute(out=>["\\$a == \\$a"]);
+  IfEq $a, $a, Then {Out "Eq"};
+  IfNe $a, $a, Then {Out "Ne"};
+  IfLe $a, $a, Then {Out "Le"};
+  IfLt $a, $a, Then {Out "Lt"};
+  IfGe $a, $a, Then {Out "Ge"};
+  IfGt $a, $a, Then {Out "Gt"};
+  ok Execute(out=>["Eq", "Le", "Ge"]);
+ }
+
+#latest:;
+if (1)                                                                          #TIfEq  #TIfNe  #TIfLt #TIfLe  #TIfGt  #TIfGe
+ {Start 1;
+  my $a = Mov 1;
+  my $b = Mov 2;
+  IfEq $a, $b, Then {Out "Eq"};
+  IfNe $a, $b, Then {Out "Ne"};
+  IfLe $a, $b, Then {Out "Le"};
+  IfLt $a, $b, Then {Out "Lt"};
+  IfGe $a, $b, Then {Out "Ge"};
+  IfGt $a, $b, Then {Out "Gt"};
+  ok Execute(out=>["Ne", "Le", "Lt"]);
+ }
+
+#latest:;
+if (1)                                                                          #TIfEq  #TIfNe  #TIfLt #TIfLe  #TIfGt  #TIfGe
+ {Start 1;
+  my $a = Mov 1;
+  my $b = Mov 2;
+  IfEq $b, $a, Then {Out "Eq"};
+  IfNe $b, $a, Then {Out "Ne"};
+  IfLe $b, $a, Then {Out "Le"};
+  IfLt $b, $a, Then {Out "Lt"};
+  IfGe $b, $a, Then {Out "Ge"};
+  IfGt $b, $a, Then {Out "Gt"};
+  ok Execute(out=>["Ne", "Ge", "Gt"]);
  }
 
 #latest:;
