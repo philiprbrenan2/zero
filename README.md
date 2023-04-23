@@ -44,6 +44,8 @@ same way as graphics chips and other chips used at scale.
 
 [Examples](https://github.com/philiprbrenan/zero/blob/187123c96f55515c58807e98af8d187f36ae8cfb/lib/Zero/Emulator.pm#L1638)
 
+[Assembler](https://github.com/philiprbrenan/zero/blob/187123c96f55515c58807e98af8d187f36ae8cfb/lib/Zero/Emulator.pm#L293)
+
 [Emulator](https://github.com/philiprbrenan/zero/blob/187123c96f55515c58807e98af8d187f36ae8cfb/lib/Zero/Emulator.pm#L444)
 
 Memory is addressed in areas.  Each procedure has its own stack frame
