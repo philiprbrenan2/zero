@@ -38,7 +38,7 @@ faster than can be performed by any system reliant on external software. Usage
 of power and [integrated circuit](https://en.wikipedia.org/wiki/Integrated_circuit) surface area should be reduced by having a minimal CPU to
 perform the looks ups. Being able to deliver such looks up faster than can be
 done with conventional software solutions might prove profitable in much the
-same way as graphics chips and otgher chips used at scale.
+same way as graphics chips and other chips used at scale.
 
 If you would like to be involved with this project, please raise an issue
 saying so!
