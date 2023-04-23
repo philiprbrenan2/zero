@@ -33,7 +33,7 @@ An update will have to wait for all existing finds to finish while stalling all
 trailing actions until the update is complete.
 
 Associative look ups are the [sine qua non](https://en.wikipedia.org/wiki/Sine_qua_non) of all [Turing](https://en.wikipedia.org/wiki/Alan_Turing) complete programming
-languages. This arrangement should produce very fast associate look ups - much
+languages. This arrangement should produce very fast associative look ups - much
 faster than can be performed by any system reliant on external software. Usage
 of power and [integrated circuit](https://en.wikipedia.org/wiki/Integrated_circuit) surface area should be reduced by having a minimal CPU to
 perform the looks ups. Being able to deliver such looks up faster than can be
@@ -48,16 +48,16 @@ same way as graphics chips and other chips used at scale.
 
 Memory is addressed in areas.  Each procedure has its own stack frame
 implemented as a stack frame area, parameter area and return results area.
-Each area can grow a much as is needed to hold data.  Additional [user](https://en.wikipedia.org/wiki/User_(computing)) [memory](https://en.wikipedia.org/wiki/Computer_memory) areas can be allocated and freed as necessary.
+Each area can grow as much as is needed to hold data.  Additional [user](https://en.wikipedia.org/wiki/User_(computing)) [memory](https://en.wikipedia.org/wiki/Computer_memory) areas can be allocated and freed as necessary.
 
 Well known locations are represented by character == non numeric area ids.
 Stack frames, parameter and return areas are represented by negative area ids.
 
 References can represent constants via a scalar with zero levels of
 dereferencing; direct addresses by scalars with one level of dereferencing, and
-indirect addresses by scalars with two levels of dereferncing.  The combination
+indirect addresses by scalars with two levels of dereferencing.  The combination
 of an area and offset with an area are represented as an [array](https://en.wikipedia.org/wiki/Dynamic_array) reference with
-two entries. A reference to a location in teh current stack frame is
+two entries. A reference to a location in the current stack frame is
 represented as a single scalar with the appropriate levels of dereferencing.
 
 
