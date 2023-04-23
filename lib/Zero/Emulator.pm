@@ -3,8 +3,7 @@
 # Assemble and execute the Zero programming language. Examples at the end.
 # Philip R Brenan at appaapps dot com, Appa Apps Ltd Inc., 2023
 #-------------------------------------------------------------------------------
-# Pointless adds and subtracts by 0. Perhaps we should flag adds and subtracts by  1 as wel lso we can have an instriction optimzied bythis,
-# standardize location/address
+# Pointless adds and subtracts by 0. Perhaps we should flag adds and subtracts by 1 as well so we can have an instruction optimized for these variants.
 use v5.30;
 package Zero::Emulator;
 use warnings FATAL => qw(all);
@@ -13,17 +12,6 @@ use Carp qw(cluck confess);
 use Data::Dump qw(dump);
 use Data::Table::Text qw(:all);
 eval "use Test::More tests=>53" unless caller;
-=pod
-
-Memory is addressed in areas.  Each method has its own current stack area,
-parameter area and return results area.  Each area can grow a much as is needed
-to hold data and can be sparse.  Additional memory areas can be
-allocated and freed as necessary.
-
-Well known locations are represented by character == non numeric  area ids
-Stack frames, parameter and returnd areas are represented by negative area ids
-
-=cut
 
 makeDieConfess;
 
