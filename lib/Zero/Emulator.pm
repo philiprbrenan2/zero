@@ -1696,10 +1696,10 @@ if (1)                                                                          
 #latest:;
 if (1)                                                                          #TInc
  {Start 1;
-  Mov  1, 2;
-  Inc \1;
-  Out \1;
-  ok Execute(out=>[3]);
+  my $a = Mov 3;
+  Inc $a;
+  Out $a;
+  ok Execute(out=>[4]);
  }
 
 #latest:;
