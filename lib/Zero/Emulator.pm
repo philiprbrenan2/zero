@@ -1714,9 +1714,9 @@ if (1)                                                                          
 #latest:;
 if (1)                                                                          #TShiftRight
  {Start 1;
-  Mov  1, 4;
-  ShiftRight 1, 1;
-  Out \1;
+  my $a = Mov 4;
+  ShiftRight $a, 1;
+  Out $a;
   ok Execute(out=>[2]);
  }
 
