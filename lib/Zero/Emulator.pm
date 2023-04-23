@@ -12,7 +12,7 @@ use strict;
 use Carp qw(cluck confess);
 use Data::Dump qw(dump);
 use Data::Table::Text qw(:all);
-eval "use Test::More tests=>53" unless caller;
+eval "use Test::More tests=>52" unless caller;
 =pod
 
 Memory is addressed in areas.  Each method has its own current stack area,
@@ -861,7 +861,7 @@ sub Zero::Emulator::Code::execute($%)                                           
     dump    => sub                                                              # Dump memory
      {my $i = currentInstruction;
       my $d = $exec->dumpMemory($i->source);
-      say STDERR $d;
+      say STDERR $d if $options{trace} or $options{debug};
       push @out, $d;
      },
 
@@ -968,9 +968,8 @@ sub Zero::Emulator::Code::execute($%)                                           
 
     out     => sub                                                              # Write source as output to an array of words
      {my $i = currentInstruction;
-      say STDERR "AAAA", dump($e->memory);
       my $t = right($i->source);
-      lll $t if  $options{debug} or $options{trace};
+      lll $t if $options{debug} or $options{trace};
       push @out, $t;
      },
 
@@ -1018,12 +1017,12 @@ sub Zero::Emulator::Code::execute($%)                                           
       my $t = left($i->target);
       my $L = $t->areaContent($exec);                                                  # Length of area
       my $l = $t->location;  # Wrong, is big like  4444 should be 4
-say STDERR "AAAA", dump($t);
+#say STDERR "AAAA", dump($t);
       for my $j(reverse 1..$L-$l)
        {my $s = left($i->target, $j-1);
         my $t = left($i->target, $j);
         assign($t, $s->get($exec));
-say STDERR "BBBB", $exec->dumpMemory("BBBB");
+#say STDERR "BBBB", $exec->dumpMemory("BBBB");
        }
       assign($t, $s);
      },
@@ -1143,9 +1142,9 @@ sub Confess()                                                                   
  {$assembly->instruction(action=>"confess");
  }
 
-sub Dump($%)                                                                    # Dump memory
- {my ($title, %options) = @_;                                                   # Title, options
-  $assembly->instruction(action=>"dump", source=>$title, target=>{%options});
+sub Dump(;$)                                                                    # Dump memory
+ {my ($title) = @_;                                                             # Titl
+  $assembly->instruction(action=>"dump", source=>$title);
  }
 
 sub Debug($)                                                                    # Debug
@@ -1850,32 +1849,31 @@ if (1)                                                                          
   "    1     6 call\n"]);
  }
 
-latest:;
+#latest:;
 if (1)                                                                          #TPush #TPop
  {Start 1;
-  Push 1;
-  Push 2;
-  my $c = Pop;
-  my $d = Pop;
+  my $a = Alloc "aaa";
+  Push $a, 1;
+  Push $a, 2;
+  my $c = Pop $a;
+  my $d = Pop $a;
 
   Out $c;
   Out $d;
   my $e = Execute;
-  say STDERR "AAAA", dump($e->out);
+  is_deeply $e->out,    [2, 1];
+  is_deeply $e->memory, { 1 => []};
  }
-exit;
 
 #latest:;
 if (1)                                                                          #TAlloc #TMov
  {Start 1;
-  Alloc "alloc";
-  Mov 1, 99;
-  Mov [\0, 0], \1;
-  Mov [\0, 1], 1;
-  Mov [\0, 2], 2;
-  Mov [\0, 3], [\0, 33];
-  Mov [\0, 4], [\0, \2];
-  ok Execute(memory => { 3 => bless([99, 1, 2, 33, 2], "alloc") });
+  my $a = Alloc "alloc";
+  my $b = Mov 99;
+  my $c = Mov $a;
+  Mov [$a, 0], $b;
+  Mov [$c, 1], 2;
+  ok Execute(memory => { 1 => bless([99, 2], "alloc") });
  }
 
 #latest:;
@@ -1886,8 +1884,9 @@ if (1)                                                                          
   Mov [$a, 1], 1;
   Mov [$a, 2], 2;
   Mov 1, [$a, \1];
+  Dump;
   Free $a;
-  ok Execute(out=>[3]);
+  my $e = Execute;
  }
 
 #latest:;
@@ -2012,9 +2011,9 @@ if (1)                                                                          
 if (1)                                                                          #TAlloc #TMov #TCall
  {Start 1;
   my $a = Alloc "aaa";
-  Dump "";
+  Dump;
   my $e = Execute;
-  is_deeply $e->out, ["memory:\n[\n  \"-2=bless([], \\\"return\\\")\",\n  \"-1=bless([], \\\"params\\\")\",\n  \"1=bless([0], \\\"aaa\\\")\",\n]",];
+  is_deeply $e->out, [  "memory:\n[\n  \"-2=bless([], \\\"return\\\")\",\n  \"-1=bless([], \\\"params\\\")\",\n  \"0=bless([1], \\\"stackArea\\\")\",\n  \"1=bless([], \\\"aaa\\\")\",\n]",];
  }
 
 #latest:;
@@ -2037,7 +2036,7 @@ if (1)                                                                          
   my $V = Mov [$a, \$i];
   AssertEq $v, $V;
   Out [$a, \$i];
-  my $e = Execute(debug=>1);
+  my $e = Execute;
   is_deeply $e->out, [11];
  }
 
@@ -2047,7 +2046,7 @@ if (1)                                                                          
   my $a = Alloc "aaa";
   Clear [$a, 10];
   my $e = Execute;
-  is_deeply $e->memory->{3}, [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+  is_deeply $e->memory->{1}, [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
  }
 
 #latest:;
@@ -2111,7 +2110,7 @@ if (1)                                                                          
   Mov 1, 1;
   my $e = Execute;
   ok keys($e->doubleWrite->%*) == 2;                                            # In area 0, variable 1 was first written by instruction 0 then again by instruction 1 once.
-  say STDERR $e->analyzeExecutionResultsDoubleWrite(doubleWrite=>1);
+  #say STDERR $e->analyzeExecutionResultsDoubleWrite(doubleWrite=>1);
  }
 
 #latest:;
@@ -2163,7 +2162,7 @@ if (1)                                                                          
   Mov [$a, 2], 2;
   ShiftUp [$a, 1], 99;
   my $e = Execute;
-  is_deeply $e->memory, {3=>[0, 99, 1, 2]};
+  is_deeply $e->memory, {1=>[0, 99, 1, 2]};
  }
 
 #latest:;
@@ -2176,7 +2175,7 @@ if (1)                                                                          
   my $b = ShiftDown [$a, 1];
   Out $b;
   my $e = Execute;
-  is_deeply $e->memory, {3=>[0, 2]};
+  is_deeply $e->memory, {1=>[0, 2]};
   is_deeply $e->out,    [99];
  }
 
@@ -2193,9 +2192,9 @@ if (1)                                                                          
   Mov [$a, \$b], 22;
   Mov [$a, \$c], 33;
   Mov [$f, \$d], 44;
-  my $e = Execute(trace=>0);
-  is_deeply $e->out,    [2,3];
-  is_deeply $e->memory, {3=>[undef, undef, 44, undef, undef, 33]};
+  my $e = Execute;
+  is_deeply $e->out,    [2,1];
+  is_deeply $e->memory, {1=>[undef, undef, 44, undef, undef, 33]};
  }
 
 #latest:;
@@ -2211,55 +2210,25 @@ if (1)                                                                          
     my $d = Mov [$c, \0];
     Jeq $next, $d, $d;
    };
-  my $e = Execute(trace=>0);
+  my $e = Execute;
   is_deeply $e->analyzeExecutionResults(doubleWrite=>3), "#       33 instructions executed";
-  is_deeply $e->memory, { 3 => bless([4], "aaa"), 4 => bless([99], "bbb") };
+  is_deeply $e->memory, { 1 => bless([2], "aaa"), 2 => bless([99], "bbb") };
  }
 
 #latest:;
 if (1)                                                                          #TAlloc #TMov
  {Start 1;
   my $a = Alloc "aaa";
-  my $b = Mov 2; # Location to move to in a
+  my $b = Mov 2;                                                                # Location to move to in a
   Mov [$b, 0], 99;
   For 3, sub
    {my ($i, $check, $next, $end) = @_;
     Mov [$a, \$b], 1;
     Jeq $next, [$a, \$b], 1;
    };
-  my $e = Execute(trace=>0);
-  #say STDERR $e->analyzeExecutionResults(doubleWrite=>3);
+  my $e = Execute;
   is_deeply $e->analyzeExecutionResults(doubleWrite=>3), "#       29 instructions executed";
-  is_deeply $e->memory, { 3 => bless([undef, undef, 1], "aaa") };
- }
-
-#latest:;
-if (1)                                                                          #TAlloc #TMov
- {Start 1;
-  my $a = Alloc "aaa";
-
-  ShiftUp [$a, 0],  3;
-  ShiftUp [$a, 0],  2;
-  ShiftUp [$a, 0],  1;
-  ShiftUp [$a, 1], 99;
-  my $e = Execute(trace=>0);
-  #say STDERR "AAAA", dump($e->memory);
-  is_deeply $e->memory, {3 => bless([1, 99, 2, 3], "aaa")};
- }
-
-#latest:;
-if (1)                                                                          #TAlloc #TMov
- {Start 1;
-  my $a = Alloc "aaa";
-  my $b = Mov 1;
-  ShiftUp [$a, 0],  3;
-  ShiftUp [$a, 0],  2;
-  ShiftUp [$a, 0],  1;
-  ShiftUp [$a, $b], 99;
-  Dump "AAAA";
-  my $e = Execute(trace=>0);
-  #say STDERR "AAAA", dump($e->memory);
-  is_deeply $e->memory, {3 => bless([1, 99, 2, 3], "aaa")};
+  is_deeply $e->memory, {1 => bless([undef, undef, 1], "aaa"), 2 => [99]};
  }
 
 =pod
