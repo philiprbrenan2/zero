@@ -48,3 +48,17 @@ saying so!
 [Examples](https://github.com/philiprbrenan/zero/blob/187123c96f55515c58807e98af8d187f36ae8cfb/lib/Zero/Emulator.pm#L1638)
 
 [Emulator](https://github.com/philiprbrenan/zero/blob/187123c96f55515c58807e98af8d187f36ae8cfb/lib/Zero/Emulator.pm#L444)
+
+Memory is addressed in areas.  Each procedure has its own stack frame
+implemented as a stack frame area, parameter area and return results area.
+Each area can grow a much as is needed to hold data.  Additional [user](https://en.wikipedia.org/wiki/User_(computing)) [memory](https://en.wikipedia.org/wiki/Computer_memory) areas can be allocated and freed as necessary.
+
+Well known locations are represented by character == non numeric area ids.
+Stack frames, parameter and return areas are represented by negative area ids.
+
+References can represent constants via a scalar with zero levels of
+dereferencing; direct addresses by scalars with one level of dereferencing, and
+indirect addresses by scalars with two levels of dereferncing.  The combination
+of an area and offset with an area are represented as an [array](https://en.wikipedia.org/wiki/Dynamic_array) reference with
+two entries. A reference to a location in teh current stack frame is
+represented as a single scalar with the appropriate levels of dereferencing.
