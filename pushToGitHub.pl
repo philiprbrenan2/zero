@@ -1,4 +1,4 @@
-#!/usr/bin/perl
+#!/usr/bin/perl -I/home/phil/perl/cpan/DataTableText/lib/
 #-------------------------------------------------------------------------------
 # Push 0 code to GitHub
 # Philip R Brenan at gmail dot com, Appa Apps Ltd Inc., 2023
