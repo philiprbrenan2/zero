@@ -5,7 +5,7 @@
 A minimal [assembler](https://en.wikipedia.org/wiki/Assembly_language#Assembler) and [emulator](https://en.wikipedia.org/wiki/Emulator) for the Zero programming language.
 
 The goal is to implement N-Way [trees](https://en.wikipedia.org/wiki/Tree_(data_structure)) in Zero [assembler](https://en.wikipedia.org/wiki/Assembly_language#Assembler) [code](https://en.wikipedia.org/wiki/Computer_program), optimize the [assembler](https://en.wikipedia.org/wiki/Assembly_language#Assembler) [code](https://en.wikipedia.org/wiki/Computer_program) assiduously through exhaustive testing, then realize the
-algorithm as an [integrate circuit](https://en.wikipedia.org/wiki/Integrated_circuit) rather than as software so that large, extremely
+algorithm as an [integrated circuit](https://en.wikipedia.org/wiki/Integrated_circuit) rather than as software so that large, extremely
 fast associative memories can be manufactured on an industrial scale.
 
 Open the __Actions__ [tab](https://en.wikipedia.org/wiki/Tab_key) to see the [code](https://en.wikipedia.org/wiki/Computer_program) in action.
@@ -35,7 +35,7 @@ trailing actions until the update is complete.
 Associative look ups are the 'sine qua non' of all [Turing](https://en.wikipedia.org/wiki/Alan_Turing) complete programming
 languages. This arrangement should produce very fast associate look ups - much
 faster than can be performed by any system reliant on external software. Usage
-of power and [integrate circuit](https://en.wikipedia.org/wiki/Integrated_circuit) surface area should be reduced by having a minimal CPU to
+of power and [integrated circuit](https://en.wikipedia.org/wiki/Integrated_circuit) surface area should be reduced by having a minimal CPU to
 perform the looks ups. Being able to deliver such looks up faster than can be
 done with conventional software solutions might prove profitable in much the
 same way as graphics chips and otgher chips used at scale.
