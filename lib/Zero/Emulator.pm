@@ -297,9 +297,9 @@ sub Zero::Emulator::Code::assemble($%)                                          
   for my $c(keys @$code)                                                        # Target jump and call instructions
    {my $i = $$code[$c];
     next unless $i->action =~ m(\A(j|call))i;
-    if (my $l = $i->target->address)                                                     # Label
+    if (my $l = $i->target->address)                                            # Label
      {if (my $t = $labels{$l})                                                  # Found label
-       {$i->target = Reference($t->number - $c);                                           # Relative jump
+       {$i->target = Reference($t->number - $c);                                # Relative jump
        }
       else
        {my $a = $i->action;
@@ -515,19 +515,19 @@ sub Zero::Emulator::Code::execute($%)                                           
 
   my sub notRead()                                                              # Record the unused memory locations in the current stack frame
    {my $area = &stackArea;
-#    my @area = $memory{$area}->@*;                                              # Memory in area
-#    my %r;                                                                      # Location in stack frame => instruction defining vasriable
+#    my @area = $memory{$area}->@*;                                             # Memory in area
+#    my %r;                                                                     # Location in stack frame => instruction defining vasriable
 #    for my $a(keys @area)
 #     {if (my $I  = $calls[-1]->variables->instructions->[$a])
-#       {$r{$a} = $I;                                                            # Number of instruction creating variable
+#       {$r{$a} = $I;                                                           # Number of instruction creating variable
 #       }
 #     }
 #
-#    if (my $r = $read{$area})                                                   # Locations in this area that have ben read
-#     {delete $r{$_} for keys %$r;                                               # Delete locations that have been read from
+#    if (my $r = $read{$area})                                                  # Locations in this area that have ben read
+#     {delete $r{$_} for keys %$r;                                              # Delete locations that have been read from
 #     }
 #
-#    $notRead{$area} = {%r} if keys %r;                                          # Record not read
+#    $notRead{$area} = {%r} if keys %r;                                         # Record not read
    }
 
   my sub rwWrite($$)                                                            # Observe write to memory
@@ -742,7 +742,7 @@ sub Zero::Emulator::Code::execute($%)                                           
 
   my sub freeSystemAreas($)                                                     # Free system areas for the specified stack frame
     {my ($c) = @_;                                                              # Parameters
-     notRead;                                                                    # Record unread memory locations in the current stack frame
+     notRead;                                                                   # Record unread memory locations in the current stack frame
      delete $memory{$_} for $c->stackArea, $c->params, $c->return;
     $allocsStacked -= 3;
    }
@@ -809,7 +809,7 @@ sub Zero::Emulator::Code::execute($%)                                           
 
     call      => sub                                                            # Call a subroutine
      {my $i = currentInstruction;
-      my $t = $i->target->address;                                                       # Subroutine to call
+      my $t = $i->target->address;                                              # Subroutine to call
 
       if (isScalar($t))
        {$instructionPointer = $i->number + $t;                                  # Relative call if we know where the subroutine is relative to the call instruction
@@ -1003,7 +1003,7 @@ sub Zero::Emulator::Code::execute($%)                                           
      {my $i = currentInstruction;
       my $s = right($i->source);
       my $t = left($i->target);
-      my $L = $t->areaContent($exec);                                                  # Length of area
+      my $L = $t->areaContent($exec);                                           # Length of area
       my $l = $t->location;  # Wrong, is big like  4444 should be 4
 #say STDERR "AAAA", dump($t);
       for my $j(reverse 1..$L-$l)
@@ -1054,7 +1054,7 @@ sub Zero::Emulator::Code::execute($%)                                           
    }
 
   if (1)                                                                        # Free first stack frame
-   {freeSystemAreas($calls[0]);                                                  # Free
+   {freeSystemAreas($calls[0]);                                                 # Free
    }
 
   $exec
