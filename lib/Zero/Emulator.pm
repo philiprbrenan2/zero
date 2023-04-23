@@ -1634,6 +1634,8 @@ eval {goto latest};
 sub is_deeply;
 sub ok($;$);
 
+#D1 Examples
+
 #latest:;
 if (1)                                                                          #TOut #TStart
  {Start 1;
@@ -1651,18 +1653,18 @@ if (1)                                                                          
 #latest:;
 if (1)                                                                          #TMov
  {Start 1;
-  Mov 1, 2;
-  Out \1;
+  my $a = Mov 2;
+  Out $a;
   ok Execute(out=>[2]);
  }
 
 #latest:;
 if (1)
  {Start 1;                                                                      #TMov
-  Mov  1, 3;
-  Mov  2, 1;
-  Mov  3, \\2;
-  Out \3;
+  my $a = Mov  3;
+  my $b = Mov  $$a;
+  my $c = Mov  \$b;
+  Out $c;
   ok Execute(out=>[3]);
  }
 
