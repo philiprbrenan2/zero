@@ -2230,16 +2230,3 @@ if (1)                                                                          
   is_deeply $e->analyzeExecutionResults(doubleWrite=>3), "#       29 instructions executed";
   is_deeply $e->memory, {1 => bless([undef, undef, 1], "aaa"), 2 => [99]};
  }
-
-=pod
-Chick peas, tinned cod, diced onion, olive oil, hard boiled eggs. Mash together and eat on bread.
-
-Alternatively use tuna and black eye Frade beans.
-
-Fresh cottage cheese sliced, olive oil, salt, pepper on top.
-
-ABA for Tdw: 021912915
-
-I was trying to request a check using the Firefox browser. When I click
-the button nothing happens.  It does work on the chmomium browser.
-=cut
