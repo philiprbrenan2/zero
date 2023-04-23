@@ -32,7 +32,7 @@ can be done in parallel as long as there are processors left to assign work to.
 An update will have to wait for all existing finds to finish while stalling all
 trailing actions until the update is complete.
 
-Associative look ups are the 'sine qua non' of all [Turing](https://en.wikipedia.org/wiki/Alan_Turing) complete programming
+Associative look ups are the [sine qua non](https://en.wikipedia.org/wiki/Sine_qua_non) of all [Turing](https://en.wikipedia.org/wiki/Alan_Turing) complete programming
 languages. This arrangement should produce very fast associate look ups - much
 faster than can be performed by any system reliant on external software. Usage
 of power and [integrated circuit](https://en.wikipedia.org/wiki/Integrated_circuit) surface area should be reduced by having a minimal CPU to
