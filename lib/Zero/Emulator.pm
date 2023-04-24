@@ -636,7 +636,7 @@ sub Zero::Emulator::Execution::left($$;$)                                       
    }
   elsif (isScalar $$$a)
    {$exec->rwRead($S, $$$a);
-    $M = $exec->memory->{$S}[$$$a]+$x
+    $M = $exec->get($S, $$$a, $ref->name)+$x
    }
   else
    {invalid
@@ -658,7 +658,7 @@ sub Zero::Emulator::Execution::left($$;$)                                       
    }
   elsif (isScalar($$area))
    {$exec->rwRead (        $S, $$area);
-    my $A = $exec->memory->{$S}[$$area];
+    my $A = $exec->get($S, $$area, $ref->name);
     $exec->rwWrite(        $A, $M);
     return  $exec->address($A, $M, $ref->name)                                                     # Indirect area
    }
@@ -676,25 +676,26 @@ sub Zero::Emulator::Execution::leftSuppress($)                                  
 
   my $m;
   my $memory = $exec->memory;
+  my $stackArea = $exec->stackArea;
 
   if (isScalar $$a)                                                             # Direct
    {$m = $$a;
    }
   elsif (isScalar $$$a)                                                         # Indirect
-   {$exec->rwRead       (&stackArea, $$$a);
-    $m = $$memory{&stackArea}[$$$a];
+   {$exec->rwRead  ($stackArea, $$$a);
+    $m = $exec->get($stackArea, $$$a, $ref->name);
    }
 
   if (defined($m))
    {if (!defined($area))                                                        # Current stack frame
-     {$exec->rwRead($exec->stackArea, $m);
+     {$exec->rwRead($stackArea, $m);
      }
    elsif (isScalar($area))                                                      # Direct area
      {$exec->rwRead($area, $m);
      }
    elsif (isScalar($$area))                                                     # Indirect area
-     {$exec->rwRead(         &stackArea,  $area);
-      $exec->rwRead($$memory{&stackArea}[$$area], $m);
+     {$exec->rwRead(           $stackArea,  $area);
+      $exec->rwRead($exec->get($stackArea, $$area), $m);
      }
    }
  }
@@ -747,15 +748,14 @@ sub Zero::Emulator::Execution::right($$)                                        
    {invalid;
    }
 
-
   if (!defined($area))
    {$exec->rwRead($stackArea, $m);
-    $r = $$memory{$stackArea}[$m];                                              # Indirect from stack area
+    $r = $exec->get($stackArea, $m);                                            # Indirect from stack area
     $e = 1; $tAddress = $m; $tArea = $exec->stackArea;
    }
   elsif (isScalar($area))
    {$exec->rwRead(      $area, $m);
-    $r = $$memory{$area}[$m];                                                   # Indirect from constant area
+    $r = $exec->get($area, $m, $ref->name);                                         # Indirect from stack area
     $e = 2; $tAddress = $m; $tArea = $area;
    }
   elsif (isScalar($$area))
@@ -763,6 +763,8 @@ sub Zero::Emulator::Execution::right($$)                                        
     if (defined(my $j = $$memory{$exec->stackArea}[$$area]))
      {$exec->rwRead($j, $m);
       $r = $$memory{$j}[$m];                                                    # Indirect from indirect area
+say STDERR "SSAAAA", dump($exec->memory);
+      $r = $exec->get($j, $m, $ref->name);                                         # Indirect from stack area
       $e = 9; $tAddress = $m; $tArea = $j;
      }
    }
@@ -2304,7 +2306,7 @@ if (1)                                                                          
  {Start 1;
   Mov 1, \0;
   my $e = eval {Execute suppressErrors=>1};
-  ok $@ =~ m"Invalid right area: undef address: \\0 stack: 0 ";
+  ok $@ =~ m"Undefined memory accessed at area: 0 .unknown., address: 0\n at";
  }
 
 #latest:;
@@ -2351,7 +2353,7 @@ if (1)                                                                          
   is_deeply $e->out,    [99];
  }
 
-#latest:;
+latest:;
 if (1)                                                                          #TAlloc #TMov
  {Start 1;
   my $a = Alloc "aaa";
@@ -2364,7 +2366,7 @@ if (1)                                                                          
     my $d = Mov [$c, \0, 'aaa'];
     Jeq $next, $d, $d;
    };
-  my $e = Execute;
+  my $e = Execute(trace=>1);
   is_deeply $e->analyzeExecutionResults(doubleWrite=>3), "#       33 instructions executed";
   is_deeply $e->memory, { 1 => bless([2], "aaa"), 2 => bless([99], "bbb") };
  }
