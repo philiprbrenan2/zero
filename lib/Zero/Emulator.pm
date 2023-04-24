@@ -525,25 +525,28 @@ sub Zero::Emulator::Execution::address($$$$)                                    
    );
  }
 
-sub Zero::Emulator::Execution::stackTraceAndExit($;$)                           # Print a stack trace and exit
- {my ($exec, $i, $title) = @_;                                                  # Instruction trace occurred at, title
+sub Zero::Emulator::Execution::stackTraceAndExit($;$)                           # Create a stack trace and exit from th emulated program
+ {my ($exec, $title) = @_;                                                      # Instruction trace occurred at, title
+  my $i = $exec->currentInstruction;
   my $s = $exec->suppressErrors;
   my $d = $exec->debug;
-  my @s;
+  my @t;
 
-  push @s, $title // "Stack trace\n";
-  push @s, $i->contextString("Context of failing instruction") if $d;
+  push @t, $title // "Stack trace\n";
+  push @t, $i->contextString("Context of failing instruction") if $d;
   for my $j(reverse keys $exec->calls->@*)
    {my $c = $exec->calls->[$j];
     my $i = $c->instruction;
-    push @s, sprintf "%5d  %4d %s\n", $j+1, $i->number+1, $i->action if $s;
-    push @s, sprintf "%5d  %4d %-16s at %s line %d\n",
+    push @t, sprintf "%5d  %4d %s\n", $j+1, $i->number+1, $i->action if $s;
+    push @t, sprintf "%5d  %4d %-16s at %s line %d\n",
       $j+1, $i->number+1, $i->action, $i->file, $i->line         unless $s;
    }
 
-  say STDERR join "\n", @s unless $s;
-  push $exec->out->@*, @s;
+  my $t =    join "\n", @t;
+  say STDERR join "\n", @t unless $s;
+  push $exec->out->@*,  @t;
   $exec->instructionPointer = undef;                                            # Execution terminates as soon as undefined instuction is encountered
+  $t
  };
 
 my $allocs = 0; my $allocsStacked = 0;                                          # Normal allocs made by the caller, stacked allcos made by to syupport subroutine calling, parameter passing, result returning.
@@ -631,14 +634,14 @@ sub Zero::Emulator::Execution::left($$;$)                                       
   my sub invalid()
    {my ($p) = @_;                                                               # Parameters
     my $i = $exec->currentInstruction;
-    $exec->stackTraceAndExit;
     my $l = $i->line;
     my $f = $i->file;
     my $c = $i->contextString;
-    die "Invalid left area: ".dump($area)
+    my $t = $exec->stackTraceAndExit(
+     "Invalid left area: ".dump($area)
      ." address: ".dump($a)
      .(defined($extra) ? " + extra: ".dump($extra) : '')
-     ." stack: $S at $f line $l\n$c\n";
+     ." stack: $S at $f line $l\n$c\n");
    };
 
   my $M;                                                                        # Memory address
@@ -654,8 +657,8 @@ sub Zero::Emulator::Execution::left($$;$)                                       
    }
 
   if ($M < 0)                                                                   # Disallow negative addresses because they mean something special to Perl
-   {$exec->stackTraceAndExit($exec->currentInstruction,
-     "Negative address for area: ".dump($area)
+   {$exec->stackTraceAndExit("Negative address for area: "
+     .dump($area)
      .", address: ".dump($a)
      ." extra:".dump($x));
    }
@@ -722,18 +725,17 @@ sub Zero::Emulator::Execution::right($$)                                        
 
   my sub invalid()
    {my $i = $exec->currentInstruction;
-    $exec->stackTraceAndExit($i);
     my $l = $i->line;
     my $f = $i->file;
     my $c = $i->contextString("Failing instruction:");
-    die "Invalid right area: ".dump($area)
+    $exec->stackTraceAndExit(
+     "Invalid right area: ".dump($area)
      ." address: "    .dump($a)
      ." stack: "      .$exec->stackArea
      ." error: "      .dump($e)
      ." target Area: ".dump($tArea)
      ." address: "    .dump($tAddress)
-     ." at $f line $l\n$c\n"
-     .dump($exec->memory);
+     ." at $f line $l\n$c\n");
    }
 
   if (isScalar($a))                                                             # Constant
@@ -794,8 +796,7 @@ sub Zero::Emulator::Execution::assert($$$)                                      
   my $i = $exec->currentInstruction;
   my ($a, $b) = ($exec->right($i->source), $exec->right($i->source2));
   unless($sub->($a, $b))
-   {say STDERR "Assert $a $test $b failed" unless $exec->suppressErrors;
-    $exec->stackTraceAndExit($i);
+   {$exec->stackTraceAndExit("Assert $a $test $b failed");
    }
  }
 
@@ -810,8 +811,7 @@ sub Zero::Emulator::Execution::assign($$$)                                      
     if ($exec->stopOnError)
      {my $a = $target->area;
       my $l = $target->address;
-      stackTraceAndExit(currentInstruction(),
-       "Pointless assign of: $currently to area: $a, at ") ;
+      stackTraceAndExit("Pointless assign of: $currently to area: $a, at: $l");
      }
    }
   $target->set($value, $exec);
@@ -912,8 +912,7 @@ sub Zero::Emulator::Code::execute($%)                                           
 
     assert    =>   sub                                                          # Assert
      {my $i = $exec->currentInstruction;
-      say STDERR "Assert failed" unless $options{suppressErrors};
-       $exec->stackTraceAndExit($i);
+      $exec->stackTraceAndExit("Assert failed");
      },
 
     assertEq  =>   sub                                                          # Assert equals
@@ -978,7 +977,7 @@ sub Zero::Emulator::Code::execute($%)                                           
      },
 
     confess => sub                                                              # Print the current call stack and stop
-     {$exec->stackTraceAndExit($exec->currentInstruction);
+     {$exec->stackTraceAndExit;
      },
 
     debug   => sub                                                              # Set debug
@@ -2171,11 +2170,8 @@ if (1)                                                                          
 if (1)                                                                          #TAssert
  {Start 1;
   Assert;
-  my $r = Execute(suppressErrors=>1);
-  is_deeply $r->out, [
-"Stack trace\n",
-  "    1     1 assert\n",
-];
+  my $e = Execute(suppressErrors=>1);
+  is_deeply $e->out, ["Assert failed", "    1     1 assert\n"];
  }
 
 #latest:;
@@ -2183,11 +2179,8 @@ if (1)                                                                          
  {Start 1;
   Mov 0, 1;
   AssertEq \0, 2;
-  my $r = Execute(suppressErrors=>1);
-  is_deeply $r->out, [
-"Stack trace\n",
-  "    1     2 assertEq\n",
-];
+  my $e = Execute(suppressErrors=>1);
+  is_deeply $e->out, ["Assert 1 == 2 failed", "    1     2 assertEq\n"];
  }
 
 #latest:;
