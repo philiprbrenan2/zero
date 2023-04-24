@@ -471,7 +471,9 @@ sub Zero::Emulator::Execution::check($$$)                                       
   @_ == 3 or confess "Three parameters";
   if ($area and $area =~ m(\A\d+\Z))
    {my $Name = $exec->memoryType->{$area};
-    $name eq $Name or confess "Attempting to access area $Name using $name";
+    if ($name ne $Name)
+     {$exec->stackTraceAndExit("Attempting to access area: $Name using: $name");
+     }
    }
  }
 
@@ -606,13 +608,13 @@ sub Zero::Emulator::Execution::markAsRead($$$)                                  
  }
 
 sub Zero::Emulator::Execution::rwRead($$$)                                      # Observe read from memory
-   {my ($exec, $area, $address) = @_;                                           # Area in memory, address within area
-    @_ == 3 or confess "Three parameters";
-    if (defined(my $a = $exec->rw->{$area}{$address}))                          # Can only read from locations that actually have something in them
-     {$exec->markAsRead($area, $address);                                       # Clear last write operation
-      $exec->read->{$area}{$address}++;                                         # Track reads
-     }
+ {my ($exec, $area, $address) = @_;                                             # Area in memory, address within area
+  @_ == 3 or confess "Three parameters";
+  if (defined(my $a = $exec->rw->{$area}{$address}))                            # Can only read from locations that actually have something in them
+   {$exec->markAsRead($area, $address);                                         # Clear last write operation
+   $exec->read->{$area}{$address}++;                                            # Track reads
    }
+ }
 
 sub Zero::Emulator::Execution::left($$;$)                                       # Address a memory address
  {my ($exec, $ref, $extra) = @_;                                                # Reference, an optional extra offset to add or subtract to the final memory address
@@ -629,7 +631,7 @@ sub Zero::Emulator::Execution::left($$;$)                                       
   my sub invalid()
    {my ($p) = @_;                                                               # Parameters
     my $i = $exec->currentInstruction;
-    $exec->stackTraceAndExit($i);
+    $exec->stackTraceAndExit;
     my $l = $i->line;
     my $f = $i->file;
     my $c = $i->contextString;
@@ -941,7 +943,7 @@ sub Zero::Emulator::Code::execute($%)                                           
     free      => sub                                                            # Free the memory area named by the source operand
      {my $i = $exec->currentInstruction;
       my $area =  $exec->right($i->source);                                     # Area
-      confess "Attemp to allocate non user area: $area"
+      confess "Attempting to allocate non user area: $area"
         unless $area =~ m(\A\d+\Z);
       delete $exec->memory->{$area}
      },
