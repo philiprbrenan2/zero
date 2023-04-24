@@ -4,7 +4,7 @@
 # Philip R Brenan at appaapps dot com, Appa Apps Ltd Inc., 2023
 #-------------------------------------------------------------------------------
 # Pointless adds and subtracts by 0. Perhaps we should flag adds and subtracts by 1 as well so we can have an instruction optimized for these variants.
-# Run all memory reads and writes through two procedures so we can watch them
+# Run all memory reads and writes through two procedures so we can watch them. Standardize ::get and ::set
 use v5.30;
 package Zero::Emulator;
 use warnings FATAL => qw(all);
