@@ -244,21 +244,19 @@ sub Zero::Emulator::Address::print($$)                                          
      $s .= "address: $l";
  }
 
-sub Zero::Emulator::Address::get($$)                                            # Get the value of an address at the specified address in memory in the specified execution environment
+sub Zero::Emulator::Address::get($$)                                            # Get the value of the specified address in memory in the specified execution environment
  {my ($address, $exec) = @_;                                                    # Address specification
   @_ == 2 or confess "Two parameters";
-#  my $e = $address->exec;
   my $e = $exec;
   my $m = $e->memory;
   my $a = $address->area;
   my $l = $address->address;
-  $$m{$a}[$l]
+  $$m{$a}[$l];
  }
 
 sub Zero::Emulator::Address::at($$)                                             # Reference to the specified address in memory of current execution environment
  {my ($address, $exec) = @_;                                                    # Address specification
   @_ == 2 or confess "Two parameters";
-# my $e = $address->exec;
   my $e = $exec;
   my $m = $e->memory;
   my $a = $address->area;
@@ -269,7 +267,6 @@ sub Zero::Emulator::Address::at($$)                                             
 sub Zero::Emulator::Address::set($$$)                                           # Set the value of an address at the specified address in memory in the current execution environment
  {my ($address, $value, $exec) = @_;                                            # Address specification, value
   @_ == 3 or confess "Three parameters";
-# my $e = $address->exec;
   my $e = $exec;
   my $m = $e->memory;
   my $a = $address->area;
@@ -480,12 +477,12 @@ sub Zero::Emulator::Execution::check($$$)                                       
    }
  }
 
-sub Zero::Emulator::Execution::get($$$$)                                        # Get from memory
- {my ($exec, $area, $address, $name) = @_;                                      # Execution environment
+sub Zero::Emulator::Execution::get($$$$%)                                       # Get from memory
+ {my ($exec, $area, $address, $name, %options) = @_;                            # Execution environment
   $exec->check($area, $name);
   my $g = $exec->memory ->{$area}[$address];
   my $n = $name // 'unknown';
-  if (!defined($g))
+  if (!defined($g) and !defined($options{undefinedOk}))
    {confess"Undefined memory accessed at area: $area ($n), address: $address\n";
    }
   $g
