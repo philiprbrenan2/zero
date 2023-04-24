@@ -18,7 +18,7 @@ Only one [tree](https://en.wikipedia.org/wiki/Tree_(data_structure)) will be use
 will be useful to add additional data at the front of the keys such as data
 length, data position, [process](https://en.wikipedia.org/wiki/Process_management_(computing)) id, [userid](https://en.wikipedia.org/wiki/User_identifier), time stamp etc. As the keys are
 sorted in the [tree](https://en.wikipedia.org/wiki/Tree_(data_structure)), [trees](https://en.wikipedia.org/wiki/Tree_(data_structure)) with similar prefixes will tend to collect together
-so we can compress out the common prefix of the keys in each node to amke
+so we can compress out the common prefix of the keys in each node to make
 better use of [memory](https://en.wikipedia.org/wiki/Computer_memory). 
 Strings longer than 64 bits can be processed in pieces with each piece prefixed
 by the [string](https://en.wikipedia.org/wiki/String_(computer_science)) id and the position in the [string](https://en.wikipedia.org/wiki/String_(computer_science)).  Incoming [strings](https://en.wikipedia.org/wiki/String_(computer_science)) can be made
