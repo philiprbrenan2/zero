@@ -763,7 +763,6 @@ sub Zero::Emulator::Execution::right($$)                                        
     if (defined(my $j = $$memory{$exec->stackArea}[$$area]))
      {$exec->rwRead($j, $m);
       $r = $$memory{$j}[$m];                                                    # Indirect from indirect area
-say STDERR "SSAAAA", dump($exec->memory);
       $r = $exec->get($j, $m, $ref->name);                                         # Indirect from stack area
       $e = 9; $tAddress = $m; $tArea = $j;
      }
@@ -2353,7 +2352,7 @@ if (1)                                                                          
   is_deeply $e->out,    [99];
  }
 
-latest:;
+#latest:;
 if (1)                                                                          #TAlloc #TMov
  {Start 1;
   my $a = Alloc "aaa";
@@ -2363,10 +2362,10 @@ if (1)                                                                          
   For 3, sub
    {my ($i, $check, $next, $end) = @_;
     my $c = Mov [$a, \0, 'aaa'];
-    my $d = Mov [$c, \0, 'aaa'];
+    my $d = Mov [$c, \0, 'bbb'];
     Jeq $next, $d, $d;
    };
-  my $e = Execute(trace=>1);
+  my $e = Execute;
   is_deeply $e->analyzeExecutionResults(doubleWrite=>3), "#       33 instructions executed";
   is_deeply $e->memory, { 1 => bless([2], "aaa"), 2 => bless([99], "bbb") };
  }
