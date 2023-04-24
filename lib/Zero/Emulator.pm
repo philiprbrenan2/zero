@@ -477,10 +477,10 @@ sub Zero::Emulator::Execution::check($$$)                                       
    }
  }
 
-sub Zero::Emulator::Execution::get($$$$%)                                       # Get from memory
+sub Zero::Emulator::Execution::getMemory($$$$%)                                 # Get from memory
  {my ($exec, $area, $address, $name, %options) = @_;                            # Execution environment
   $exec->check($area, $name);
-  my $g = $exec->memory ->{$area}[$address];
+  my $g = $exec->get($area, $address);
   my $n = $name // 'unknown';
   if (!defined($g) and !defined($options{undefinedOk}))
    {confess"Undefined memory accessed at area: $area ($n), address: $address\n";
@@ -488,10 +488,22 @@ sub Zero::Emulator::Execution::get($$$$%)                                       
   $g
  }
 
-sub Zero::Emulator::Execution::set($$$$$)                                       # Set memory
+sub Zero::Emulator::Execution::setMemory($$$$$)                                 # Set memory
  {my ($exec, $area, $address, $name, $value) = @_;                              # Execution environment
   @_ == 5 or confess "Five parameters";
   $exec->check($area, $name);
+  $exec->set($area, $address, $value);
+ }
+
+sub Zero::Emulator::Execution::get($$$)                                         # Get from memory
+ {my ($exec, $area, $address) = @_;                                             # Execution environment
+  @_ == 3 or confess "Three parameters";
+  $exec->memory->{$area}[$address];
+ }
+
+sub Zero::Emulator::Execution::set($$$$)                                        # Set memory
+ {my ($exec, $area, $address, $value) = @_;                                     # Execution environment
+  @_ == 4 or confess "Four parameters";
   $exec->memory->{$area}[$address] = $value;
  }
 
@@ -633,7 +645,7 @@ sub Zero::Emulator::Execution::left($$;$)                                       
    }
   elsif (isScalar $$$a)
    {$exec->rwRead($S, $$$a);
-    $M = $exec->get($S, $$$a, $ref->name)+$x
+    $M = $exec->getMemory($S, $$$a, $ref->name)+$x
    }
   else
    {invalid
@@ -655,7 +667,7 @@ sub Zero::Emulator::Execution::left($$;$)                                       
    }
   elsif (isScalar($$area))
    {$exec->rwRead (        $S, $$area);
-    my $A = $exec->get($S, $$area, $ref->name);
+    my $A = $exec->getMemory($S, $$area, $ref->name);
     $exec->rwWrite(        $A, $M);
     return  $exec->address($A, $M, $ref->name)                                                     # Indirect area
    }
@@ -736,7 +748,7 @@ sub Zero::Emulator::Execution::right($$)                                        
    }
   elsif (isScalar($$$a))                                                        # Indirect
    {$exec->rwRead($stackArea, $$$a);
-    $m = $exec->get($stackArea, $$$a);
+    $m = $exec->getMemory($stackArea, $$$a);
    }
   else
    {confess "Invalid right address: ".dump($a);
@@ -747,12 +759,12 @@ sub Zero::Emulator::Execution::right($$)                                        
 
   if (!defined($area))
    {$exec->rwRead($stackArea, $m);
-    $r = $exec->get($stackArea, $m);                                            # Indirect from stack area
+    $r = $exec->getMemory($stackArea, $m);                                      # Indirect from stack area
     $e = 1; $tAddress = $m; $tArea = $exec->stackArea;
    }
   elsif (isScalar($area))
-   {$exec->rwRead(      $area, $m);
-    $r = $exec->get($area, $m, $ref->name);                                         # Indirect from stack area
+   {$exec->rwRead(        $area, $m);
+    $r = $exec->getMemory($area, $m, $ref->name);                               # Indirect from stack area
     $e = 2; $tAddress = $m; $tArea = $area;
    }
   elsif (isScalar($$area))
@@ -760,7 +772,7 @@ sub Zero::Emulator::Execution::right($$)                                        
     if (defined(my $j = $$memory{$exec->stackArea}[$$area]))
      {$exec->rwRead($j, $m);
       $r = $$memory{$j}[$m];                                                    # Indirect from indirect area
-      $r = $exec->get($j, $m, $ref->name);                                         # Indirect from stack area
+      $r = $exec->getMemory($j, $m, $ref->name);                                # Indirect from stack area
       $e = 9; $tAddress = $m; $tArea = $j;
      }
    }
@@ -1758,8 +1770,8 @@ if (1)                                                                          
  {my $e = execute->createInitialStackEntry->setMemoryType(1, 'aaa');
   my $s = $e->stackArea;
 
-  $e->set( 1, 1, 'aaa', 99);
-  $e->set($s, 2, $s,     1);
+  $e->setMemory( 1, 1, 'aaa', 99);
+  $e->setMemory($s, 2, $s,     1);
 
   is_deeply $e->right(RefRight [1,  \1,  'aaa']), 99;
   is_deeply $e->right(RefRight [1, \\2,  'aaa']), 99;
