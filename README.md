@@ -63,5 +63,6 @@ represented as an [array](https://en.wikipedia.org/wiki/Dynamic_array) reference
 in the current stack frame is represented as a single scalar with the
 appropriate levels of dereferencing.  The area name is used to confirm that the
 one we are processing is the one that we are expecting to [process](https://en.wikipedia.org/wiki/Process_management_(computing)). 
+
 If you would like to be involved with this interesting project, please raise an
 issue saying so!
