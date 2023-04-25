@@ -11,7 +11,7 @@ use strict;
 use Carp qw(cluck confess);
 use Data::Dump qw(dump);
 use Data::Table::Text qw(:all);
-eval "use Test::More tests=>57" unless caller;
+eval "use Test::More tests=>58" unless caller;
 
 makeDieConfess;
 
@@ -804,14 +804,19 @@ sub Zero::Emulator::Execution::assign($$$)                                      
  {my ($exec, $target, $value) = @_;                                             # Target of assign, value to assign
   @_ == 3 or confess "Three parameters";
   ref($target) =~ m(Address)i or confess "Not an address: ".dump($target);
-  defined($value) or $exec->stackTraceAndExit("Cannot assign an undefined value");
+
+  my $a = $target->area;
+  my $l = $target->address;
+  my $n = $target->name//'unknown';
+
+  defined($value) or $exec->stackTraceAndExit
+   ("Cannot assign an undefined value to area: $a ($n), address: $l");
+
   my $currently = $target->get($exec);
   if (defined($currently) and $currently == $value)
    {$exec->pointlessAssign->{$exec->currentInstruction->number}++;
     if ($exec->stopOnError)
-     {my $a = $target->area;
-      my $l = $target->address;
-      $exec->stackTraceAndExit("Pointless assign of: $currently to area: $a, at: $l");
+     {$exec->stackTraceAndExit("Pointless assign of: $currently to area: $a, at: $l");
      }
    }
   $target->set($value, $exec);
@@ -1056,6 +1061,12 @@ sub Zero::Emulator::Code::execute($%)                                           
       $exec->assign($t, $s);
      },
 
+    not     => sub                                                              # Not in place
+     {my $i = $exec->currentInstruction;
+      my $t = $exec->left($i->target);
+      $exec->assign($t, !$t->get($exec));
+     },
+
     paramsGet => sub                                                            # Get a parameter from the previous parameter block - this means that we must always have two entries on the call stack - one representing the caller of the program, the second representing the current context of the program
      {my $i = $exec->currentInstruction;
       my $p = RefLeft([$exec->calls->[-2]->params, $i->source->address,
@@ -1190,11 +1201,12 @@ sub Zero::Emulator::Code::execute($%)                                           
      {$exec->counts->{$a}++; $exec->count++;                                    # Execution instruction counts
       $exec->stackTraceAndExit(qq(Invalid instruction: "$a"\n))
         unless my $c = $instructions{$a};
-      if ($options{trace})
-       {say STDERR sprintf "%4d  %4d  %12s at %s line %d\n",
-          $j, $i->number, $i->action, $i->file, $i->line;
-       }
+
+      say STDERR sprintf "%4d  %4d  %12s at %s line %d\n",
+        $j, $i->number, $i->action, $i->file, $i->line if $options{trace};
+
       ++$i->executed;
+
       $c->($i);                                                                 # Execute instruction
      }
     confess "Out of instructions after $j"if $j >= maximumInstructionsToExecute;
@@ -1399,6 +1411,11 @@ sub Mov($;$)                                                                    
   else
    {confess "One or two parameters required";
    }
+ }
+
+sub Not($)                                                                      # In place not
+ {my ($target) = @_;                                                            # Target address
+  $assembly->instruction(action=>"not", xTarget($target));
  }
 
 sub Nop()                                                                       # Do nothing (but do it well!)
@@ -1876,6 +1893,18 @@ if (1)                                                                          
   Inc $a;
   Out $a;
   ok Execute(out=>[4]);
+ }
+
+#latest:;
+if (1)                                                                          #TNot
+ {Start 1;
+  my $a = Mov 3;
+  Not $a;
+  Out $a;
+  Not $a;
+  Out $a;
+  my $e = Execute;
+  is_deeply $e->out, ["", 1];
  }
 
 #latest:;
