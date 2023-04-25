@@ -169,7 +169,7 @@ sub Zero::Emulator::Procedure::registers($)                                     
 my sub RefRight($)                                                              # Record a reference to a right address
  {my ($r) = @_;                                                                 # Reference
   @_ == 1 or confess "One parameter required formatted as either a address or an [area, address, name]";
-  ref($r) and ref($r) !~ m(\A(array|scalar|ref)\Z)i and confess "Scalar or reference required";
+  ref($r) and ref($r) !~ m(\A(array|scalar|ref)\Z)i and confess "Scalar or reference required, not: ".dump($r);
 
   if (ref($r) =~ m(array)i)
    {my ($area, $address, $name) = @$r;
@@ -1063,8 +1063,9 @@ sub Zero::Emulator::Code::execute($%)                                           
 
     not     => sub                                                              # Not in place
      {my $i = $exec->currentInstruction;
+      my $s = $exec->right($i->source);
       my $t = $exec->left($i->target);
-      $exec->assign($t, !$t->get($exec));
+      $exec->assign($t, !$s);
      },
 
     paramsGet => sub                                                            # Get a parameter from the previous parameter block - this means that we must always have two entries on the call stack - one representing the caller of the program, the second representing the current context of the program
@@ -1233,17 +1234,17 @@ my sub setLabel(;$)                                                             
  }
 
 my sub xSource($)                                                               # Record a source argument
- {my ($s) = @_;                                                                 # Source expression - either a single address ion the currnt stack frame or a refernce to an array conatyaining anInstruction pair containing the area id followed by the address
+ {my ($s) = @_;                                                                 # Source expression
   (q(source), RefRight $s)
  }
 
 my sub xSource2($)                                                              # Record a source argument
- {my ($s) = @_;                                                                 # Source expression - either a single address ion the currnt stack frame or a refernce to an array conatyaining anInstruction pair containing the area id followed by the address
+ {my ($s) = @_;                                                                 # Source expression
   (q(source2), RefRight $s)
  }
 
 my sub xTarget($)                                                               # Record a target argument
- {my ($t) = @_;                                                                 # Target expression - either a single address ion the currnt stack frame or a refernce to an array conatyaining anInstruction pair containing the area id followed by the address
+ {my ($t) = @_;                                                                 # Target expression
   (q(target), RefLeft $t)
  }
 
@@ -1409,13 +1410,24 @@ sub Mov($;$)                                                                    
     $assembly->instruction(action=>"mov", xTarget($target), xSource($source));
    }
   else
-   {confess "One or two parameters required";
+   {confess "One or two parameters required for mov";
    }
  }
 
-sub Not($)                                                                      # In place not
- {my ($target) = @_;                                                            # Target address
-  $assembly->instruction(action=>"not", xTarget($target));
+sub Not($)                                                                      # Move and not
+ {if (@_ == 1)
+   {my ($source) = @_;                                                          # Target address, source address
+    my $t = &Var();
+    $assembly->instruction(action=>"not", target=>RefLeft($t),xSource($source));
+    return $t;
+   }
+  elsif (@ == 2)
+   {my ($target, $source) = @_;                                                 # Target address, source address
+    $assembly->instruction(action=>"not", xTarget($target), xSource($source));
+   }
+  else
+   {confess "One or two parameters required for not";
+   }
  }
 
 sub Nop()                                                                       # Do nothing (but do it well!)
@@ -1801,7 +1813,7 @@ use vars qw(@ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
 
 @ISA         = qw(Exporter);
 @EXPORT      = qw();
-@EXPORT_OK   = qw(AreaStructure Add Alloc Bad Block Call Clear Confess Debug Else Execute For Free Good Assert AssertEq AssertNe AssertGe AssertGt AssertLe AssertLt Dec Dump IfEq IfGe IfGt IfLe IfLt IfNe Ifx IfTrue IfFalse Inc Jeq Jge Jgt Jle Jlt Jmp Jne Label Mov Nop Out ParamsGet ParamsPut Pop Procedure Push Return ReturnGet ReturnPut ShiftLeft ShiftRight ShiftUp ShiftDown Start Subtract Then Var);
+@EXPORT_OK   = qw(AreaStructure Add Alloc Bad Block Call Clear Confess Debug Else Execute For Free Good Assert AssertEq AssertNe AssertGe AssertGt AssertLe AssertLt Dec Dump IfEq IfGe IfGt IfLe IfLt IfNe Ifx IfTrue IfFalse Inc Jeq Jge Jgt Jle Jlt Jmp Jne Label Mov Nop Not Out ParamsGet ParamsPut Pop Procedure Push Return ReturnGet ReturnPut ShiftLeft ShiftRight ShiftUp ShiftDown Start Subtract Then Var);
 %EXPORT_TAGS = (all=>[@EXPORT, @EXPORT_OK]);
 
 return 1 if caller;
@@ -1899,12 +1911,13 @@ if (1)                                                                          
 if (1)                                                                          #TNot
  {Start 1;
   my $a = Mov 3;
-  Not $a;
+  my $b = Not $a;
+  my $c = Not $b;
   Out $a;
-  Not $a;
-  Out $a;
+  Out $b;
+  Out $c;
   my $e = Execute;
-  is_deeply $e->out, ["", 1];
+  is_deeply $e->out, [3, "", 1];
  }
 
 #latest:;
