@@ -4,6 +4,7 @@
 # Philip R Brenan at appaapps dot com, Appa Apps Ltd Inc., 2023
 #-------------------------------------------------------------------------------
 # Pointless adds and subtracts by 0. Perhaps we should flag adds and subtracts by 1 as well so we can have an instruction optimized for these variants.
+# Suppress no longere needed becuae youihave to enable trace or debug to get dump output
 use v5.30;
 package Zero::Emulator;
 use warnings FATAL => qw(all);
@@ -11,7 +12,7 @@ use strict;
 use Carp qw(cluck confess);
 use Data::Dump qw(dump);
 use Data::Table::Text qw(:all);
-eval "use Test::More tests=>59" unless caller;
+eval "use Test::More tests=>64" unless caller;
 
 makeDieConfess;
 
@@ -528,7 +529,7 @@ sub Zero::Emulator::Execution::address($$$$)                                    
 sub Zero::Emulator::Execution::stackTraceAndExit($;$)                           # Create a stack trace and exit from th emulated program
  {my ($exec, $title) = @_;                                                      # Instruction trace occurred at, title
   my $i = $exec->currentInstruction;
-  my $s = $exec->suppressErrors;
+  my $s = $exec->suppressErrors;                                                # Suppress file and line numbers in dump to facilitate automated testing
   my $d = $exec->debug;
   my @t;
 
@@ -925,23 +926,23 @@ sub Zero::Emulator::Code::execute($%)                                           
      },
 
     assertNe  =>   sub                                                          # Assert not equals
-     {assert("!=", sub {my ($a, $b) = @_; $a != $b})
+     {$exec->assert("!=", sub {my ($a, $b) = @_; $a != $b})
      },
 
     assertLt  =>   sub                                                          # Assert less than
-     {assert("< ", sub {my ($a, $b) = @_; $a <  $b})
+     {$exec->assert("< ", sub {my ($a, $b) = @_; $a <  $b})
      },
 
     assertLe  =>   sub                                                          # Assert less than or equal
-     {assert("<=", sub {my ($a, $b) = @_; $a <= $b})
+     {$exec->assert("<=", sub {my ($a, $b) = @_; $a <= $b})
      },
 
     assertGt  =>   sub                                                          # Assert greater than
-     {assert("> ", sub {my ($a, $b) = @_; $a >  $b})
+     {$exec->assert("> ", sub {my ($a, $b) = @_; $a >  $b})
      },
 
     assertGe  =>   sub                                                          # Assert greater
-     {assert(">=", sub {my ($a, $b) = @_; $a >= $b})
+     {$exec->assert(">=", sub {my ($a, $b) = @_; $a >= $b})
      },
 
     free      => sub                                                            # Free the memory area named by the source operand
@@ -1827,10 +1828,12 @@ use vars qw(@ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
 
 @ISA         = qw(Exporter);
 @EXPORT      = qw();
-@EXPORT_OK   = qw(AreaStructure Add Alloc Bad Block Call Clear Confess Debug Else Execute For Free Good Assert AssertEq AssertNe AssertGe AssertGt AssertLe AssertLt Dec Dump IfEq IfGe IfGt IfLe IfLt IfNe Ifx IfTrue IfFalse Inc Jeq Jge Jgt Jle Jlt Jmp Jne Label Mov Nop Not Out ParamsGet ParamsPut Pop Procedure Push Return ReturnGet ReturnPut ShiftLeft ShiftRight ShiftUp ShiftDown Start Subtract Then Var);
+@EXPORT_OK   = qw(AreaStructure Add Alloc Bad Block Call Clear Confess Debug Else Execute For Free Good Assert AssertEq AssertNe AssertGe AssertGt AssertLe AssertLt Dec Dump IfEq IfGe IfGt IfLe IfLt IfNe Ifx IfTrue IfFalse Inc Jeq Jge Jgt Jle Jlt Jmp Jne Label Mov Nop Not Out ParamsGet ParamsPut Pop Procedure Push Resize Return ReturnGet ReturnPut ShiftLeft ShiftRight ShiftUp ShiftDown Start Subtract Then Var);
 %EXPORT_TAGS = (all=>[@EXPORT, @EXPORT_OK]);
 
 return 1 if caller;
+
+Test::More->builder->output("/dev/null");                                       # Reduce number of confirmation messages during testing
 
 eval {goto latest};
 sub is_deeply;
@@ -2238,6 +2241,51 @@ if (1)                                                                          
   AssertEq \0, 2;
   my $e = Execute(suppressErrors=>1);
   is_deeply $e->out, ["Assert 1 == 2 failed", "    1     2 assertEq\n"];
+ }
+
+#latest:;
+if (1)                                                                          #TAssertNe
+ {Start 1;
+  Mov 0, 1;
+  AssertNe \0, 1;
+  my $e = Execute(suppressErrors=>1);
+  is_deeply $e->out, ["Assert 1 != 1 failed", "    1     2 assertNe\n"];
+ }
+
+#latest:;
+if (1)                                                                          #TAssertLt
+ {Start 1;
+  Mov 0, 1;
+  AssertLt \0, 0;
+  my $e = Execute(suppressErrors=>1);
+  is_deeply $e->out, ["Assert 1 <  0 failed", "    1     2 assertLt\n"];
+ }
+
+#latest:;
+if (1)                                                                          #TAssertLe
+ {Start 1;
+  Mov 0, 1;
+  AssertLe \0, 0;
+  my $e = Execute(suppressErrors=>1);
+  is_deeply $e->out, ["Assert 1 <= 0 failed", "    1     2 assertLe\n"];
+ }
+
+#latest:;
+if (1)                                                                          #TAssertGt
+ {Start 1;
+  Mov 0, 1;
+  AssertGt \0, 2;
+  my $e = Execute(suppressErrors=>1);
+  is_deeply $e->out, ["Assert 1 >  2 failed", "    1     2 assertGt\n"];
+ }
+
+#latest:;
+if (1)                                                                          #TAssertGe
+ {Start 1;
+  Mov 0, 1;
+  AssertGe \0, 2;
+  my $e = Execute(suppressErrors=>1);
+  is_deeply $e->out, ["Assert 1 >= 2 failed", "    1     2 assertGe\n"];
  }
 
 #latest:;
