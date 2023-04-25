@@ -11,7 +11,7 @@ use strict;
 use Carp qw(cluck confess);
 use Data::Dump qw(dump);
 use Data::Table::Text qw(:all);
-eval "use Test::More tests=>58" unless caller;
+eval "use Test::More tests=>59" unless caller;
 
 makeDieConfess;
 
@@ -952,6 +952,15 @@ sub Zero::Emulator::Code::execute($%)                                           
       delete $exec->memory->{$area}
      },
 
+    resize  => sub                                                              # Resize an area
+     {my $i = $exec->currentInstruction;
+      my $size =  $exec->right($i->source);                                     # Size to reduce area to
+      my $area =  $exec->right($i->target);                                     # Area to reduce to
+      $exec->stackTraceAndExit("Attempting to resize non user area: $area")
+        unless $area =~ m(\A\d+\Z);
+      $#{$exec->memory->{$area}} = $size-1;
+     },
+
     call      => sub                                                            # Call a subroutine
      {my $i = $exec->currentInstruction;
       my $t = $i->target->address;                                              # Subroutine to call
@@ -1508,6 +1517,11 @@ sub ReturnPut($$)                                                               
  {my ($target, $source) = @_;                                                   # Offset in return area to write to, memory address whose contents are to be placed in the return area
   $assembly->instruction(action=>"returnPut",
     xTarget($target), xSource($source));
+ }
+
+sub Resize($$)                                                                  # Resize the target area to the source size
+ {my ($target, $source) = @_;                                                   # Target address, source address
+  $assembly->instruction(action=>"resize", xTarget($target), xSource($source));
  }
 
 sub Pop(;$$)                                                                    # Pop the memory area specified by the source operand into the memory address specified by the target operand
@@ -2459,4 +2473,16 @@ if (1)                                                                          
   my $e = Execute;
   is_deeply $e->analyzeExecutionResults(doubleWrite=>3), "#       29 instructions executed";
   is_deeply $e->memory, {1 => bless([undef, undef, 1], "aaa"), 2 => [99]};
+ }
+
+#latest:;
+if (1)                                                                          #TResize
+ {Start 1;
+  my $a = Alloc 'aaa';
+  Mov [$a, 0, 'aaa'], 1;
+  Mov [$a, 1, 'aaa'], 2;
+  Mov [$a, 2, 'aaa'], 3;
+  Resize $a, 2;
+  my $e = Execute;
+  is_deeply $e->memory, {1 => [1, 2]};
  }
