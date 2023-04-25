@@ -329,7 +329,7 @@ sub Zero::Emulator::Execution::areaContent($$)                                  
   my $m = $e->memory;
   my $a = isScalar($address) ? $address : $$m{$exec->stackArea}[$$address];     # Dereference area
   my $A = $$m{$a};
-  confess "Invalid area: ".dump($a)."\n".dump($e->memory) unless defined $A;
+  $exec->stackTraceAndExit("Invalid area: ".dump($a)."\n".dump($e->memory)) unless defined $A;
   @$A
  }
 
@@ -484,7 +484,7 @@ sub Zero::Emulator::Execution::getMemory($$$;$%)                                
   my $g = $exec->get($area, $address);
   my $n = $name // 'unknown';
   if (!defined($g) and !defined($options{undefinedOk}))
-   {confess"Undefined memory accessed at area: $area ($n), address: $address\n";
+   {$exec->stackTraceAndExit("Undefined memory accessed at area: $area ($n), address: $address\n");
    }
   $g
  }
@@ -741,7 +741,7 @@ sub Zero::Emulator::Execution::right($$)                                        
   if (isScalar($a))                                                             # Constant
    {#rwRead($area//&stackArea, $a) if $a =~ m(\A\-?\d+\Z);
     return $a if defined $a;                                                    # Attempting to read a address that has never been set is an error
-    confess "Undefined right address: ".dump($a);
+    $exec->stackTraceAndExit("Undefined right address: ".dump($a));
    }
 
   my $m;
@@ -755,7 +755,7 @@ sub Zero::Emulator::Execution::right($$)                                        
     $m = $exec->getMemory($stackArea, $$$a);
    }
   else
-   {confess "Invalid right address: ".dump($a);
+   {$exec->stackTraceAndExit("Invalid right address: ".dump($a));
    }
   if (!defined($m))
    {invalid;
@@ -804,14 +804,14 @@ sub Zero::Emulator::Execution::assign($$$)                                      
  {my ($exec, $target, $value) = @_;                                             # Target of assign, value to assign
   @_ == 3 or confess "Three parameters";
   ref($target) =~ m(Address)i or confess "Not an address: ".dump($target);
-  defined($value) or confess "Cannot assign an undefined value";
+  defined($value) or $exec->stackTraceAndExit("Cannot assign an undefined value");
   my $currently = $target->get($exec);
   if (defined($currently) and $currently == $value)
    {$exec->pointlessAssign->{$exec->currentInstruction->number}++;
     if ($exec->stopOnError)
      {my $a = $target->area;
       my $l = $target->address;
-      stackTraceAndExit("Pointless assign of: $currently to area: $a, at: $l");
+      $exec->stackTraceAndExit("Pointless assign of: $currently to area: $a, at: $l");
      }
    }
   $target->set($value, $exec);
@@ -942,7 +942,7 @@ sub Zero::Emulator::Code::execute($%)                                           
     free      => sub                                                            # Free the memory area named by the source operand
      {my $i = $exec->currentInstruction;
       my $area =  $exec->right($i->source);                                     # Area
-      confess "Attempting to allocate non user area: $area"
+      $exec->stackTraceAndExit("Attempting to allocate non user area: $area")
         unless $area =~ m(\A\d+\Z);
       delete $exec->memory->{$area}
      },
@@ -965,7 +965,7 @@ sub Zero::Emulator::Code::execute($%)                                           
 
     return    => sub                                                            # Return from a subroutine call via the call stack
      {my $i = $exec->currentInstruction;
-      $exec->calls or confess "The call stack is empty so I do not know where to return to";
+      $exec->calls or $exec->stackTraceAndExit("The call stack is empty so I do not know where to return to");
       $exec->freeSystemAreas(pop $exec->calls->@*);
       if ($exec->calls)
        {my $c = $exec->calls->[-1];
@@ -982,7 +982,7 @@ sub Zero::Emulator::Code::execute($%)                                           
 
     debug   => sub                                                              # Set debug
      {my $i = $exec->currentInstruction;
-      my $s = right($i->source);
+      my $s = $exec->right($i->source);
       $exec->debug = !!$s;
       say STDERR "Debug ", $exec->debug;
      },
@@ -1110,7 +1110,7 @@ sub Zero::Emulator::Code::execute($%)                                           
       my $s = $i->source;
       my $area = $i->source ? $exec->right($i->source) : &stackArea;            # Memory area to pop
       if (!defined($exec->memory->{$area}) or !$exec->memory->{$area}->@*)      # Stack not poppable
-        {confess "Cannot pop area $area";
+        {$exec->stackTraceAndExit("Cannot pop area $area");
         }
       my $t = $exec->left($i->target);
       my $p = pop $exec->memory->{$area}->@*;
@@ -1188,7 +1188,8 @@ sub Zero::Emulator::Code::execute($%)                                           
     last unless $i;
     if (my $a = $i->action)                                                     # Action
      {$exec->counts->{$a}++; $exec->count++;                                    # Execution instruction counts
-      confess qq(Invalid instruction: "$a"\n) unless my $c = $instructions{$a};
+      $exec->stackTraceAndExit(qq(Invalid instruction: "$a"\n))
+        unless my $c = $instructions{$a};
       if ($options{trace})
        {say STDERR sprintf "%4d  %4d  %12s at %s line %d\n",
           $j, $i->number, $i->action, $i->file, $i->line;
@@ -2335,8 +2336,9 @@ if (1)                                                                          
 if (1)                                                                          # invalid address
  {Start 1;
   Mov 1, \0;
-  my $e = eval {Execute suppressErrors=>1};
-  ok $@ =~ m"Undefined memory accessed at area: 0 .unknown., address: 0\n at";
+  my $e = Execute(suppressErrors=>1);
+  my $t = join "\n", $e->out->@*;
+  ok $t =~ m"Cannot assign an undefined value";
  }
 
 #latest:;
