@@ -5,6 +5,7 @@
 #-------------------------------------------------------------------------------
 # Pointless adds and subtracts by 0. Perhaps we should flag adds and subtracts by 1 as well so we can have an instruction optimized for these variants.
 # Suppress no longere needed becuae youihave to enable trace or debug to get dump output
+# Assign needs to know from whence we got the value so we can write a better error message when it is no good
 use v5.30;
 package Zero::Emulator;
 use warnings FATAL => qw(all);
@@ -12,7 +13,7 @@ use strict;
 use Carp qw(cluck confess);
 use Data::Dump qw(dump);
 use Data::Table::Text qw(:all);
-eval "use Test::More tests=>64" unless caller;
+eval "use Test::More tests=>65" unless caller;
 
 makeDieConfess;
 
@@ -526,7 +527,7 @@ sub Zero::Emulator::Execution::address($$$$)                                    
    );
  }
 
-sub Zero::Emulator::Execution::stackTraceAndExit($;$)                           # Create a stack trace and exit from th emulated program
+sub Zero::Emulator::Execution::stackTrace($;$)                                  # Create a stack trace
  {my ($exec, $title) = @_;                                                      # Instruction trace occurred at, title
   my $i = $exec->currentInstruction;
   my $s = $exec->suppressErrors;                                                # Suppress file and line numbers in dump to facilitate automated testing
@@ -534,7 +535,7 @@ sub Zero::Emulator::Execution::stackTraceAndExit($;$)                           
   my @t;
 
   push @t, $title // "Stack trace\n";
-  push @t, $i->contextString("Context of failing instruction") if $d;
+  push @t, $i->contextString("Context of failing instruction") unless $s;
   for my $j(reverse keys $exec->calls->@*)
    {my $c = $exec->calls->[$j];
     my $i = $c->instruction;
@@ -543,12 +544,18 @@ sub Zero::Emulator::Execution::stackTraceAndExit($;$)                           
       $j+1, $i->number+1, $i->action, $i->file, $i->line         unless $s;
    }
 
-  my $t =    join "\n", @t;
-  say STDERR join "\n", @t unless $s;
-  push $exec->out->@*,  @t;
-  $exec->instructionPointer = undef;                                            # Execution terminates as soon as undefined instuction is encountered
+  push $exec->out->@*, @t;
+  my $t = join "\n", @t;
+  say STDERR $t if $d;
   $t
- };
+ }
+
+sub Zero::Emulator::Execution::stackTraceAndExit($;$)                           # Create a stack trace and exit from the emulated program
+ {my ($exec, $title) = @_;                                                      # Instruction trace occurred at, title
+  my $t = $exec->stackTrace($title);
+  $exec->instructionPointer = undef;                                            # Execution terminates as soon as undefined instruction is encountered
+  $t
+ }
 
 my $allocs = 0; my $allocsStacked = 0;                                          # Normal allocs made by the caller, stacked allcos made by to syupport subroutine calling, parameter passing, result returning.
 
@@ -810,14 +817,17 @@ sub Zero::Emulator::Execution::assign($$$)                                      
   my $l = $target->address;
   my $n = $target->name//'unknown';
 
-  defined($value) or $exec->stackTraceAndExit
-   ("Cannot assign an undefined value to area: $a ($n), address: $l");
-
-  my $currently = $target->get($exec);
-  if (defined($currently) and $currently == $value)
-   {$exec->pointlessAssign->{$exec->currentInstruction->number}++;
-    if ($exec->stopOnError)
-     {$exec->stackTraceAndExit("Pointless assign of: $currently to area: $a, at: $l");
+  if (!defined($value))
+   {$exec->stackTraceAndExit
+     ("Cannot assign an undefined value to area: $a ($n), address: $l");
+   }
+  else
+   {my $currently = $target->get($exec);
+    if (defined($currently) and $currently == $value)
+     {$exec->pointlessAssign->{$exec->currentInstruction->number}++;
+      if ($exec->stopOnError)
+       {$exec->stackTraceAndExit("Pointless assign of: $currently to area: $a, at: $l");
+       }
      }
    }
   $target->set($value, $exec);
@@ -947,10 +957,31 @@ sub Zero::Emulator::Code::execute($%)                                           
 
     free      => sub                                                            # Free the memory area named by the source operand
      {my $i = $exec->currentInstruction;
-      my $area =  $exec->right($i->source);                                     # Area
-      $exec->stackTraceAndExit("Attempting to allocate non user area: $area")
-        unless $area =~ m(\A\d+\Z);
-      delete $exec->memory->{$area}
+      my $area = $exec->right($i->target);                                      # Area
+      my $name = $exec->right($i->source);
+
+      if (!defined($name))                                                      # A name is required
+       {$exec->stackTraceAndExit("Area name required to free an area: $area");
+        return;
+       }
+
+      if ($area !~ m(\A\d+\Z))                                                  # User freeable area
+       {$exec->stackTraceAndExit("Attempting to allocate non user area: $area");
+        return;
+       }
+
+      my $Name = $exec->memoryType->{$area};                                    # Area has a name
+      if (!defined($Name))
+       {$exec->stackTraceAndExit("No name associated with area: $area");
+        return;
+       }
+
+      if ($name ne $Name)                                                       # Name matches supplied name
+       {$exec->stackTraceAndExit("Wrong name: $name for area with name: $Name");
+        return;
+       }
+
+      delete $exec->memory->{$area}                                             # Free validly identified area
      },
 
     resize  => sub                                                              # Resize an area
@@ -995,17 +1026,28 @@ sub Zero::Emulator::Code::execute($%)                                           
      {$exec->stackTraceAndExit;
      },
 
-    debug   => sub                                                              # Set debug
+    debug   => sub                                                              # Set debugging
      {my $i = $exec->currentInstruction;
       my $s = $exec->right($i->source);
       $exec->debug = !!$s;
       say STDERR "Debug ", $exec->debug;
      },
 
+    trace   => sub                                                              # Set tracing
+     {my $i = $exec->currentInstruction;
+      my $s = $exec->right($i->source);
+      $exec->trace = !!$s;
+      say STDERR "Trace ", $exec->trace;
+     },
+
+    tracePoint => sub                                                           # Trace point
+     {say STDERR "Trace", if $exec->trace;
+     },
+
     dump    => sub                                                              # Dump memory
      {my $i = $exec->currentInstruction;
       my $d = $exec->dumpMemory($i->source);
-      say STDERR $d if $options{trace} or $options{debug};
+      say STDERR $d if $exec->debug or $options{trace} or $options{debug};
       push $exec->out->@*, $d;
      },
 
@@ -1018,7 +1060,7 @@ sub Zero::Emulator::Code::execute($%)                                           
 
     inc       => sub                                                            # Increment locations in memory. The first address is incremented by 1, the next by two, etc.
      {my $i = $exec->currentInstruction;
-      $exec->leftSuppress($i->target);                                                 # Make sure there is something to increment
+      $exec->leftSuppress($i->target);                                          # Make sure there is something to increment
       my $t = $exec->left($i->target);
       ${$t->at($exec)}++;
      },
@@ -1123,7 +1165,7 @@ sub Zero::Emulator::Code::execute($%)                                           
     out     => sub                                                              # Write source as output to an array of words
      {my $i = $exec->currentInstruction;
       my $t = $exec->right($i->source);
-      lll $t if $options{debug} or $options{trace};
+      lll $t if $exec->debug or $options{debug} or $options{trace};
       push $exec->out->@*, $t;
      },
 
@@ -1286,9 +1328,9 @@ sub Alloc($)                                                                    
   $t;
  }
 
-sub Free($)                                                                     # Free the memory area named by the source operand
- {my ($source) = @_;                                                            # Source address containing number of area to free
-  $assembly->instruction(action=>"free", xSource($source));
+sub Free($$)                                                                    # Free the memory area named by the target operand after confirming that it has the name specified on the source operand
+ {my ($target, $source) = @_;                                                   # Target area yielding the id of the area to be freed, source area yielding the name of the area to be freed
+  $assembly->instruction(action=>"free", xTarget($target), xSource($source));
  }
 
 sub Call($)                                                                     # Call the subroutine at the target address
@@ -1307,8 +1349,17 @@ sub Dump(;$)                                                                    
  }
 
 sub Debug($)                                                                    # Debug
- {my ($source) = @_;                                                            # Debug setting, options
+ {my ($source) = @_;                                                            # Debug setting
   $assembly->instruction(action=>"debug", xSource($source));
+ }
+
+sub Trace($)                                                                    # Trace
+ {my ($source) = @_;                                                            # Trace setting
+  $assembly->instruction(action=>"trace", xSource($source));
+ }
+
+sub TracePoint()                                                                # Trace point - a point in the code where the flow of execution might change
+ {$assembly->instruction(action=>"tracePoint");
  }
 
 sub Dec($)                                                                      # Decrement the target
@@ -1621,9 +1672,11 @@ sub Ifx($$$%)                                                                   
    {my $else = label;
     my $end  = label;
     &$cmp($else, $a, $b);
+      TracePoint;
       &{$options{then}};
       Jmp $end;
     setLabel($else);
+      TracePoint;
       &{$options{else}};
     setLabel($end);
    }
@@ -1728,6 +1781,7 @@ sub For($$%)                                                                    
     my $i = Mov $s;
       setLabel($Check);                                                         # Check
       Jge  $End, $i, $e;
+        TracePoint;
         &$block($i, $Check, $Next, $End);                                       # Block
       setLabel($Next);
       Inc $i;                                                                   # Next
@@ -1745,6 +1799,7 @@ sub For($$%)                                                                    
     Subtract $i, $s;
       setLabel($Check);                                                         # Check
       Jlt  $End, $i, $e;
+        TracePoint;
         &$block($i, $Check, $Next, $End);                                       # Block
       setLabel($Next);
       Dec $i;                                                                   # Next
@@ -1774,17 +1829,20 @@ sub Block(&%)                                                                   
 
   setLabel($Start);                                                             # Start
 
+  TracePoint;
   &$block($Start, $Good, $Bad, $End);                                           # Code of block
 
   if ($g)                                                                       # Good
    {Jmp $End;
     setLabel($Good);
+    TracePoint;
     &$g;
    }
 
   if ($b)                                                                       # Bad
    {Jmp $End;
     setLabel($Bad);
+    TracePoint;
     &$b;
    }
   setLabel($End);                                                               # End
@@ -1877,6 +1935,7 @@ if (1)                                                                          
  {Start 1;
   my $a = Mov 2;
   Out $a;
+
   ok Execute(out=>[2]);
  }
 
@@ -2106,12 +2165,24 @@ if (1)                                                                          
 if (1)                                                                          #TFree
  {Start 1;
   my $a = Alloc "node";
+  Free $a, "aaa";
+  my $e = Execute(suppressErrors=>1);
+  is_deeply $e->out, [
+  "Wrong name: aaa for area with name: node",
+  "    1     2 free\n",
+];
+ }
+
+#latest:;
+if (1)                                                                          #TFree
+ {Start 1;
+  my $a = Alloc "node";
   Out $a;
   Mov [$a, 1, 'node'], 1;
   Mov [$a, 2, 'node'], 2;
   Mov 1, [$a, \1, 'node'];
   Dump;
-  Free $a;
+  Free $a, "node";
   my $e = Execute;
  }
 
@@ -2503,7 +2574,7 @@ if (1)                                                                          
     Jeq $next, $d, $d;
    };
   my $e = Execute;
-  is_deeply $e->analyzeExecutionResults(doubleWrite=>3), "#       33 instructions executed";
+  is_deeply $e->analyzeExecutionResults(doubleWrite=>3), "#       36 instructions executed";
   is_deeply $e->memory, { 1 => bless([2], "aaa"), 2 => bless([99], "bbb") };
  }
 
@@ -2519,7 +2590,7 @@ if (1)                                                                          
     Jeq $next, [$a, \$b, 'aaa'], 1;
    };
   my $e = Execute;
-  is_deeply $e->analyzeExecutionResults(doubleWrite=>3), "#       29 instructions executed";
+  is_deeply $e->analyzeExecutionResults(doubleWrite=>3), "#       32 instructions executed";
   is_deeply $e->memory, {1 => bless([undef, undef, 1], "aaa"), 2 => [99]};
  }
 
