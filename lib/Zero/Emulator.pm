@@ -6,6 +6,7 @@
 # Pointless adds and subtracts by 0. Perhaps we should flag adds and subtracts by 1 as well so we can have an instruction optimized for these variants.
 # Suppress no longere needed becuae youihave to enable trace or debug to get dump output
 # Assign needs to know from whence we got the value so we can write a better error message when it is no good
+# Count number of ways an if statement actually goes.
 use v5.30;
 package Zero::Emulator;
 use warnings FATAL => qw(all);
@@ -13,7 +14,7 @@ use strict;
 use Carp qw(cluck confess);
 use Data::Dump qw(dump);
 use Data::Table::Text qw(:all);
-eval "use Test::More tests=>65" unless caller;
+eval "use Test::More tests=>66" unless caller;
 
 makeDieConfess;
 
@@ -533,9 +534,10 @@ sub Zero::Emulator::Execution::stackTrace($;$)                                  
   my $s = $exec->suppressErrors;                                                # Suppress file and line numbers in dump to facilitate automated testing
   my $d = $exec->debug;
   my @t;
+     $title //= "Stack trace\n";
 
-  push @t, $title // "Stack trace\n";
-  push @t, $i->contextString("Context of failing instruction") unless $s;
+  push @t, $s ? $title : $i->contextString($title);
+
   for my $j(reverse keys $exec->calls->@*)
    {my $c = $exec->calls->[$j];
     my $i = $c->instruction;
@@ -873,9 +875,10 @@ sub execute(%)                                                                  
     doubleWrite          => {},                                                 # Source of double writes {instruction number} to count - an existing value was overwritten before it was used
     pointlessAssign      => {},                                                 # Location already has the specified value
     suppressErrors       => $options{suppressErrors},
-    stopOnError          => $options{stopOnError},
-    trace                => $options{trace},
-    debug                => $options{debug},
+    stopOnError          => $options{stopOnError},                              # Stop on non fatal errors if true
+    trace                => $options{trace},                                    # Trace all statements
+    tracePoints          => undef,                                              # Trace changes in execution flow
+    debug                => $options{debug},                                    # Debugging
     printNotRead         => $options{NotRead},                                  # Memory locations never read
     printDoubleWrite     => $options{doubleWrite},                              # Double writes: earlier instruction number to later instruction number
     printPointlessAssign => $options{pointlessAssign},                          # Pointless assigns {instruction number} to count - address already has the specified value
@@ -1034,14 +1037,18 @@ sub Zero::Emulator::Code::execute($%)                                           
      },
 
     trace   => sub                                                              # Set tracing
-     {my $i = $exec->currentInstruction;
-      my $s = $exec->right($i->source);
-      $exec->trace = !!$s;
-      say STDERR "Trace ", $exec->trace;
+     {my $i =   $exec->currentInstruction;
+      my $s = !!$exec->right($i->source);
+      $exec->tracePoints = $s;
+      say STDERR           "Trace $s" unless $exec->suppressErrors;
+      push $exec->out->@*, "Trace $s";
      },
 
     tracePoint => sub                                                           # Trace point
-     {say STDERR "Trace", if $exec->trace;
+     {return unless $exec->tracePoints;
+      my @s = $exec->stackTrace("Trace");
+      say STDERR join "\n", @s unless $exec->suppressErrors;
+      push $exec->out->@*, @s;
      },
 
     dump    => sub                                                              # Dump memory
@@ -2127,11 +2134,12 @@ if (1)                                                                          
    {Confess;
    };
   Call $c;
-  ok Execute(suppressErrors=>1, out=>
+  my $e = Execute(suppressErrors=>1);
+  is_deeply $e->out,
 [
 "Stack trace\n",
   "    2     3 confess\n",
-  "    1     6 call\n"]);
+  "    1     6 call\n"];
  }
 
 #latest:;
@@ -2604,4 +2612,30 @@ if (1)                                                                          
   Resize $a, 2;
   my $e = Execute;
   is_deeply $e->memory, {1 => [1, 2]};
+ }
+
+#latest:;
+if (1)                                                                          #TTrace
+ {Start 1;
+  Trace 1;
+  IfEq 1, 2,
+  Then
+   {Mov 1, 1;
+    Mov 2, 1;
+   },
+  Else
+   {Mov 3, 3;
+    Mov 4, 4;
+   };
+  IfEq 2, 2,
+  Then
+   {Mov 1, 1;
+    Mov 2, 1;
+   },
+  Else
+   {Mov 3, 3;
+    Mov 4, 4;
+   };
+  my $e = Execute(suppressErrors=>1);
+  is_deeply scalar($e->out->@*), 7;
  }
