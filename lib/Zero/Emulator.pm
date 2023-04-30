@@ -119,7 +119,7 @@ sub Zero::Emulator::AreaStructure::count($)                                     
 sub Zero::Emulator::AreaStructure::name($$)                                     # Add a field to a data structure
  {my ($d, $name) = @_;                                                          # Parameters
   @_ == 2 or confess "Two parameters";
-  if (!$d->fieldNames->{$name})
+  if (!defined $d->fieldNames->{$name})
    {$d->fieldNames->{$name} = $d->fieldOrder->@*;
     push $d->fieldOrder->@*, $name;
    }
@@ -524,7 +524,7 @@ sub Zero::Emulator::Execution::address($$$$)                                    
   genHash("Zero::Emulator::Address",                                            # Address memory
     area     => $area,                                                          # Area in memory
     address  => $address,                                                       # Address within area
-    name     => $name,                                                          # Name of area
+    name     => $name // 'stackArea',                                           # Name of area
    );
  }
 
@@ -819,7 +819,7 @@ sub Zero::Emulator::Execution::assign($$$)                                      
   my $l = $target->address;
   my $n = $target->name//'unknown';
 
-  if (!defined($value))
+  if (!defined($value))                                                         # Check that the assign is not pointless
    {$exec->stackTraceAndExit
      ("Cannot assign an undefined value to area: $a ($n), address: $l");
    }
@@ -832,7 +832,13 @@ sub Zero::Emulator::Execution::assign($$$)                                      
        }
      }
    }
-  $target->set($value, $exec);
+
+  if (defined $exec->watch->{$a}{$l})                                           # Watch for specified changes
+   {$exec->stackTraceAndExit
+     ("Change at watched area: $a ($n), address: $l\n");
+   }
+
+  $target->set($value, $exec);                                                  # Actually do the assign
  }
 
 sub Zero::Emulator::Execution::allocateSystemAreas($)                           # Allocate system areas for a new stack frame
@@ -882,6 +888,7 @@ sub execute(%)                                                                  
     printNotRead         => $options{NotRead},                                  # Memory locations never read
     printDoubleWrite     => $options{doubleWrite},                              # Double writes: earlier instruction number to later instruction number
     printPointlessAssign => $options{pointlessAssign},                          # Pointless assigns {instruction number} to count - address already has the specified value
+    watch                => {},                                                 # Addresses to watch for changes
    );
  }
 
@@ -1245,6 +1252,12 @@ sub Zero::Emulator::Code::execute($%)                                           
       pop $exec->memory->{$s->area}->@*;
       my $T = $exec->left($i->target);
       $exec->assign($T, $v);
+     },
+
+    watch => sub                                                                # Watch a memory location for changes
+     {my $i = $exec->currentInstruction;
+      my $t = $exec->left($i->target);
+      $exec->watch->{$t->area}{$t->address}++;
      },
    );
 
@@ -1640,7 +1653,7 @@ sub ShiftUp($;$)                                                                
   $target
  }
 
-sub ShiftDown($;$)                                                              # Shift an element down opne in an area
+sub ShiftDown($;$)                                                              # Shift an element down one in an area
  {if (@_ == 1)                                                                  # Create a variable
    {my ($source) = @_;                                                          # Memory address to place return value in, return value to get
     my $p = &Var();
@@ -1658,6 +1671,11 @@ sub ShiftDown($;$)                                                              
   else
    {confess "One or two parameters required";
    }
+ }
+
+sub Watch($)                                                                    # Shift an element down one in an area
+ {my ($target) = @_;                                                            # Memory address to watch
+  $assembly->instruction(action=>"watch", xTarget($target));
  }
 
 sub Then(&)                                                                     # Then block
@@ -1893,7 +1911,7 @@ use vars qw(@ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
 
 @ISA         = qw(Exporter);
 @EXPORT      = qw();
-@EXPORT_OK   = qw(AreaStructure Add Alloc Bad Block Call Clear Confess Debug Else Execute For Free Good Assert AssertEq AssertNe AssertGe AssertGt AssertLe AssertLt Dec Dump IfEq IfGe IfGt IfLe IfLt IfNe Ifx IfTrue IfFalse Inc Jeq Jge Jgt Jle Jlt Jmp Jne Label Mov Nop Not Out ParamsGet ParamsPut Pop Procedure Push Resize Return ReturnGet ReturnPut ShiftLeft ShiftRight ShiftUp ShiftDown Start Subtract Then Var);
+@EXPORT_OK   = qw(AreaStructure Add Alloc Bad Block Call Clear Confess Debug Else Execute For Free Good Assert AssertEq AssertNe AssertGe AssertGt AssertLe AssertLt Dec Dump IfEq IfGe IfGt IfLe IfLt IfNe Ifx IfTrue IfFalse Inc Jeq Jge Jgt Jle Jlt Jmp Jne Label Mov Nop Not Out ParamsGet ParamsPut Pop Procedure Push Resize Return ReturnGet ReturnPut ShiftLeft ShiftRight ShiftUp ShiftDown Start Subtract Then Trace Var);
 %EXPORT_TAGS = (all=>[@EXPORT, @EXPORT_OK]);
 
 return 1 if caller;
@@ -2638,4 +2656,23 @@ if (1)                                                                          
    };
   my $e = Execute(suppressErrors=>1);
   is_deeply scalar($e->out->@*), 7;
+ }
+
+#latest:;
+if (1)                                                                          #TWatch
+ {Start 1;
+  my $a = Mov 1;
+  my $b = Mov 2;
+  my $c = Mov 3;
+  Watch $b;
+  Mov $a, 4;
+  Mov $b, 5;
+  Mov $c, 6;
+  my $e = Execute(suppressErrors=>0, debug=>1);
+say STDERR "AAAA", dump($e->out);
+  is_deeply $e->out,
+[
+  "Change at watched area: 0 (stackArea), address: 1\n",
+  "    1     6 mov\n",
+];
  }
