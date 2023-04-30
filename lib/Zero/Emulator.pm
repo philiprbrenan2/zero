@@ -2670,8 +2670,6 @@ if (1)                                                                          
   Mov $c, 6;
   my $e = Execute(suppressErrors=>1);
   is_deeply $e->out,
-[
-  "Change at watched area: 0 (stackArea), address: 1\n",
-  "    1     6 mov\n",
-];
+[ "Change at watched area: 0 (stackArea), address: 1\n",
+  "    1     6 mov\n"];
  }
