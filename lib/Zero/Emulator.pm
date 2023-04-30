@@ -14,7 +14,7 @@ use strict;
 use Carp qw(cluck confess);
 use Data::Dump qw(dump);
 use Data::Table::Text qw(:all);
-eval "use Test::More tests=>66" unless caller;
+eval "use Test::More tests=>67" unless caller;
 
 makeDieConfess;
 
@@ -834,8 +834,8 @@ sub Zero::Emulator::Execution::assign($$$)                                      
    }
 
   if (defined $exec->watch->{$a}{$l})                                           # Watch for specified changes
-   {$exec->stackTraceAndExit
-     ("Change at watched area: $a ($n), address: $l\n");
+   {my @s = $exec->stackTrace("Change at watched area: $a ($n), address: $l\n");
+    say STDERR join "\n", @s unless $exec->suppressErrors;
    }
 
   $target->set($value, $exec);                                                  # Actually do the assign
@@ -2668,8 +2668,7 @@ if (1)                                                                          
   Mov $a, 4;
   Mov $b, 5;
   Mov $c, 6;
-  my $e = Execute(suppressErrors=>0, debug=>1);
-say STDERR "AAAA", dump($e->out);
+  my $e = Execute(suppressErrors=>1);
   is_deeply $e->out,
 [
   "Change at watched area: 0 (stackArea), address: 1\n",
