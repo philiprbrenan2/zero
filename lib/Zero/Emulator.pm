@@ -176,8 +176,8 @@ my sub RefRight($)                                                              
 
   if (ref($r) =~ m(array)i)
    {my ($area, $address, $name) = @$r;
-     defined($area) and !defined($name) and confess "Name required for area: in {name, address, name]";
-    !defined($area) and  defined($name) and confess "Area required for name: in {name, address, name]";
+     defined($area) and !defined($name) and confess "Name required for address specification: in [Area, address, name]";
+    !defined($area) and  defined($name) and confess "Area required for address specification: in [Area, address, name]";
     isScalar($address) and defined($area) || defined($name) and confess "Constants cannot have an associated area";
 
     return genHash("Zero::Emulator::RefRight",
@@ -191,7 +191,7 @@ my sub RefRight($)                                                              
    {return genHash("Zero::Emulator::RefRight",
       area     => undef,
       address  => $r,
-      name     => undef,
+      name     => 'stackArea',
       variable => 0,
      );
    }
@@ -218,7 +218,7 @@ my sub RefLeft($)                                                               
    {return genHash("Zero::Emulator::RefLeft",
       area     => undef,
       address  => $r,
-      name     => undef,
+      name     => 'stackArea',
      );
    }
  }
@@ -349,8 +349,8 @@ sub Zero::Emulator::Execution::dumpMemory($;$)                                  
    }
 
   my $t = $title ? " $title" : '';
-
-  "memory$t:\n". dump(\@m);
+  my $m = "memory$t:\n". dump(\@m);
+  confess $m unless $title;
  }
 
 sub Zero::Emulator::Execution::analyzeExecutionResultsLeast($%)                 # Analyze execution results for least used code
@@ -819,6 +819,16 @@ sub Zero::Emulator::Execution::assign($$$)                                      
   my $l = $target->address;
   my $n = $target->name//'unknown';
 
+  my $N = $exec->memoryType->{$a};
+  if (!defined $N)                                                              # Check that the area has a name
+   {confess $exec->stackTraceAndExit("No name for area $a\n".dump($exec->memory)." address:".dump($target));
+   }
+
+  if ($n ne $N)                                                                 # Check that the area name matches the one supplied in the address
+   {$exec->stackTraceAndExit
+     ("Area name provided: '$n' does not match actual area name '$N' for area: $a");
+   }
+
   if (!defined($value))                                                         # Check that the assign is not pointless
    {$exec->stackTraceAndExit
      ("Cannot assign an undefined value to area: $a ($n), address: $l");
@@ -835,6 +845,10 @@ sub Zero::Emulator::Execution::assign($$$)                                      
 
   if (defined $exec->watch->{$a}{$l})                                           # Watch for specified changes
    {my @s = $exec->stackTrace("Change at watched area: $a ($n), address: $l\n");
+    push @s, "Current value: ", $exec->memory->{$a}[$l];
+    push @s, "New     value: ", $value;
+    push @s, $exec->dumpMemory;
+    push @s, dump($exec->memoryType);
     say STDERR join "\n", @s unless $exec->suppressErrors;
    }
 
@@ -1911,7 +1925,7 @@ use vars qw(@ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
 
 @ISA         = qw(Exporter);
 @EXPORT      = qw();
-@EXPORT_OK   = qw(AreaStructure Add Alloc Bad Block Call Clear Confess Debug Else Execute For Free Good Assert AssertEq AssertNe AssertGe AssertGt AssertLe AssertLt Dec Dump IfEq IfGe IfGt IfLe IfLt IfNe Ifx IfTrue IfFalse Inc Jeq Jge Jgt Jle Jlt Jmp Jne Label Mov Nop Not Out ParamsGet ParamsPut Pop Procedure Push Resize Return ReturnGet ReturnPut ShiftLeft ShiftRight ShiftUp ShiftDown Start Subtract Then Trace Var);
+@EXPORT_OK   = qw(AreaStructure Add Alloc Bad Block Call Clear Confess Debug Else Execute For Free Good Assert AssertEq AssertNe AssertGe AssertGt AssertLe AssertLt Dec Dump IfEq IfGe IfGt IfLe IfLt IfNe Ifx IfTrue IfFalse Inc Jeq Jge Jgt Jle Jlt Jmp Jne Label Mov Nop Not Out ParamsGet ParamsPut Pop Procedure Push Resize Return ReturnGet ReturnPut ShiftLeft ShiftRight ShiftUp ShiftDown Start Subtract Then Trace Var Watch);
 %EXPORT_TAGS = (all=>[@EXPORT, @EXPORT_OK]);
 
 return 1 if caller;
@@ -2609,15 +2623,14 @@ if (1)                                                                          
  {Start 1;
   my $a = Alloc 'aaa';
   my $b = Mov 2;                                                                # Location to move to in a
-  Mov [$b, 0, 'aaa'], 99;
   For 3, sub
    {my ($i, $check, $next, $end) = @_;
     Mov [$a, \$b, 'aaa'], 1;
     Jeq $next, [$a, \$b, 'aaa'], 1;
    };
   my $e = Execute;
-  is_deeply $e->analyzeExecutionResults(doubleWrite=>3), "#       32 instructions executed";
-  is_deeply $e->memory, {1 => bless([undef, undef, 1], "aaa"), 2 => [99]};
+  is_deeply $e->analyzeExecutionResults(doubleWrite=>3), "#       31 instructions executed";
+  is_deeply $e->memory, {1 => bless([undef, undef, 1], "aaa")};
  }
 
 #latest:;
