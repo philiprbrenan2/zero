@@ -14,7 +14,7 @@ use strict;
 use Carp qw(cluck confess);
 use Data::Dump qw(dump);
 use Data::Table::Text qw(:all);
-eval "use Test::More tests=>67" unless caller;
+eval "use Test::More tests=>68" unless caller;
 
 makeDieConfess;
 
@@ -82,15 +82,17 @@ sub Zero::Emulator::Code::instruction($%)                                       
    }
  }
 
-sub Zero::Emulator::Code::Instruction::contextString($;$)                       # Stack trace back for this instruction
- {my ($i, $title) = @_;                                                         # Instruction, options
-  @_ == 1 or @_ == 2 or confess "One or Two parameters";
+sub Zero::Emulator::Code::Instruction::contextString($$$)                       # Stack trace back for this instruction
+ {my ($i, $exec, $title) = @_;                                                  # Instruction, execution environment, title
+  @_ == 3 or confess "Three parameters";
   my @s;
-  push @s, $title if defined $title;
-  for my $c($i->context->@*)
-   {push @s, sprintf "    at %s line %d", $$c[0], $$c[1];
+  push @s, $title;
+  if (!defined($exec->suppressErrors))
+   {for my $c($i->context->@*)
+     {push @s, sprintf "    at %s line %d", $$c[0], $$c[1];
+     }
    }
-  join "\n", @s
+  @s
  }
 
 sub AreaStructure($@)                                                           # Describe a data structure mapping a memory area
@@ -336,9 +338,9 @@ sub Zero::Emulator::Execution::areaContent($$)                                  
   @$A
  }
 
-sub Zero::Emulator::Execution::dumpMemory($;$)                                  # Dump memory
- {my ($exec, $title) = @_;                                                      # Execution, Instruction, title
-  @_ == 1 or @_ == 2 or confess "One or Two parameters";
+sub Zero::Emulator::Execution::dumpMemory($)                                    # Dump memory
+ {my ($exec) = @_;                                                              # Execution environment
+  @_ == 1 or confess "One parameter";
   my $memory = $exec->memory;
   my @m;
   for my $area(sort {$a <=> $b} keys %$memory)
@@ -348,9 +350,7 @@ sub Zero::Emulator::Execution::dumpMemory($;$)                                  
     push @m, "$area=$l";
    }
 
-  my $t = $title ? " $title" : '';
-  my $m = "memory$t:\n". dump(\@m);
-  confess $m unless $title;
+  @m
  }
 
 sub Zero::Emulator::Execution::analyzeExecutionResultsLeast($%)                 # Analyze execution results for least used code
@@ -401,8 +401,8 @@ sub Zero::Emulator::Execution::analyzeExecutionNotRead($%)                      
    {my $area = $$n{$areaK};
     for my $addressK(sort keys %$area)
      {my $address = $$area{$addressK};
-      my $context = $exec->code->code->[$addressK]->contextString;
-      push @t, "Not read from area: $areaK, address: $addressK in context\n$context";
+      push @t, $exec->code->code->[$addressK]->contextString
+       ($exec, "Not read from area: $areaK, address: $addressK in context:");
      }
    }
   @t;
@@ -534,27 +534,32 @@ sub Zero::Emulator::Execution::stackTrace($;$)                                  
   my $s = $exec->suppressErrors;                                                # Suppress file and line numbers in dump to facilitate automated testing
   my $d = $exec->debug;
   my @t;
-     $title //= "Stack trace\n";
-
-  push @t, $s ? $title : $i->contextString($title);
+  push @t, $i->contextString($exec, $title//"Stack trace");
 
   for my $j(reverse keys $exec->calls->@*)
    {my $c = $exec->calls->[$j];
     my $i = $c->instruction;
-    push @t, sprintf "%5d  %4d %s\n", $j+1, $i->number+1, $i->action if $s;
-    push @t, sprintf "%5d  %4d %-16s at %s line %d\n",
+    push @t, sprintf "%5d  %4d %s", $j+1, $i->number+1, $i->action if $s;
+    push @t, sprintf "%5d  %4d %-16s at %s line %d",
       $j+1, $i->number+1, $i->action, $i->file, $i->line         unless $s;
    }
 
-  push $exec->out->@*, @t;
-  my $t = join "\n", @t;
-  say STDERR $t if $d;
-  $t
+  @t
  }
 
-sub Zero::Emulator::Execution::stackTraceAndExit($;$)                           # Create a stack trace and exit from the emulated program
- {my ($exec, $title) = @_;                                                      # Instruction trace occurred at, title
-  my $t = $exec->stackTrace($title);
+sub Zero::Emulator::Execution::stackTraceAndExit($$%)                           # Create a stack trace and exit from the emulated program
+ {my ($exec, $title, %options) = @_;                                                      # Instruction trace occurred at, title
+  @_ >= 2 or confess "At least two parameters";
+
+  my @t = $exec->stackTrace($title);
+  push $exec->out->@*, @t;
+  my $t = join "\n", @t;
+
+  if (!defined $exec->suppressErrors)
+   {confess $t if $options{confess};
+    say STDERR $t;
+   }
+
   $exec->instructionPointer = undef;                                            # Execution terminates as soon as undefined instruction is encountered
   $t
  }
@@ -608,7 +613,9 @@ sub Zero::Emulator::Execution::rwWrite($$$)                                     
    {my $M = $exec->memory->{$area}[$address];                                   # If the memory address is zero we will assume that it has been cleared rather than set.
     if ($M)
      {my $Q = $exec->currentInstruction;
-      $exec->doubleWrite->{$P->contextString}{$Q->contextString}++;
+      my $p = $P->contextString($exec, "Previous write");
+      my $q = $Q->contextString($exec, "Current  write");
+      $exec->doubleWrite->{$p}{$q}++;
      }
    }
   $exec->rw->{$area}{$address} = $exec->currentInstruction;
@@ -646,12 +653,10 @@ sub Zero::Emulator::Execution::left($$;$)                                       
     my $i = $exec->currentInstruction;
     my $l = $i->line;
     my $f = $i->file;
-    my $c = $i->contextString;
-    my $t = $exec->stackTraceAndExit(
+    $exec->stackTraceAndExit(
      "Invalid left area: ".dump($area)
      ." address: ".dump($a)
-     .(defined($extra) ? " + extra: ".dump($extra) : '')
-     ." stack: $S at $f line $l\n$c\n");
+     .(defined($extra) ? " + extra: ".dump($extra) : ''))
    };
 
   my $M;                                                                        # Memory address
@@ -737,15 +742,13 @@ sub Zero::Emulator::Execution::right($$)                                        
    {my $i = $exec->currentInstruction;
     my $l = $i->line;
     my $f = $i->file;
-    my $c = $i->contextString("Failing instruction:");
     $exec->stackTraceAndExit(
      "Invalid right area: ".dump($area)
      ." address: "    .dump($a)
      ." stack: "      .$exec->stackArea
      ." error: "      .dump($e)
      ." target Area: ".dump($tArea)
-     ." address: "    .dump($tAddress)
-     ." at $f line $l\n$c\n");
+     ." address: "    .dump($tAddress));
    }
 
   if (isScalar($a))                                                             # Constant
@@ -821,7 +824,7 @@ sub Zero::Emulator::Execution::assign($$$)                                      
 
   my $N = $exec->memoryType->{$a};
   if (!defined $N)                                                              # Check that the area has a name
-   {confess $exec->stackTraceAndExit("No name for area $a\n".dump($exec->memory)." address:".dump($target));
+   {$exec->stackTraceAndExit("No name for area $a\n".dump($exec->memory)." address:".dump($target), confess=>1);
    }
 
   if ($n ne $N)                                                                 # Check that the area name matches the one supplied in the address
@@ -848,8 +851,8 @@ sub Zero::Emulator::Execution::assign($$$)                                      
     push @s, "Current value: ", $exec->memory->{$a}[$l];
     push @s, "New     value: ", $value;
     push @s, $exec->dumpMemory;
-    push @s, dump($exec->memoryType);
     say STDERR join "\n", @s unless $exec->suppressErrors;
+    push $exec->out->@*, @s;
    }
 
   $target->set($value, $exec);                                                  # Actually do the assign
@@ -1047,7 +1050,7 @@ sub Zero::Emulator::Code::execute($%)                                           
      },
 
     confess => sub                                                              # Print the current call stack and stop
-     {$exec->stackTraceAndExit;
+     {$exec->stackTraceAndExit("Confess at:", confess=>1);
      },
 
     debug   => sub                                                              # Set debugging
@@ -1074,9 +1077,13 @@ sub Zero::Emulator::Code::execute($%)                                           
 
     dump    => sub                                                              # Dump memory
      {my $i = $exec->currentInstruction;
-      my $d = $exec->dumpMemory($i->source);
-      say STDERR $d if $exec->debug or $options{trace} or $options{debug};
-      push $exec->out->@*, $d;
+      my @m;
+      push @m, $i->source // "Memory dump";
+      push @m, $exec->dumpMemory;
+      push @m, $exec->stackTrace;
+
+      say STDERR join "\n", @m unless $exec->suppressErrors;
+      push $exec->out->@*, @m;
      },
 
     dec     => sub                                                              # Decrement locations in memory. The first address is incremented by 1, the next by two, etc.
@@ -2167,11 +2174,7 @@ if (1)                                                                          
    };
   Call $c;
   my $e = Execute(suppressErrors=>1);
-  is_deeply $e->out,
-[
-"Stack trace\n",
-  "    2     3 confess\n",
-  "    1     6 call\n"];
+  is_deeply $e->out, ["Confess at:", "    2     3 confess", "    1     6 call"];
  }
 
 #latest:;
@@ -2207,9 +2210,10 @@ if (1)                                                                          
   my $a = Alloc "node";
   Free $a, "aaa";
   my $e = Execute(suppressErrors=>1);
+
   is_deeply $e->out, [
   "Wrong name: aaa for area with name: node",
-  "    1     2 free\n",
+  "    1     2 free",
 ];
  }
 
@@ -2221,9 +2225,20 @@ if (1)                                                                          
   Mov [$a, 1, 'node'], 1;
   Mov [$a, 2, 'node'], 2;
   Mov 1, [$a, \1, 'node'];
-  Dump;
+  Dump "dddd";
   Free $a, "node";
-  my $e = Execute;
+  my $e = Execute(suppressErrors=>1);
+
+  is_deeply $e->out, [
+  1,
+  "dddd",
+  "-2=bless([], \"return\")",
+  "-1=bless([], \"params\")",
+  "0=bless([1, 1], \"stackArea\")",
+  "1=bless([undef, 1, 2], \"node\")",
+  "Stack trace",
+  "    1     6 dump",
+];
  }
 
 #latest:;
@@ -2342,7 +2357,7 @@ if (1)                                                                          
  {Start 1;
   Assert;
   my $e = Execute(suppressErrors=>1);
-  is_deeply $e->out, ["Assert failed", "    1     1 assert\n"];
+  is_deeply $e->out, ["Assert failed", "    1     1 assert"];
  }
 
 #latest:;
@@ -2351,7 +2366,7 @@ if (1)                                                                          
   Mov 0, 1;
   AssertEq \0, 2;
   my $e = Execute(suppressErrors=>1);
-  is_deeply $e->out, ["Assert 1 == 2 failed", "    1     2 assertEq\n"];
+  is_deeply $e->out, ["Assert 1 == 2 failed", "    1     2 assertEq"];
  }
 
 #latest:;
@@ -2360,7 +2375,7 @@ if (1)                                                                          
   Mov 0, 1;
   AssertNe \0, 1;
   my $e = Execute(suppressErrors=>1);
-  is_deeply $e->out, ["Assert 1 != 1 failed", "    1     2 assertNe\n"];
+  is_deeply $e->out, ["Assert 1 != 1 failed", "    1     2 assertNe"];
  }
 
 #latest:;
@@ -2369,7 +2384,7 @@ if (1)                                                                          
   Mov 0, 1;
   AssertLt \0, 0;
   my $e = Execute(suppressErrors=>1);
-  is_deeply $e->out, ["Assert 1 <  0 failed", "    1     2 assertLt\n"];
+  is_deeply $e->out, ["Assert 1 <  0 failed", "    1     2 assertLt"];
  }
 
 #latest:;
@@ -2378,7 +2393,7 @@ if (1)                                                                          
   Mov 0, 1;
   AssertLe \0, 0;
   my $e = Execute(suppressErrors=>1);
-  is_deeply $e->out, ["Assert 1 <= 0 failed", "    1     2 assertLe\n"];
+  is_deeply $e->out, ["Assert 1 <= 0 failed", "    1     2 assertLe"];
  }
 
 #latest:;
@@ -2387,7 +2402,7 @@ if (1)                                                                          
   Mov 0, 1;
   AssertGt \0, 2;
   my $e = Execute(suppressErrors=>1);
-  is_deeply $e->out, ["Assert 1 >  2 failed", "    1     2 assertGt\n"];
+  is_deeply $e->out, ["Assert 1 >  2 failed", "    1     2 assertGt"];
  }
 
 #latest:;
@@ -2396,7 +2411,7 @@ if (1)                                                                          
   Mov 0, 1;
   AssertGe \0, 2;
   my $e = Execute(suppressErrors=>1);
-  is_deeply $e->out, ["Assert 1 >= 2 failed", "    1     2 assertGe\n"];
+  is_deeply $e->out, ["Assert 1 >= 2 failed", "    1     2 assertGe"];
  }
 
 #latest:;
@@ -2413,9 +2428,17 @@ if (1)                                                                          
 if (1)                                                                          #TAlloc #TMov #TCall
  {Start 1;
   my $a = Alloc "aaa";
-  Dump;
-  my $e = Execute;
-  is_deeply $e->out, [  "memory:\n[\n  \"-2=bless([], \\\"return\\\")\",\n  \"-1=bless([], \\\"params\\\")\",\n  \"0=bless([1], \\\"stackArea\\\")\",\n  \"1=bless([], \\\"aaa\\\")\",\n]",];
+  Dump "dddd";
+  my $e = Execute(suppressErrors=>1);
+  is_deeply $e->out, [
+  "dddd",
+  "-2=bless([], \"return\")",
+  "-1=bless([], \"params\")",
+  "0=bless([1], \"stackArea\")",
+  "1=bless([], \"aaa\")",
+  "Stack trace",
+  "    1     2 dump",
+];
  }
 
 #latest:;
@@ -2511,7 +2534,7 @@ if (1)                                                                          
   Mov 3, 1;
   Mov 1, 1;
   my $e = Execute;
-  ok keys($e->doubleWrite->%*) == 2;                                            # In area 0, variable 1 was first written by instruction 0 then again by instruction 1 once.
+  is_deeply keys($e->doubleWrite->%*), 3;                                       # In area 0, variable 1 was first written by instruction 0 then again by instruction 1 once.
   #say STDERR $e->analyzeExecutionResultsDoubleWrite(doubleWrite=>1);
  }
 
@@ -2668,7 +2691,7 @@ if (1)                                                                          
     Mov 4, 4;
    };
   my $e = Execute(suppressErrors=>1);
-  is_deeply scalar($e->out->@*), 7;
+  is_deeply scalar($e->out->@*), 5;
  }
 
 #latest:;
@@ -2683,6 +2706,15 @@ if (1)                                                                          
   Mov $c, 6;
   my $e = Execute(suppressErrors=>1);
   is_deeply $e->out,
-[ "Change at watched area: 0 (stackArea), address: 1\n",
-  "    1     6 mov\n"];
+[
+  "Change at watched area: 0 (stackArea), address: 1\n",
+  "    1     6 mov",
+  "Current value: ",
+  2,
+  "New     value: ",
+  5,
+  "-2=bless([], \"return\")",
+  "-1=bless([], \"params\")",
+  "0=bless([4, 2, 3], \"stackArea\")",
+];
  }
