@@ -14,7 +14,7 @@ use strict;
 use Carp qw(cluck confess);
 use Data::Dump qw(dump);
 use Data::Table::Text qw(:all);
-eval "use Test::More tests=>68" unless caller;
+eval "use Test::More tests=>70" unless caller;
 
 makeDieConfess;
 
@@ -1011,6 +1011,31 @@ sub Zero::Emulator::Code::execute($%)                                           
       delete $exec->memory->{$area}                                             # Free validly identified area
      },
 
+    areaSize => sub                                                             # Get the size of the specified area
+     {my $i = $exec->currentInstruction;
+      my $size = $exec->left ($i->target);                                      # Location to store size in
+      my $area = $exec->right($i->source);                                      # Location of area
+      my $name = $i->source2;                                                   # Name of area
+
+      if (!defined($name))                                                      # A name is required
+       {$exec->stackTraceAndExit("Area name required to size an area: ".dump($area));
+        return;
+       }
+
+      my $Name = $exec->memoryType->{$area};                                    # Area has a name
+      if (!defined($Name))
+       {$exec->stackTraceAndExit("No name associated with area: $area");
+        return;
+       }
+
+      if ($name ne $Name)                                                       # Name matches supplied name
+       {$exec->stackTraceAndExit("Wrong name: $name for area with name: $Name");
+        return;
+       }
+
+      $exec->assign($size, scalar $exec->memory->{$area}->@*)                   # Size of area
+     },
+
     resize  => sub                                                              # Resize an area
      {my $i = $exec->currentInstruction;
       my $size =  $exec->right($i->source);                                     # Size to reduce area to
@@ -1372,6 +1397,14 @@ sub Alloc($)                                                                    
 sub Free($$)                                                                    # Free the memory area named by the target operand after confirming that it has the name specified on the source operand
  {my ($target, $source) = @_;                                                   # Target area yielding the id of the area to be freed, source area yielding the name of the area to be freed
   $assembly->instruction(action=>"free", xTarget($target), xSource($source));
+ }
+
+sub AreaSize($$)                                                                # The current size of an area
+ {my ($area, $name) = @_;                                                       # Location of area, name of area
+  my $t = &Var();
+  $assembly->instruction(action=>"areaSize",                                    # Target - location to place the size in, source -  address of the area, source2 - the name of the area which cannot be takend from teh area if the first source operand ebcuase that area name is teh name of the area that contains the location of the area we wish to work on.
+    target=>RefLeft($t), xSource($area), source2=>$name);
+  $t
  }
 
 sub Call($)                                                                     # Call the subroutine at the target address
@@ -1852,6 +1885,26 @@ sub For($$%)                                                                    
       Jmp $Check;
     setLabel($End);                                                             # End
    }
+ }
+
+sub ForArea($$$%)                                                               # For loop to process each element of the named area
+ {my ($area, $name, $block, %options) = @_;                                     # Area, area name, block, options
+  my $e = AreaSize $area, $name;                                                # End
+  my $s = 0;                                                                    # Start
+
+  my ($Start, $Check, $Next, $End) = (label, label, label, label);
+
+  setLabel($Start);                                                             # Start
+  my $i = Mov $s;
+    setLabel($Check);                                                           # Check
+    Jge  $End, $i, $e;
+      TracePoint;
+      my $a = Mov [$area, \$i, $name];
+      &$block($i, $a, $Check, $Next, $End);                                     # Block
+    setLabel($Next);
+    Inc $i;                                                                     # Next
+    Jmp $Check;
+  setLabel($End);                                                               # End
  }
 
 sub Good(&)                                                                     # A good ending
@@ -2717,4 +2770,22 @@ if (1)                                                                          
   "-1=bless([], \"params\")",
   "0=bless([4, 2, 3], \"stackArea\")",
 ];
+ }
+
+#latest:;
+if (1)                                                                          #TAreaSize #TForEach
+ {Start 1;
+  my $a = Alloc "aaa";
+    Mov [$a, 0, "aaa"], 1;
+    Mov [$a, 1, "aaa"], 22;
+    Mov [$a, 2, "aaa"], 333;
+  my $n = AreaSize $a, "aaa";
+  Out $n;
+  ForArea $a, "aaa", sub
+   {my ($i, $e, $check, $next, $end) = @_;
+    Out $i; Out $e;
+   };
+  my $e = Execute(suppressErrors=>0);
+  is_deeply $e->memory, {1=>[1, 22, 333]};
+  is_deeply $e->out,    [3, 0, 1, 1, 22, 2, 333];
  }
