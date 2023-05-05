@@ -4,12 +4,11 @@
 # Philip R Brenan at appaapps dot com, Appa Apps Ltd Inc., 2023
 #-------------------------------------------------------------------------------
 # Pointless adds and subtracts by 0. Perhaps we should flag adds and subtracts by 1 as well so we can have an instruction optimized for these variants.
-# Suppress no longere needed becuae youihave to enable trace or debug to get dump output
 # Assign needs to know from whence we got the value so we can write a better error message when it is no good
 # Count number of ways an if statement actually goes.
 use v5.30;
 package Zero::Emulator;
-use warnings FATAL => qw(all);
+use warnings FATAL=>  qw(all);
 use strict;
 use Carp qw(cluck confess);
 use Data::Dump qw(dump);
@@ -24,13 +23,13 @@ my sub Code(%)                                                                  
  {my (%options) = @_;                                                           # Parameters
 
   genHash("Zero::Emulator::Code",                                               # Description of a call stack entry
-    assembled    => undef,                                                      # Needs to be assembled unless this field is true
-    code         => [],                                                         # An array of instructions
-    variables    => AreaStructure("Variables"),                                 # Variables in this block of code
-    labels       => {},                                                         # Label name to instruction
-    labelCounter => 0,                                                          # Label counter used to generate unique labels
-    files        => [],                                                         # File number to file name
-    procedures   => {},                                                         # Procedures defined in this block of code
+    assembled=>     undef,                                                      # Needs to be assembled unless this field is true
+    code=>          [],                                                         # An array of instructions
+    variables=>     AreaStructure("Variables"),                                 # Variables in this block of code
+    labels=>        {},                                                         # Label name to instruction
+    labelCounter=>  0,                                                          # Label counter used to generate unique labels
+    files=>         [],                                                         # File number to file name
+    procedures=>    {},                                                         # Procedures defined in this block of code
     %options,
    );
  }
@@ -39,14 +38,14 @@ my sub stackFrame(%)                                                            
  {my (%options) = @_;                                                           # Parameters
 
   genHash("Zero::Emulator::StackFrame",                                         # Description of a stack frame. A stack frame provides the context in which a method runs.
-    target      => $options{target},                                            # The address of the subroutine being called
-    instruction => $options{call},                                              # The address of the instruction making the call
-    stackArea   => $options{stackArea},                                         # Memory area containing data for this method
-    params      => $options{params},                                            # Memory area containing paramter list
-    return      => $options{return},                                            # Memory area conmtaining returned result
-    line        => $options{line},                                              # The line number from which the call was made
-    file        => $options{file},                                              # The file number from which the call was made - this could be folded into the line number but for reasons best known to themselves people who cannot program very well often scatter projects across several files a practice that is completely pointless in this day of git and so can only lead to chaos and confusion
-    variables   => $options{variables},                                         # Variables local to this stack frame
+    target=>       $options{target},                                            # The address of the subroutine being called
+    instruction=>  $options{call},                                              # The address of the instruction making the call
+    stackArea=>    $options{stackArea},                                         # Memory area containing data for this method
+    params=>       $options{params},                                            # Memory area containing paramter list
+    return=>       $options{return},                                            # Memory area conmtaining returned result
+    line=>         $options{line},                                              # The line number from which the call was made
+    file=>         $options{file},                                              # The file number from which the call was made - this could be folded into the line number but for reasons best known to themselves people who cannot program very well often scatter projects across several files a practice that is completely pointless in this day of git and so can only lead to chaos and confusion
+    variables=>    $options{variables},                                         # Variables local to this stack frame
   );
  }
 
@@ -67,16 +66,16 @@ sub Zero::Emulator::Code::instruction($%)                                       
 
   if ($options{action} !~ m(\Avariable\Z)i)                                     # Non variable
    {push $block->code->@*, my $i = genHash("Zero::Emulator::Code::Instruction", # Instruction details
-      action        => $options{action      },                                  # Instruction name
-      number        => $options{number      },                                  # Instruction sequence number
-      source        => $options{source      },                                  # Source memory address
-      source2       => $options{source2     },                                  # Secondary source memory address
-      target        => $options{target      },                                  # Target memory address
-      target2       => $options{target2     },                                  # Secondary target memory address
-      line          => $line,                                                   # Line in source file at which this instruction was encoded
-      file          => fne $fileName,                                           # Source file in which instruction was encoded
-      context       => stackTrace(),                                            # The call context in which this instruction was created
-      executed      => 0,                                                       # The number of times this instruction was executed
+      action=>         $options{action      },                                  # Instruction name
+      number=>         $options{number      },                                  # Instruction sequence number
+      source=>         $options{source      },                                  # Source memory address
+      source2=>        $options{source2     },                                  # Secondary source memory address
+      target=>         $options{target      },                                  # Target memory address
+      target2=>        $options{target2     },                                  # Secondary target memory address
+      line=>           $line,                                                   # Line in source file at which this instruction was encoded
+      file=>           fne $fileName,                                           # Source file in which instruction was encoded
+      context=>        stackTrace(),                                            # The call context in which this instruction was created
+      executed=>       0,                                                       # The number of times this instruction was executed
     );
     return $i;
    }
@@ -99,10 +98,10 @@ sub AreaStructure($@)                                                           
  {my ($structureName, @names) = @_;                                             # Structure name, fields names
 
   my $d = genHash("Zero::Emulator::AreaStructure",                              # Description of a data structure mapping a memory area
-    structureName => $structureName,                                            # Name of the structure
-    fieldOrder    => [],                                                        # Order of the elements in the structure, in effect, giving the offset of each element in the data structure
-    fieldNames    => {},                                                        # Maps the names of the fields to their offsets in the structure
-    instructions3  => [],                                                       # The variable instruction associated with this variable
+    structureName=>  $structureName,                                            # Name of the structure
+    fieldOrder=>     [],                                                        # Order of the elements in the structure, in effect, giving the offset of each element in the data structure
+    fieldNames=>     {},                                                        # Maps the names of the fields to their offsets in the structure
+    instructions3=>   [],                                                       # The variable instruction associated with this variable
    );
   $d->field($_) for @names;                                                     # Add the field descriptions
   $d
@@ -135,8 +134,8 @@ my sub procedure($%)                                                            
  {my ($label, %options) = @_;                                                   # Start label of procedure, options describing procedure
 
   genHash("Zero::Emulator::Procedure",                                          # Description of a procedure
-    target       => $label,                                                     # Label to call to call this procedure
-    variables    => AreaStructure("Procedure"),                                 # Registers local to this procedure
+    target=>        $label,                                                     # Label to call to call this procedure
+    variables=>     AreaStructure("Procedure"),                                 # Registers local to this procedure
   );
  }
 
@@ -183,18 +182,18 @@ my sub RefRight($)                                                              
     isScalar($address) and defined($area) || defined($name) and confess "Constants cannot have an associated area";
 
     return genHash("Zero::Emulator::RefRight",
-      area     => $area,
-      address  => $address,
-      name     => $name,
-      variable => 1,
+      area=>      $area,
+      address=>   $address,
+      name=>      $name,
+      variable=>  1,
      );
    }
   else
    {return genHash("Zero::Emulator::RefRight",
-      area     => undef,
-      address  => $r,
-      name     => 'stackArea',
-      variable => 0,
+      area=>      undef,
+      address=>   $r,
+      name=>      'stackArea',
+      variable=>  0,
      );
    }
  }
@@ -211,16 +210,16 @@ my sub RefLeft($)                                                               
     !defined($area) and  defined($name) and confess "Area required for name: in {area, address, name]";
 
     return genHash("Zero::Emulator::RefLeft",
-      area     => $area,
-      address  => $address,
-      name     => $name,
+      area=>      $area,
+      address=>   $address,
+      name=>      $name,
      );
    }
   else
    {return genHash("Zero::Emulator::RefLeft",
-      area     => undef,
-      address  => $r,
-      name     => 'stackArea',
+      area=>      undef,
+      address=>   $r,
+      name=>      'stackArea',
      );
    }
  }
@@ -265,16 +264,6 @@ sub Zero::Emulator::Address::at($$)                                             
   my $a = $address->area;
   my $l = $address->address;
   \$$m{$a}[$l]
- }
-
-sub Zero::Emulator::Address::set($$$)                                           # Set the value of an address at the specified address in memory in the current execution environment
- {my ($address, $value, $exec) = @_;                                            # Address specification, value
-  @_ == 3 or confess "Three parameters";
-  my $e = $exec;
-  my $m = $e->memory;
-  my $a = $address->area;
-  my $l = $address->address;
-  $$m{$a}[$l] = $value;
  }
 
 sub Zero::Emulator::Procedure::call($)                                          # Call a procedure.  Arguments are supplied by the ParamsPut and Get commands, return values are supplied by the ReturnPut and Get commands.
@@ -356,7 +345,7 @@ sub Zero::Emulator::Execution::dumpMemory($)                                    
 sub Zero::Emulator::Execution::analyzeExecutionResultsLeast($%)                 # Analyze execution results for least used code
  {my ($exec, %options) = @_;                                                    # Execution results, options
 
-  my @c = $exec->code->code->@*;
+  my @c = $exec->block->code->@*;
   my %l;
   for my $i(@c)                                                                 # Count executions of each instruction
    {$l{$i->file}{$i->line} += $i->executed unless $i->action =~ m(\Aassert)i;
@@ -379,7 +368,7 @@ sub Zero::Emulator::Execution::analyzeExecutionResultsLeast($%)                 
 sub Zero::Emulator::Execution::analyzeExecutionResultsMost($%)                  # Analyze execution results for most used code
  {my ($exec, %options) = @_;                                                    # Execution results, options
 
-  my @c = $exec->code->code->@*;
+  my @c = $exec->block->code->@*;
   my %m;
   for my $i(@c)                                                                 # Count executions of each instruction
    {my $t =                                                                     # Traceback
@@ -401,7 +390,7 @@ sub Zero::Emulator::Execution::analyzeExecutionNotRead($%)                      
    {my $area = $$n{$areaK};
     for my $addressK(sort keys %$area)
      {my $address = $$area{$addressK};
-      push @t, $exec->code->code->[$addressK]->contextString
+      push @t, $exec->block->code->[$addressK]->contextString
        ($exec, "Not read from area: $areaK, address: $addressK in context:");
      }
    }
@@ -492,23 +481,25 @@ sub Zero::Emulator::Execution::getMemory($$$;$%)                                
   $g
  }
 
-sub Zero::Emulator::Execution::setMemory($$$$$)                                 # Set memory
- {my ($exec, $area, $address, $name, $value) = @_;                              # Execution environment
-  @_ == 5 or confess "Five parameters";
-  $exec->check($area, $name);
-  $exec->set($area, $address, $value);
- }
-
 sub Zero::Emulator::Execution::get($$$)                                         # Get from memory
  {my ($exec, $area, $address) = @_;                                             # Execution environment
   @_ == 3 or confess "Three parameters";
   $exec->memory->{$area}[$address];
  }
 
-sub Zero::Emulator::Execution::set($$$$)                                        # Set memory
- {my ($exec, $area, $address, $value) = @_;                                     # Execution environment
-  @_ == 4 or confess "Four parameters";
-  $exec->memory->{$area}[$address] = $value;
+
+sub Zero::Emulator::Execution::set($$$)                                         # Set the value of an address at the specified address in memory in the current execution environment
+ {my ($exec, $address, $value) = @_;                                            # Address specification, value
+  @_ == 3 or confess "Three parameters";
+  my $e = $exec;
+  my $m = $e->memory;
+  my $a = $address->area;
+  my $l = $address->address;
+  $exec->lastAssignArea    = $a;
+  $exec->lastAssignAddress = $l;
+  $exec->lastAssignValue   = $value;
+
+  $$m{$a}[$l] = $value;
  }
 
 #D2 Execution                                                                   # Execute assembly code in the emulator
@@ -522,9 +513,9 @@ sub Zero::Emulator::Execution::address($$$$)                                    
  {my ($exec, $area, $address, $name) = @_;                                      # Area, address in area, memory
   @_ == 4 or confess "Four parameters";
   genHash("Zero::Emulator::Address",                                            # Address memory
-    area     => $area,                                                          # Area in memory
-    address  => $address,                                                       # Address within area
-    name     => $name // 'stackArea',                                           # Name of area
+    area=>      $area,                                                          # Area in memory
+    address=>   $address,                                                       # Address within area
+    name=>      $name // 'stackArea',                                           # Name of area
    );
  }
 
@@ -532,7 +523,6 @@ sub Zero::Emulator::Execution::stackTrace($;$)                                  
  {my ($exec, $title) = @_;                                                      # Instruction trace occurred at, title
   my $i = $exec->currentInstruction;
   my $s = $exec->suppressErrors;                                                # Suppress file and line numbers in dump to facilitate automated testing
-  my $d = $exec->debug;
   my @t;
   push @t, $i->contextString($exec, $title//"Stack trace");
 
@@ -541,7 +531,7 @@ sub Zero::Emulator::Execution::stackTrace($;$)                                  
     my $i = $c->instruction;
     push @t, sprintf "%5d  %4d %s", $j+1, $i->number+1, $i->action if $s;
     push @t, sprintf "%5d  %4d %-16s at %s line %d",
-      $j+1, $i->number+1, $i->action, $i->file, $i->line         unless $s;
+      $j+1, $i->number+1, $i->action, $i->file, $i->line       unless $s;
    }
 
   @t
@@ -591,7 +581,7 @@ sub Zero::Emulator::Execution::notRead()                                        
  {my ($exec) = @_;                                                              # Parameters
   my $area = $exec->stackArea;
 #    my @area = $memory{$area}->@*;                                             # Memory in area
-#    my %r;                                                                     # Location in stack frame => instruction defining vasriable
+#    my %r;                                                                     # Location in stack frame=>  instruction defining vasriable
 #    for my $a(keys @area)
 #     {if (my $I  = $calls[-1]->variables->instructions->[$a])
 #       {$r{$a} = $I;                                                           # Number of instruction creating variable
@@ -848,22 +838,22 @@ sub Zero::Emulator::Execution::assign($$$)                                      
 
   if (defined $exec->watch->{$a}{$l})                                           # Watch for specified changes
    {my @s = $exec->stackTrace("Change at watched area: $a ($n), address: $l\n");
-    push @s, "Current value: ", $exec->memory->{$a}[$l];
-    push @s, "New     value: ", $value;
+    push @s, join ' ', "Current value:", $exec->memory->{$a}[$l];
+    push @s, join ' ', "New     value:", $value;
     push @s, $exec->dumpMemory;
     say STDERR join "\n", @s unless $exec->suppressErrors;
     push $exec->out->@*, @s;
    }
 
-  $target->set($value, $exec);                                                  # Actually do the assign
+  $exec->set($target, $value);                                                  # Actually do the assign
  }
 
 sub Zero::Emulator::Execution::allocateSystemAreas($)                           # Allocate system areas for a new stack frame
  {my ($exec) = @_;                                                              # Parameters
   @_ == 1 or confess "One parameter";
-  (stackArea  => $exec->allocMemory("stackArea", 1),
-   params     => $exec->allocMemory("params",    1),
-   return     => $exec->allocMemory("return",    1));
+  (stackArea=>   $exec->allocMemory("stackArea", 1),
+   params=>      $exec->allocMemory("params",    1),
+   return=>      $exec->allocMemory("return",    1));
  }
 
 sub Zero::Emulator::Execution::freeSystemAreas($$)                              # Free system areas for the specified stack frame
@@ -880,61 +870,65 @@ sub Zero::Emulator::Execution::currentInstruction($)                            
   $exec->calls->[-1]->instruction;
  }
 
-sub execute(%)                                                                  # Execute a block of code
- {my (%options) = @_;                                                           # Execution options
-
-  my $exec               =  genHash("Zero::Emulator::Execution",                # Execution results
-    calls                => [],                                                 # Call stack
-    code                 => $options{code},                                     # Code executed
-    count                => 0,                                                  # Executed instructions count
-    counts               => {},                                                 # Executed instructions by name counts
-    instructionPointer   => 0,                                                  # Current instruction
-    memory               => {},                                                 # Memory contents at the end of execution
-    memoryType           => {},                                                 # Memory contents at the end of execution
-    rw                   => {},                                                 # Read / write access to memory
-    read                 => {},                                                 # Records whether a memory address was ever read allowing us to find all the unused locations
-    notReadAddresses     => {},                                                 # Memory addresses never read
-    out                  => [],                                                 # The out channel
-    doubleWrite          => {},                                                 # Source of double writes {instruction number} to count - an existing value was overwritten before it was used
-    pointlessAssign      => {},                                                 # Location already has the specified value
-    suppressErrors       => $options{suppressErrors},
-    stopOnError          => $options{stopOnError},                              # Stop on non fatal errors if true
-    trace                => $options{trace},                                    # Trace all statements
-    tracePoints          => undef,                                              # Trace changes in execution flow
-    debug                => $options{debug},                                    # Debugging
-    printNotRead         => $options{NotRead},                                  # Memory locations never read
-    printDoubleWrite     => $options{doubleWrite},                              # Double writes: earlier instruction number to later instruction number
-    printPointlessAssign => $options{pointlessAssign},                          # Pointless assigns {instruction number} to count - address already has the specified value
-    watch                => {},                                                 # Addresses to watch for changes
-   );
- }
-
 sub Zero::Emulator::Execution::createInitialStackEntry($)                       # Create the initial stack frame
  {my ($exec) = @_;                                                              # Parameters
 
   push $exec->calls->@*,                                                        # Variables in initial stack frame
     stackFrame(
-     $exec->code ? (variables => $exec->code->variables) : (),
+     $exec->block ? (variables=>  $exec->block->variables) : (),
      $exec->allocateSystemAreas);
   $exec
  }
 
-sub Zero::Emulator::Code::execute($%)                                           # Execute a block of code
- {my ($Code, %options) = @_;                                                    # Block of code, execution options
-  $Code->assemble;                                                              # Assemble if necessary
-  my $code = $Code->code;
+sub execute(%)                                                                  # Execute a block of code
+ {my (%options) = @_;                                                           # Execution options
 
-  my $exec = execute(code=>$Code, %options);                                    # Execution environment
+  my $exec=                 genHash("Zero::Emulator::Execution",                # Execution results
+    calls=>                 [],                                                 # Call stack
+    block=>                 $options{code},                                     # Block of code to be executed
+    count=>                 0,                                                  # Executed instructions count
+    counts=>                {},                                                 # Executed instructions by name counts
+    instructionPointer=>    0,                                                  # Current instruction
+    memory=>                {},                                                 # Memory contents at the end of execution
+    memoryType=>            {},                                                 # Memory contents at the end of execution
+    rw=>                    {},                                                 # Read / write access to memory
+    read=>                  {},                                                 # Records whether a memory address was ever read allowing us to find all the unused locations
+    notReadAddresses=>      {},                                                 # Memory addresses never read
+    out=>                   [],                                                 # The out channel
+    doubleWrite=>           {},                                                 # Source of double writes {instruction number} to count - an existing value was overwritten before it was used
+    pointlessAssign=>       {},                                                 # Location already has the specified value
+    suppressErrors=>        $options{suppressErrors},
+    stopOnError=>           $options{stopOnError},                              # Stop on non fatal errors if true
+    trace=>                 $options{trace},                                    # Trace all statements
+    tracePoints=>           undef,                                              # Trace changes in execution flow
+    printNotRead=>          $options{NotRead},                                  # Memory locations never read
+    printDoubleWrite=>      $options{doubleWrite},                              # Double writes: earlier instruction number to later instruction number
+    printPointlessAssign=>  $options{pointlessAssign},                          # Pointless assigns {instruction number} to count - address already has the specified value
+    watch=>                 {},                                                 # Addresses to watch for changes
+    instructionCounts=>     {},                                                 # The number of times each actual instruction is executed
+    lastAssignArea=>        undef,                                              # Last assignment performed - area
+    lastAssignAddress=>     undef,                                              # Last assignment performed - address
+    lastAssignValue=>       undef,                                              # Last assignment performed - value
+   );
+ }
+
+sub Zero::Emulator::Code::execute($%)                                           # Execute a block of code
+ {my ($block, %options) = @_;                                                   # Block of code, execution options
+
+  $block->assemble;                                                             # Assemble if necessary
+
+  my $exec = execute(code=>$block, %options);                                   # Execution environment
 
   my %instructions =                                                            # Instruction definitions
-   (add     => sub                                                              # Add the two source operands and store the result in the target
+   (add=> sub                                                                   # Add the two source operands and store the result in the target
      {my $i = $exec->currentInstruction;
       my $t = $exec->left($i->target);
       my $a = $exec->right($i->source);
       my $b = $exec->right($i->source2);
       $exec->assign($t, $a + $b);
      },
-    subtract  => sub                                                            # Subtract the second source operand from the first and store the result in the target
+
+    subtract=> sub                                                              # Subtract the second source operand from the first and store the result in the target
      {my $i = $exec->currentInstruction;
       my $t = $exec->left($i->target);
       my $a = $exec->right($i->source);
@@ -942,7 +936,36 @@ sub Zero::Emulator::Code::execute($%)                                           
       $exec->assign($t, $a - $b);
      },
 
-    alloc     => sub                                                            # Create a new memory area and write its number into the address named by the target operand
+    assert=> sub                                                                # Assert
+     {my $i = $exec->currentInstruction;
+      $exec->stackTraceAndExit("Assert failed");
+     },
+
+    assertEq=> sub                                                              # Assert equals
+     {$exec->assert("==", sub {my ($a, $b) = @_; $a == $b})
+     },
+
+    assertNe=> sub                                                              # Assert not equals
+     {$exec->assert("!=", sub {my ($a, $b) = @_; $a != $b})
+     },
+
+    assertLt=> sub                                                              # Assert less than
+     {$exec->assert("< ", sub {my ($a, $b) = @_; $a <  $b})
+     },
+
+    assertLe=> sub                                                              # Assert less than or equal
+     {$exec->assert("<=", sub {my ($a, $b) = @_; $a <= $b})
+     },
+
+    assertGt=> sub                                                              # Assert greater than
+     {$exec->assert("> ", sub {my ($a, $b) = @_; $a >  $b})
+     },
+
+    assertGe=> sub                                                              # Assert greater
+     {$exec->assert(">=", sub {my ($a, $b) = @_; $a >= $b})
+     },
+
+    array=> sub                                                                 # Create a new memory area and write its number into the address named by the target operand
      {my $i = $exec->currentInstruction;
       my $a = $exec->allocMemory($i->source);                                   # The reason for this allocation
       my $t = $exec->left($i->target);
@@ -953,36 +976,7 @@ sub Zero::Emulator::Code::execute($%)                                           
       $a
      },
 
-    assert    =>   sub                                                          # Assert
-     {my $i = $exec->currentInstruction;
-      $exec->stackTraceAndExit("Assert failed");
-     },
-
-    assertEq  =>   sub                                                          # Assert equals
-     {$exec->assert("==", sub {my ($a, $b) = @_; $a == $b})
-     },
-
-    assertNe  =>   sub                                                          # Assert not equals
-     {$exec->assert("!=", sub {my ($a, $b) = @_; $a != $b})
-     },
-
-    assertLt  =>   sub                                                          # Assert less than
-     {$exec->assert("< ", sub {my ($a, $b) = @_; $a <  $b})
-     },
-
-    assertLe  =>   sub                                                          # Assert less than or equal
-     {$exec->assert("<=", sub {my ($a, $b) = @_; $a <= $b})
-     },
-
-    assertGt  =>   sub                                                          # Assert greater than
-     {$exec->assert("> ", sub {my ($a, $b) = @_; $a >  $b})
-     },
-
-    assertGe  =>   sub                                                          # Assert greater
-     {$exec->assert(">=", sub {my ($a, $b) = @_; $a >= $b})
-     },
-
-    free      => sub                                                            # Free the memory area named by the source operand
+    free=> sub                                                                  # Free the memory area named by the source operand
      {my $i = $exec->currentInstruction;
       my $area = $exec->right($i->target);                                      # Area
       my $name = $exec->right($i->source);
@@ -1011,7 +1005,7 @@ sub Zero::Emulator::Code::execute($%)                                           
       delete $exec->memory->{$area}                                             # Free validly identified area
      },
 
-    areaSize => sub                                                             # Get the size of the specified area
+    areaSize=> sub                                                              # Get the size of the specified area
      {my $i = $exec->currentInstruction;
       my $size = $exec->left ($i->target);                                      # Location to store size in
       my $area = $exec->right($i->source);                                      # Location of area
@@ -1036,7 +1030,7 @@ sub Zero::Emulator::Code::execute($%)                                           
       $exec->assign($size, scalar $exec->memory->{$area}->@*)                   # Size of area
      },
 
-    resize  => sub                                                              # Resize an area
+    resize=> sub                                                                # Resize an area
      {my $i = $exec->currentInstruction;
       my $size =  $exec->right($i->source);                                     # Size to reduce area to
       my $area =  $exec->right($i->target);                                     # Area to reduce to
@@ -1045,7 +1039,7 @@ sub Zero::Emulator::Code::execute($%)                                           
       $#{$exec->memory->{$area}} = $size-1;
      },
 
-    call      => sub                                                            # Call a subroutine
+    call=> sub                                                                  # Call a subroutine
      {my $i = $exec->currentInstruction;
       my $t = $i->target->address;                                              # Subroutine to call
 
@@ -1056,12 +1050,12 @@ sub Zero::Emulator::Code::execute($%)                                           
        {$exec->instructionPointer = $t;                                         # Absolute call
        }
       push $exec->calls->@*,
-        stackFrame(target=>$code->[$exec->instructionPointer],                  # Create a new call stack entry
+        stackFrame(target=>$block->code->[$exec->instructionPointer],           # Create a new call stack entry
         instruction=>$i, variables=>$i->source->variables,
         $exec->allocateSystemAreas());
      },
 
-    return    => sub                                                            # Return from a subroutine call via the call stack
+    return=> sub                                                                # Return from a subroutine call via the call stack
      {my $i = $exec->currentInstruction;
       $exec->calls or $exec->stackTraceAndExit("The call stack is empty so I do not know where to return to");
       $exec->freeSystemAreas(pop $exec->calls->@*);
@@ -1074,33 +1068,36 @@ sub Zero::Emulator::Code::execute($%)                                           
        }
      },
 
-    confess => sub                                                              # Print the current call stack and stop
+    confess=> sub                                                               # Print the current call stack and stop
      {$exec->stackTraceAndExit("Confess at:", confess=>1);
      },
 
-    debug   => sub                                                              # Set debugging
+    trace=> sub                                                                 # Start/stop/change tracing status from a progra. A trace writes out which instructions have been executed and how they affected memory
      {my $i = $exec->currentInstruction;
-      my $s = $exec->right($i->source);
-      $exec->debug = !!$s;
-      say STDERR "Debug ", $exec->debug;
+      my $s = $exec->right($i->source) ? 1 : 0;
+      $exec->trace = $s;
+      my $m = join ' ', "Trace: $s";
+      say STDERR           $m unless $exec->suppressErrors;
+      push $exec->out->@*, $m;
      },
 
-    trace   => sub                                                              # Set tracing
-     {my $i =   $exec->currentInstruction;
-      my $s = !!$exec->right($i->source);
+    tracePoints=> sub                                                           # Start trace points
+     {my $i = $exec->currentInstruction;
+      my $s = $exec->right($i->source) ? 1 : 0;
       $exec->tracePoints = $s;
-      say STDERR           "Trace $s" unless $exec->suppressErrors;
-      push $exec->out->@*, "Trace $s";
+      my $m = "TracePoints: $s";
+      say STDERR           $m unless $exec->suppressErrors;
+      push $exec->out->@*, $m;
      },
 
-    tracePoint => sub                                                           # Trace point
+    tracePoint=> sub                                                            # Trace point
      {return unless $exec->tracePoints;
       my @s = $exec->stackTrace("Trace");
       say STDERR join "\n", @s unless $exec->suppressErrors;
       push $exec->out->@*, @s;
      },
 
-    dump    => sub                                                              # Dump memory
+    dump=> sub                                                                  # Dump memory
      {my $i = $exec->currentInstruction;
       my @m;
       push @m, $i->source // "Memory dump";
@@ -1111,76 +1108,76 @@ sub Zero::Emulator::Code::execute($%)                                           
       push $exec->out->@*, @m;
      },
 
-    dec     => sub                                                              # Decrement locations in memory. The first address is incremented by 1, the next by two, etc.
+    dec=> sub                                                                   # Decrement locations in memory. The first address is incremented by 1, the next by two, etc.
      {my $i = $exec->currentInstruction;
       $exec->leftSuppress($i->target);                                          # Make sure there is something to decrement
       my $t = $exec->left($i->target);
       ${$t->at($exec)}--;
      },
 
-    inc       => sub                                                            # Increment locations in memory. The first address is incremented by 1, the next by two, etc.
+    inc=> sub                                                                   # Increment locations in memory. The first address is incremented by 1, the next by two, etc.
      {my $i = $exec->currentInstruction;
       $exec->leftSuppress($i->target);                                          # Make sure there is something to increment
       my $t = $exec->left($i->target);
       ${$t->at($exec)}++;
      },
 
-    jmp       => sub                                                            # Jump to the target address
+    jmp=> sub                                                                   # Jump to the target address
      {my $i = $exec->currentInstruction;
       my $n = $i->number;
       my $r = $exec->right($i->target);
       $exec->instructionPointer = $n + $r;
      },
                                                                                 # Conditional jumps
-    jEq => sub {my $i = $exec->currentInstruction; $exec->jumpOp($i, sub{$exec->right($i->source) == $exec->right($i->source2)})},
-    jNe => sub {my $i = $exec->currentInstruction; $exec->jumpOp($i, sub{$exec->right($i->source) != $exec->right($i->source2)})},
-    jLe => sub {my $i = $exec->currentInstruction; $exec->jumpOp($i, sub{$exec->right($i->source) <= $exec->right($i->source2)})},
-    jLt => sub {my $i = $exec->currentInstruction; $exec->jumpOp($i, sub{$exec->right($i->source) <  $exec->right($i->source2)})},
-    jGe => sub {my $i = $exec->currentInstruction; $exec->jumpOp($i, sub{$exec->right($i->source) >= $exec->right($i->source2)})},
-    jGt => sub {my $i = $exec->currentInstruction; $exec->jumpOp($i, sub{$exec->right($i->source) >  $exec->right($i->source2)})},
+    jEq=> sub {my $i = $exec->currentInstruction; $exec->jumpOp($i, sub{$exec->right($i->source) == $exec->right($i->source2)})},
+    jNe=> sub {my $i = $exec->currentInstruction; $exec->jumpOp($i, sub{$exec->right($i->source) != $exec->right($i->source2)})},
+    jLe=> sub {my $i = $exec->currentInstruction; $exec->jumpOp($i, sub{$exec->right($i->source) <= $exec->right($i->source2)})},
+    jLt=> sub {my $i = $exec->currentInstruction; $exec->jumpOp($i, sub{$exec->right($i->source) <  $exec->right($i->source2)})},
+    jGe=> sub {my $i = $exec->currentInstruction; $exec->jumpOp($i, sub{$exec->right($i->source) >= $exec->right($i->source2)})},
+    jGt=> sub {my $i = $exec->currentInstruction; $exec->jumpOp($i, sub{$exec->right($i->source) >  $exec->right($i->source2)})},
 
-    label     => sub                                                            # Label - no operation
+    label=> sub                                                                 # Label - no operation
      {my ($i) = @_;                                                             # Instruction
      },
 
-    clear     => sub                                                            # Clear the first bytes of an area as specified by the taregt operand
+    clear=> sub                                                                 # Clear the first bytes of an area as specified by the taregt operand
      {my $i = $exec->currentInstruction;
       my $n =  $exec->left($i->target);
       for my $a(0..$n->address-1)
        {my $A =  $exec->left(RefLeft([$i->target->area, $a, q(aaa)]));
-        $A->set(0, $exec);
+        $exec->set($A, 0);
        }
      },
 
-    leAddress => sub                                                            # Load the address component of a reference
+    leAddress=> sub                                                            # Load the address component of a reference
      {my $i = $exec->currentInstruction;
       my $s = $exec->left($i->source);
       my $t = $exec->left($i->target);
       $exec->assign($t, $s->address);
      },
 
-    leArea    => sub                                                            # Load the area component of an address
+    leArea=> sub                                                                # Load the area component of an address
      {my $i = $exec->currentInstruction;
       my $s = $exec->left($i->source);
       my $t = $exec->left($i->target);
       $exec->assign($t, $s->area);
      },
 
-    mov       => sub                                                            # Move data moves data from one part of memory to another - "set", by contrast, sets variables from constant values
+    mov=> sub                                                                   # Move data moves data from one part of memory to another - "set", by contrast, sets variables from constant values
      {my $i = $exec->currentInstruction;
       my $s = $exec->right($i->source);
       my $t = $exec->left($i->target);
       $exec->assign($t, $s);
      },
 
-    not     => sub                                                              # Not in place
+    not=> sub                                                                   # Not in place
      {my $i = $exec->currentInstruction;
       my $s = $exec->right($i->source);
       my $t = $exec->left($i->target);
       $exec->assign($t, !$s);
      },
 
-    paramsGet => sub                                                            # Get a parameter from the previous parameter block - this means that we must always have two entries on the call stack - one representing the caller of the program, the second representing the current context of the program
+    paramsGet=> sub                                                             # Get a parameter from the previous parameter block - this means that we must always have two entries on the call stack - one representing the caller of the program, the second representing the current context of the program
      {my $i = $exec->currentInstruction;
       my $p = RefLeft([$exec->calls->[-2]->params, $i->source->address,
        'params']);
@@ -1190,7 +1187,7 @@ sub Zero::Emulator::Code::execute($%)                                           
       $exec->assign($t, $s->get($exec));
      },
 
-    paramsPut => sub                                                            # Place a parameter in the current parameter block
+    paramsPut=> sub                                                             # Place a parameter in the current parameter block
      {my $i = $exec->currentInstruction;
       my $p = $i->target->area // $exec->calls->[-1]->params;
       my $r = RefLeft [$p, $i->target->address, 'params'];
@@ -1200,7 +1197,7 @@ sub Zero::Emulator::Code::execute($%)                                           
       $exec->assign($t, $s);
      },
 
-    returnGet => sub                                                            # Get a word from the return area
+    returnGet=> sub                                                             # Get a word from the return area
      {my $i = $exec->currentInstruction;
       my $p = $exec->calls->[-1]->return;                                       # Memory area
       my $t = $exec->left ($i->target);
@@ -1210,7 +1207,7 @@ sub Zero::Emulator::Code::execute($%)                                           
       $exec->assign($t, $s->get($exec));
      },
 
-    returnPut => sub                                                            # Put a word ino the return area
+    returnPut=> sub                                                            # Put a word ino the return area
      {my $i = $exec->currentInstruction;
       my $p = $exec->calls->[-2]->return;
       my $t = $exec->left (RefLeft([$p, $i->target->address, q(return)]));
@@ -1218,18 +1215,18 @@ sub Zero::Emulator::Code::execute($%)                                           
       $exec->assign($t, $s);
      },
 
-    nop       => sub                                                            # No operation
+    nop=> sub                                                                   # No operation
      {my ($i) = @_;                                                             # Instruction
      },
 
-    out     => sub                                                              # Write source as output to an array of words
+    out=> sub                                                                   # Write source as output to an array of words
      {my $i = $exec->currentInstruction;
       my $t = $exec->right($i->source);
-      lll $t if $exec->debug or $options{debug} or $options{trace};
+      lll $t if $exec->trace;
       push $exec->out->@*, $t;
      },
 
-    pop => sub                                                                  # Pop a value from the specified memory area if possible else confess
+    pop=> sub                                                                   # Pop a value from the specified memory area if possible else confess
      {my $i = $exec->currentInstruction;
       my $s = $i->source;
       my $area = $i->source ? $exec->right($i->source) : &stackArea;            # Memory area to pop
@@ -1241,7 +1238,7 @@ sub Zero::Emulator::Code::execute($%)                                           
       $exec->assign($t, $p);                                                    # Pop from memory area into indicated memory address
      },
 
-    push => sub                                                                 # Push a value onto the specified memory area
+    push=> sub                                                                  # Push a value onto the specified memory area
      {my $i = $exec->currentInstruction;
       if ($i->target)
        {my $t = $exec->right($i->target);
@@ -1253,7 +1250,7 @@ sub Zero::Emulator::Code::execute($%)                                           
        }
      },
 
-    shiftLeft => sub                                                            # Shift left within an element
+    shiftLeft=> sub                                                             # Shift left within an element
      {my $i = $exec->currentInstruction;
       $exec->leftSuppress ($i->target);                                         # Make sure there something to shift
       my $t = $exec->left ($i->target);
@@ -1261,7 +1258,7 @@ sub Zero::Emulator::Code::execute($%)                                           
       $exec->assign($t, $t->get($exec) << $s);
      },
 
-    shiftRight => sub                                                           # Shift right within an element
+    shiftRight=> sub                                                            # Shift right within an element
      {my $i = $exec->currentInstruction;
       $exec->leftSuppress ($i->target);                                         # Make sure there something to shift
       my $t = $exec->left ($i->target);
@@ -1269,7 +1266,7 @@ sub Zero::Emulator::Code::execute($%)                                           
       $exec->assign($t, $t->get($exec) >> $s);
      },
 
-    shiftUp => sub                                                              # Shift an element up in a memory area
+    shiftUp=> sub                                                               # Shift an element up in a memory area
      {my $i = $exec->currentInstruction;
       my $s = $exec->right($i->source);
       my $t = $exec->left($i->target);
@@ -1283,7 +1280,7 @@ sub Zero::Emulator::Code::execute($%)                                           
       $exec->assign($t, $s);
      },
 
-    shiftDown => sub                                                            # Shift an element down in a memory area
+    shiftDown=> sub                                                             # Shift an element down in a memory area
      {my $i = $exec->currentInstruction;
       my $s = $exec->left($i->source);
       my $t = $exec->left($i->target);
@@ -1300,7 +1297,7 @@ sub Zero::Emulator::Code::execute($%)                                           
       $exec->assign($T, $v);
      },
 
-    watch => sub                                                                # Watch a memory location for changes
+    watch=> sub                                                                 # Watch a memory location for changes
      {my $i = $exec->currentInstruction;
       my $t = $exec->left($i->target);
       $exec->watch->{$t->area}{$t->address}++;
@@ -1313,7 +1310,7 @@ sub Zero::Emulator::Code::execute($%)                                           
                     maximumInstructionsToExecute;
   for my $j(1..$mi)                                                             # Each instruction in the code until we hit an undefined instruction
    {last unless defined($exec->instructionPointer);
-    my $i = $exec->code->code->[$exec->instructionPointer++];
+    my $i = $exec->block->code->[$exec->instructionPointer++];                  # Current instruction
             $exec->calls->[-1]->instruction = $i;
     last unless $i;
     if (my $a = $i->action)                                                     # Action
@@ -1321,12 +1318,21 @@ sub Zero::Emulator::Code::execute($%)                                           
       $exec->stackTraceAndExit(qq(Invalid instruction: "$a"\n))
         unless my $c = $instructions{$a};
 
-      say STDERR sprintf "%4d  %4d  %12s at %s line %d\n",
-        $j, $i->number, $i->action, $i->file, $i->line if $options{trace};
+      $c->($i);                                                                 # Execute instruction
+
+      $exec->instructionCounts->{$i->number}++;                                 # Execution count by actual instruction
 
       ++$i->executed;
 
-      $c->($i);                                                                 # Execute instruction
+      if ($exec->trace)                                                         # Trace changes to memory
+       {my $e = $exec->instructionCounts->{$i->number};                         # Execution count for this instruction
+        my $f = $exec->formatTrace;
+        my $m = sprintf "%4d  %4d  %4d  %12s  %20s  at %s line %d\n",
+          $j, $i->number, $e, $i->action, $f, $i->file, $i->line;
+        say STDERR $m unless $exec->suppressErrors;
+        push $exec->out->@*, $m;
+       }
+
      }
     confess "Out of instructions after $j"if $j >= maximumInstructionsToExecute;
    }
@@ -1337,6 +1343,15 @@ sub Zero::Emulator::Code::execute($%)                                           
 
   $exec
  }                                                                              # Execution results
+
+sub Zero::Emulator::Execution::formatTrace($)                                   # Describe last memory assignment
+ {my ($exec) = @_;                                                              # Execution
+  return "" unless defined(my $area  = $exec->lastAssignArea);
+  return "" unless defined(my $addr  = $exec->lastAssignAddress);
+  return "" unless defined(my $type  = $exec->memoryType->{$area});
+  return "" unless defined(my $value = $exec->lastAssignValue);
+  sprintf "[%d, %d, %s] = %d", $area, $addr, $type, $value;
+ }
 
 my $assembly;                                                                   # The current assembly
 
@@ -1387,10 +1402,10 @@ sub Subtract($$;$)                                                              
   $target
  }
 
-sub Alloc($)                                                                    # Create a new memory area and write its number into the address named by the target operand
+sub Array($)                                                                    # Create a new memory area and write its number into the address named by the target operand
  {my ($name) = @_;                                                              # Name of allocation
   my $t = &Var();
-  $assembly->instruction(action=>"alloc", target=>RefLeft($t), source=>$name);
+  $assembly->instruction(action=>"array", target=>RefLeft($t), source=>$name);
   $t;
  }
 
@@ -1418,18 +1433,17 @@ sub Confess()                                                                   
  }
 
 sub Dump(;$)                                                                    # Dump memory
- {my ($title) = @_;                                                             # Titl
+ {my ($title) = @_;                                                             # Title
   $assembly->instruction(action=>"dump", source=>$title);
- }
-
-sub Debug($)                                                                    # Debug
- {my ($source) = @_;                                                            # Debug setting
-  $assembly->instruction(action=>"debug", xSource($source));
  }
 
 sub Trace($)                                                                    # Trace
  {my ($source) = @_;                                                            # Trace setting
   $assembly->instruction(action=>"trace", xSource($source));
+ }
+
+sub TracePoints()                                                               # Enable trace points
+ {$assembly->instruction(action=>"tracePoints");
  }
 
 sub TracePoint()                                                                # Trace point - a point in the code where the flow of execution might change
@@ -1735,13 +1749,13 @@ sub Watch($)                                                                    
 sub Then(&)                                                                     # Then block
  {my ($t) = @_;                                                                 # Then block subroutine
   @_ == 1 or confess "One parameter";
-  (then => $t)
+  (then=>  $t)
  }
 
 sub Else(&)                                                                     # Else block
  {my ($e) = @_;                                                                 # Else block subroutine
   @_ == 1 or confess "One parameter";
-  (else => $e)
+  (else=>  $e)
  }
 
 sub Ifx($$$%)                                                                   # Execute then or else clause depending on whether two memory locations are equal.
@@ -1887,7 +1901,7 @@ sub For($$%)                                                                    
    }
  }
 
-sub ForArea($$$%)                                                               # For loop to process each element of the named area
+sub ForArray($$$%)                                                              # For loop to process each element of the named area
  {my ($area, $name, $block, %options) = @_;                                     # Area, area name, block, options
   my $e = AreaSize $area, $name;                                                # End
   my $s = 0;                                                                    # Start
@@ -1910,13 +1924,13 @@ sub ForArea($$$%)                                                               
 sub Good(&)                                                                     # A good ending
  {my ($good) = @_;                                                              # What to do on a good ending
   @_ == 1 or confess "One parameter";
-  (good => $good)
+  (good=>  $good)
  }
 
 sub Bad(&)                                                                      # A bad ending
  {my ($bad) = @_;                                                               # What to do on a bad ending
   @_ == 1 or confess "One parameter";
-  (bad => $bad)
+  (bad=>  $bad)
  }
 
 sub Block(&%)                                                                   # Block of code that can either be restarted or come to a good or a bad ending
@@ -1985,7 +1999,7 @@ use vars qw(@ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
 
 @ISA         = qw(Exporter);
 @EXPORT      = qw();
-@EXPORT_OK   = qw(AreaStructure Add Alloc Bad Block Call Clear Confess Debug Else Execute For Free Good Assert AssertEq AssertNe AssertGe AssertGt AssertLe AssertLt Dec Dump IfEq IfGe IfGt IfLe IfLt IfNe Ifx IfTrue IfFalse Inc Jeq Jge Jgt Jle Jlt Jmp Jne Label Mov Nop Not Out ParamsGet ParamsPut Pop Procedure Push Resize Return ReturnGet ReturnPut ShiftLeft ShiftRight ShiftUp ShiftDown Start Subtract Then Trace Var Watch);
+@EXPORT_OK   = qw(AreaStructure Add Array Bad Block Call Clear Confess Else Execute For ForArray Free Good Assert AssertEq AssertNe AssertGe AssertGt AssertLe AssertLt Dec Dump IfEq IfGe IfGt IfLe IfLt IfNe Ifx IfTrue IfFalse Inc Jeq Jge Jgt Jle Jlt Jmp Jne Label Mov Nop Not Out ParamsGet ParamsPut Pop Procedure Push Resize Return ReturnGet ReturnPut ShiftLeft ShiftRight ShiftUp ShiftDown Start Subtract Then Trace TracePoints Var Watch);
 %EXPORT_TAGS = (all=>[@EXPORT, @EXPORT_OK]);
 
 return 1 if caller;
@@ -2002,8 +2016,8 @@ if (1)                                                                          
  {my $e = execute->createInitialStackEntry->setMemoryType(1, 'aaa');
   my $s = $e->stackArea;
 
-  $e->setMemory( 1, 1, 'aaa', 99);
-  $e->setMemory($s, 2, $s,     1);
+  $e->set(RefLeft([ 1, 1, 'aaa']), 99);
+  $e->set(RefLeft([$s, 2, $s]),     1);
 
   is_deeply $e->right(RefRight [1,  \1,  'aaa']), 99;
   is_deeply $e->right(RefRight [1, \\2,  'aaa']), 99;
@@ -2159,7 +2173,7 @@ if (1)                                                                          
 #latest:;
 if (1)                                                                          #TMov
  {Start 1;
-  my $a = Alloc "aaa";
+  my $a = Array "aaa";
   Mov     [$a,  1, "aaa"],  11;
   Mov  1, [$a, \1, "aaa"];
   Out \1;
@@ -2233,7 +2247,7 @@ if (1)                                                                          
 #latest:;
 if (1)                                                                          #TPush #TPop
  {Start 1;
-  my $a = Alloc "aaa";
+  my $a = Array "aaa";
   Push $a, 1;
   Push $a, 2;
   my $c = Pop $a;
@@ -2243,24 +2257,24 @@ if (1)                                                                          
   Out $d;
   my $e = Execute;
   is_deeply $e->out,    [2, 1];
-  is_deeply $e->memory, { 1 => []};
+  is_deeply $e->memory, { 1=>  []};
  }
 
 #latest:;
 if (1)                                                                          #TAlloc #TMov
  {Start 1;
-  my $a = Alloc "alloc";
+  my $a = Array "alloc";
   my $b = Mov 99;
   my $c = Mov $a;
   Mov [$a, 0, 'alloc'], $b;
   Mov [$c, 1, 'alloc'], 2;
-  ok Execute(memory => { 1 => bless([99, 2], "alloc") });
+  ok Execute(memory=>  { 1=>  bless([99, 2], "alloc") });
  }
 
 #latest:;
 if (1)                                                                          #TFree
  {Start 1;
-  my $a = Alloc "node";
+  my $a = Array "node";
   Free $a, "aaa";
   my $e = Execute(suppressErrors=>1);
 
@@ -2273,7 +2287,7 @@ if (1)                                                                          
 #latest:;
 if (1)                                                                          #TFree
  {Start 1;
-  my $a = Alloc "node";
+  my $a = Array "node";
   Out $a;
   Mov [$a, 1, 'node'], 1;
   Mov [$a, 2, 'node'], 2;
@@ -2480,7 +2494,7 @@ if (1)                                                                          
 #latest:;
 if (1)                                                                          #TAlloc #TMov #TCall
  {Start 1;
-  my $a = Alloc "aaa";
+  my $a = Array "aaa";
   Dump "dddd";
   my $e = Execute(suppressErrors=>1);
   is_deeply $e->out, [
@@ -2497,7 +2511,7 @@ if (1)                                                                          
 #latest:;
 if (1)                                                                          #TAlloc #TMov #TCall
  {Start 1;
-  my $a = Alloc "aaa";
+  my $a = Array "aaa";
   my $i = Mov 1;
   my $v = Mov 11;
   ParamsPut 0, $a;
@@ -2521,7 +2535,7 @@ if (1)                                                                          
 #latest:;
 if (1)                                                                          #TAlloc #TClear
  {Start 1;
-  my $a = Alloc "aaa";
+  my $a = Array "aaa";
   Clear [$a, 10, 'aaa'];
   my $e = Execute;
   is_deeply $e->memory->{1}, [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
@@ -2597,7 +2611,7 @@ if (1)                                                                          
   Add 2,  1, 1;
   Add 2, \2, 0;
   my $e = Execute;
-  is_deeply $e->pointlessAssign, { 1 => 1 };
+  is_deeply $e->pointlessAssign, { 1=>  1 };
  }
 
 #latest:;
@@ -2635,7 +2649,7 @@ if (1)                                                                          
 #latest:;
 if (1)                                                                          #TLeArea #TLeAddress
  {Start 1;
-  my $a = Alloc "array";
+  my $a = Array "array";
   my $b = Mov 2;
   my $c = Mov 5;
   my $d = LeAddress $c;
@@ -2653,7 +2667,7 @@ if (1)                                                                          
 #latest:;
 if (1)                                                                          #TShiftUp
  {Start 1;
-  my $a = Alloc "array";
+  my $a = Array "array";
   Mov [$a, 0, 'array'], 0;
   Mov [$a, 1, 'array'], 1;
   Mov [$a, 2, 'array'], 2;
@@ -2665,7 +2679,7 @@ if (1)                                                                          
 #latest:;
 if (1)                                                                          #TShiftDown
  {Start 1;
-  my $a = Alloc "array";
+  my $a = Array "array";
   Mov [$a, 0, 'array'], 0;
   Mov [$a, 1, 'array'], 99;
   Mov [$a, 2, 'array'], 2;
@@ -2679,8 +2693,8 @@ if (1)                                                                          
 #latest:;
 if (1)                                                                          #TAlloc #TMov
  {Start 1;
-  my $a = Alloc "aaa";
-  my $b = Alloc "bbb";
+  my $a = Array "aaa";
+  my $b = Array "bbb";
   Mov [$a, 0, 'aaa'], $b;
   Mov [$b, 0, 'bbb'], 99;
   For 3, sub
@@ -2691,13 +2705,13 @@ if (1)                                                                          
    };
   my $e = Execute;
   is_deeply $e->analyzeExecutionResults(doubleWrite=>3), "#       36 instructions executed";
-  is_deeply $e->memory, { 1 => bless([2], "aaa"), 2 => bless([99], "bbb") };
+  is_deeply $e->memory, { 1=>  bless([2], "aaa"), 2=>  bless([99], "bbb") };
  }
 
 #latest:;
 if (1)                                                                          #TAlloc #TMov
  {Start 1;
-  my $a = Alloc 'aaa';
+  my $a = Array 'aaa';
   my $b = Mov 2;                                                                # Location to move to in a
   For 3, sub
    {my ($i, $check, $next, $end) = @_;
@@ -2706,19 +2720,19 @@ if (1)                                                                          
    };
   my $e = Execute;
   is_deeply $e->analyzeExecutionResults(doubleWrite=>3), "#       31 instructions executed";
-  is_deeply $e->memory, {1 => bless([undef, undef, 1], "aaa")};
+  is_deeply $e->memory, {1=>  bless([undef, undef, 1], "aaa")};
  }
 
 #latest:;
 if (1)                                                                          #TResize
  {Start 1;
-  my $a = Alloc 'aaa';
+  my $a = Array 'aaa';
   Mov [$a, 0, 'aaa'], 1;
   Mov [$a, 1, 'aaa'], 2;
   Mov [$a, 2, 'aaa'], 3;
   Resize $a, 2;
   my $e = Execute;
-  is_deeply $e->memory, {1 => [1, 2]};
+  is_deeply $e->memory, {1=>  [1, 2]};
  }
 
 #latest:;
@@ -2744,7 +2758,7 @@ if (1)                                                                          
     Mov 4, 4;
    };
   my $e = Execute(suppressErrors=>1);
-  is_deeply scalar($e->out->@*), 5;
+  is_deeply scalar($e->out->@*), 14;
  }
 
 #latest:;
@@ -2762,10 +2776,8 @@ if (1)                                                                          
 [
   "Change at watched area: 0 (stackArea), address: 1\n",
   "    1     6 mov",
-  "Current value: ",
-  2,
-  "New     value: ",
-  5,
+  "Current value: 2",
+  "New     value: 5",
   "-2=bless([], \"return\")",
   "-1=bless([], \"params\")",
   "0=bless([4, 2, 3], \"stackArea\")",
@@ -2773,15 +2785,15 @@ if (1)                                                                          
  }
 
 #latest:;
-if (1)                                                                          #TAreaSize #TForEach
+if (1)                                                                          #TAreaSize #TForArray
  {Start 1;
-  my $a = Alloc "aaa";
+  my $a = Array "aaa";
     Mov [$a, 0, "aaa"], 1;
     Mov [$a, 1, "aaa"], 22;
     Mov [$a, 2, "aaa"], 333;
   my $n = AreaSize $a, "aaa";
   Out $n;
-  ForArea $a, "aaa", sub
+  ForArray $a, "aaa", sub
    {my ($i, $e, $check, $next, $end) = @_;
     Out $i; Out $e;
    };
