@@ -1222,7 +1222,7 @@ sub Zero::Emulator::Code::execute($%)                                           
     out=> sub                                                                   # Write source as output to an array of words
      {my $i = $exec->currentInstruction;
       my $t = $exec->right($i->source);
-      lll $t if $exec->trace;
+      lll $t if $exec->trace and !$exec->suppressErrors;
       push $exec->out->@*, $t;
      },
 
@@ -1327,9 +1327,13 @@ sub Zero::Emulator::Code::execute($%)                                           
       if ($exec->trace)                                                         # Trace changes to memory
        {my $e = $exec->instructionCounts->{$i->number};                         # Execution count for this instruction
         my $f = $exec->formatTrace;
-        my $m = sprintf "%4d  %4d  %4d  %12s  %20s  at %s line %d\n",
-          $j, $i->number, $e, $i->action, $f, $i->file, $i->line;
-        say STDERR $m unless $exec->suppressErrors;
+        my $s = $exec->suppressErrors;
+        my $a = $i->action;
+        my $n = $i->number;
+        my $m =  sprintf "%4d  %4d  %4d  %12s  %20s", $j, $n, $e, $a, $f;
+           $m .= sprintf "  at %s line %d", $f, $i->file, $i->line unless $s;
+           $m .= "\n";
+        say STDERR $m unless $s;
         push $exec->out->@*, $m;
        }
 
@@ -1337,9 +1341,7 @@ sub Zero::Emulator::Code::execute($%)                                           
     confess "Out of instructions after $j"if $j >= maximumInstructionsToExecute;
    }
 
-  if (1)                                                                        # Free first stack frame
-   {$exec->freeSystemAreas($exec->calls->[0]);                                  # Free
-   }
+  $exec->freeSystemAreas($exec->calls->[0]);                                    # Free first stack frame
 
   $exec
  }                                                                              # Execution results
@@ -2795,9 +2797,30 @@ if (1)                                                                          
   Out $n;
   ForArray $a, "aaa", sub
    {my ($i, $e, $check, $next, $end) = @_;
+    IfGt $i, 1,
+    Then
+     {Trace 1;
+     };
     Out $i; Out $e;
    };
-  my $e = Execute(suppressErrors=>0);
+  Nop;
+  my $e = Execute(suppressErrors=>1);
   is_deeply $e->memory, {1=>[1, 22, 333]};
-  is_deeply $e->out,    [3, 0, 1, 1, 22, 2, 333];
+  is_deeply $e->out,
+ [3, 0, 1, 1, 22,
+  "Trace: 1",
+  "  37    14     1         trace  [0, 4, stackArea] = 333\n",
+  "  38    15     3         label  [0, 4, stackArea] = 333\n",
+  2,
+  "  39    16     3           out  [0, 4, stackArea] = 333\n",
+  333,
+  "  40    17     3           out  [0, 4, stackArea] = 333\n",
+  "  41    18     3         label  [0, 4, stackArea] = 333\n",
+  "  42    19     3           inc  [0, 4, stackArea] = 333\n",
+  "  43    20     3           jmp  [0, 4, stackArea] = 333\n",
+  "  44     9     4         label  [0, 4, stackArea] = 333\n",
+  "  45    10     4           jGe  [0, 4, stackArea] = 333\n",
+  "  46    21     1         label  [0, 4, stackArea] = 333\n",
+  "  47    22     1           nop  [0, 4, stackArea] = 333\n",
+];
  }
