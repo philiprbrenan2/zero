@@ -86,7 +86,7 @@ sub Zero::Emulator::Code::Instruction::contextString($$$)                       
   @_ == 3 or confess "Three parameters";
   my @s;
   push @s, $title;
-  if (!defined($exec->suppressErrors))
+  if (!defined($exec->suppressOutput))
    {for my $c($i->context->@*)
      {push @s, sprintf "    at %s line %d", $$c[0], $$c[1];
      }
@@ -523,7 +523,7 @@ sub Zero::Emulator::Execution::address($$$$)                                    
 sub Zero::Emulator::Execution::stackTrace($;$)                                  # Create a stack trace
  {my ($exec, $title) = @_;                                                      # Instruction trace occurred at, title
   my $i = $exec->currentInstruction;
-  my $s = $exec->suppressErrors;                                                # Suppress file and line numbers in dump to facilitate automated testing
+  my $s = $exec->suppressOutput;                                                # Suppress file and line numbers in dump to facilitate automated testing
   my @t;
   push @t, $i->contextString($exec, $title//"Stack trace");
 
@@ -546,7 +546,7 @@ sub Zero::Emulator::Execution::stackTraceAndExit($$%)                           
   push $exec->out->@*, @t;
   my $t = join "\n", @t;
 
-  if (!defined $exec->suppressErrors)
+  if (!defined $exec->suppressOutput)
    {confess $t if $options{confess};
     say STDERR $t;
    }
@@ -842,7 +842,7 @@ sub Zero::Emulator::Execution::assign($$$)                                      
     push @s, join ' ', "Current value:", $exec->memory->{$a}[$l];
     push @s, join ' ', "New     value:", $value;
     push @s, $exec->dumpMemory;
-    say STDERR join "\n", @s unless $exec->suppressErrors;
+    say STDERR join "\n", @s unless $exec->suppressOutput;
     push $exec->out->@*, @s;
    }
 
@@ -898,7 +898,7 @@ sub execute(%)                                                                  
     out=>                   [],                                                 # The out channel
     doubleWrite=>           {},                                                 # Source of double writes {instruction number} to count - an existing value was overwritten before it was used
     pointlessAssign=>       {},                                                 # Location already has the specified value
-    suppressErrors=>        $options{suppressErrors},
+    suppressOutput=>        $options{suppressOutput},
     stopOnError=>           $options{stopOnError},                              # Stop on non fatal errors if true
     trace=>                 $options{trace},                                    # Trace all statements
     tracePoints=>           undef,                                              # Trace changes in execution flow
@@ -1079,7 +1079,7 @@ sub Zero::Emulator::Code::execute($%)                                           
       my $s = $exec->right($i->source) ? 1 : 0;
       $exec->trace = $s;
       my $m = join ' ', "Trace: $s";
-      say STDERR           $m unless $exec->suppressErrors;
+      say STDERR           $m unless $exec->suppressOutput;
       push $exec->out->@*, $m;
      },
 
@@ -1088,14 +1088,14 @@ sub Zero::Emulator::Code::execute($%)                                           
       my $s = $exec->right($i->source) ? 1 : 0;
       $exec->tracePoints = $s;
       my $m = "TracePoints: $s";
-      say STDERR           $m unless $exec->suppressErrors;
+      say STDERR           $m unless $exec->suppressOutput;
       push $exec->out->@*, $m;
      },
 
     tracePoint=> sub                                                            # Trace point
      {return unless $exec->tracePoints;
       my @s = $exec->stackTrace("Trace");
-      say STDERR join "\n", @s unless $exec->suppressErrors;
+      say STDERR join "\n", @s unless $exec->suppressOutput;
       push $exec->out->@*, @s;
      },
 
@@ -1111,7 +1111,7 @@ sub Zero::Emulator::Code::execute($%)                                           
       push @m, $exec->dumpMemory;
       push @m, $exec->stackTrace;
 
-      say STDERR join "\n", @m unless $exec->suppressErrors;
+      say STDERR join "\n", @m unless $exec->suppressOutput;
       push $exec->out->@*, @m;
      },
 
@@ -1123,7 +1123,7 @@ sub Zero::Emulator::Code::execute($%)                                           
       push @m, dump($exec->memory->{$a});
       push @m, $exec->stackTrace;
 
-      say STDERR join "\n", @m unless $exec->suppressErrors;
+      say STDERR join "\n", @m unless $exec->suppressOutput;
       push $exec->out->@*, @m;
      },
 
@@ -1241,7 +1241,7 @@ sub Zero::Emulator::Code::execute($%)                                           
     out=> sub                                                                   # Write source as output to an array of words
      {my $i = $exec->currentInstruction;
       my $t = $exec->right($i->source);
-      lll $t unless $exec->suppressErrors;
+      lll $t unless $exec->suppressOutput;
       push $exec->out->@*, $t;
      },
 
@@ -1347,7 +1347,7 @@ sub Zero::Emulator::Code::execute($%)                                           
       if ($exec->trace)                                                         # Trace changes to memory
        {my $e = $exec->instructionCounts->{$i->number};                         # Execution count for this instruction
         my $f = $exec->formatTrace;
-        my $s = $exec->suppressErrors;
+        my $s = $exec->suppressOutput;
         my $a = $i->action;
         my $n = $i->number;
         my $m =  sprintf "%4d  %4d  %4d  %12s  %20s", $j, $n, $e, $a, $f;
@@ -2064,7 +2064,7 @@ if (1)                                                                          
 if (1)                                                                          #TOut #TStart
  {Start 1;
   Out "hello World";
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   is_deeply $e->out, ["hello World"];
  }
 
@@ -2081,7 +2081,7 @@ if (1)                                                                          
   my $a = Mov 2;
   Out $a;
 
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   is_deeply $e->out, [2];
  }
 
@@ -2092,7 +2092,7 @@ if (1)
   my $b = Mov  $$a;
   my $c = Mov  \$b;
   Out $c;
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   is_deeply $e->out, [3];
  }
 
@@ -2101,7 +2101,7 @@ if (1)                                                                          
  {Start 1;
   my $a = Add 3, 2;
   Out  $a;
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   is_deeply $e->out, [5];
  }
 
@@ -2110,7 +2110,7 @@ if (1)                                                                          
  {Start 1;
   my $a = Subtract 4, 2;
   Out $a;
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   is_deeply $e->out, [2];
  }
 
@@ -2120,7 +2120,7 @@ if (1)                                                                          
   my $a = Mov 3;
   Dec $a;
   Out $a;
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   is_deeply $e->out, [2];
  }
 
@@ -2130,7 +2130,7 @@ if (1)                                                                          
   my $a = Mov 3;
   Inc $a;
   Out $a;
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   is_deeply $e->out, [4];
  }
 
@@ -2143,7 +2143,7 @@ if (1)                                                                          
   Out $a;
   Out $b;
   Out $c;
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   is_deeply $e->out, [3, "", 1];
  }
 
@@ -2153,7 +2153,7 @@ if (1)                                                                          
   my $a = Mov 1;
   ShiftLeft $a, $a;
   Out $a;
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   is_deeply $e->out, [2];
  }
 
@@ -2163,7 +2163,7 @@ if (1)                                                                          
   my $a = Mov 4;
   ShiftRight $a, 1;
   Out $a;
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   is_deeply $e->out, [2];
  }
 
@@ -2176,7 +2176,7 @@ if (1)                                                                          
   setLabel($a);
     Out  2;
   setLabel($b);
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   is_deeply $e->out, [2];
  }
 
@@ -2197,7 +2197,7 @@ if (1)                                                                          
   setLabel($c);
     Out  2;
   setLabel($d);
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   is_deeply $e->out, [2,1];
  }
 
@@ -2209,7 +2209,7 @@ if (1)                                                                          
     Out \0;
     Inc \0;
   Jlt $a, \0, 10;
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   is_deeply $e->out, [0..9];
  }
 
@@ -2220,7 +2220,7 @@ if (1)                                                                          
   Mov     [$a,  1, "aaa"],  11;
   Mov  1, [$a, \1, "aaa"];
   Out \1;
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   is_deeply $e->out, [11];
  }
 
@@ -2232,7 +2232,7 @@ if (1)                                                                          
     Return;
    };
   Call $w;
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   is_deeply $e->out, ["aaa"];
  }
 
@@ -2246,7 +2246,7 @@ if (1)                                                                          
    };
   ParamsPut 0, 'bbb';
   Call $w;
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   is_deeply $e->out, ["bbb"];
  }
 
@@ -2260,7 +2260,7 @@ if (1)                                                                          
   Call $w;
   ReturnGet \0, 0;
   Out \0;
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   is_deeply $e->out, ["ccc"];
  }
 
@@ -2277,7 +2277,7 @@ if (1)                                                                          
   Call $add;
   my $c = ReturnGet 0;
   Out $c;
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   is_deeply $e->out, [4];
  }
 
@@ -2288,7 +2288,7 @@ if (1)                                                                          
    {Confess;
    };
   Call $c;
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   is_deeply $e->out, ["Confess at:", "    2     3 confess", "    1     6 call"];
  }
 
@@ -2303,7 +2303,7 @@ if (1)                                                                          
 
   Out $c;
   Out $d;
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   is_deeply $e->out,    [2, 1];
   is_deeply $e->memory, { 1=>  []};
  }
@@ -2324,7 +2324,7 @@ if (1)                                                                          
  {Start 1;
   my $a = Array "node";
   Free $a, "aaa";
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
 
   is_deeply $e->out, [
   "Wrong name: aaa for area with name: node",
@@ -2342,7 +2342,7 @@ if (1)                                                                          
   Mov 1, [$a, \1, 'node'];
   Dump "dddd";
   Free $a, "node";
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
 
   is_deeply $e->out, [
   1,
@@ -2365,7 +2365,7 @@ if (1)                                                                          
   Out $c;
   Out $b;
   Out $a;
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   is_deeply $e->out, [qw(C B A)];
  }
 
@@ -2380,7 +2380,7 @@ if (1)                                                                          
   IfLt $a, $a, Then {Out "Lt"};
   IfGe $a, $a, Then {Out "Ge"};
   IfGt $a, $a, Then {Out "Gt"};
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   is_deeply $e->out, ["Eq", "Le", "Ge"];
  }
 
@@ -2395,7 +2395,7 @@ if (1)                                                                          
   IfLt $a, $b, Then {Out "Lt"};
   IfGe $a, $b, Then {Out "Ge"};
   IfGt $a, $b, Then {Out "Gt"};
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   is_deeply $e->out, ["Ne", "Le", "Lt"];
  }
 
@@ -2410,7 +2410,7 @@ if (1)                                                                          
   IfLt $b, $a, Then {Out "Lt"};
   IfGe $b, $a, Then {Out "Ge"};
   IfGt $b, $a, Then {Out "Gt"};
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   is_deeply $e->out, ["Ne", "Ge", "Gt"];
  }
 
@@ -2424,7 +2424,7 @@ if (1)                                                                          
   Else
    {Out 0
    };
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   is_deeply $e->out, [1];
  }
 
@@ -2438,7 +2438,7 @@ if (1)                                                                          
   Else
    {Out 0
    };
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   is_deeply $e->out, [0];
  }
 
@@ -2449,7 +2449,7 @@ if (1)                                                                          
    {my ($i) = @_;
     Out $i;
    };
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   is_deeply $e->out, [0..9];
  }
 
@@ -2460,7 +2460,7 @@ if (1)                                                                          
    {my ($i) = @_;
     Out $i;
    }, reverse=>1;
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   is_deeply $e->out, [reverse 0..9];
  }
 
@@ -2471,7 +2471,7 @@ if (1)                                                                          
    {my ($i) = @_;
     Out $i;
    };
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   is_deeply $e->out, [2..9];
  }
 
@@ -2479,7 +2479,7 @@ if (1)                                                                          
 if (1)                                                                          #TAssert
  {Start 1;
   Assert;
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   is_deeply $e->out, ["Assert failed", "    1     1 assert"];
  }
 
@@ -2488,7 +2488,7 @@ if (1)                                                                          
  {Start 1;
   Mov 0, 1;
   AssertEq \0, 2;
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   is_deeply $e->out, ["Assert 1 == 2 failed", "    1     2 assertEq"];
  }
 
@@ -2497,7 +2497,7 @@ if (1)                                                                          
  {Start 1;
   Mov 0, 1;
   AssertNe \0, 1;
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   is_deeply $e->out, ["Assert 1 != 1 failed", "    1     2 assertNe"];
  }
 
@@ -2506,7 +2506,7 @@ if (1)                                                                          
  {Start 1;
   Mov 0, 1;
   AssertLt \0, 0;
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   is_deeply $e->out, ["Assert 1 <  0 failed", "    1     2 assertLt"];
  }
 
@@ -2515,7 +2515,7 @@ if (1)                                                                          
  {Start 1;
   Mov 0, 1;
   AssertLe \0, 0;
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   is_deeply $e->out, ["Assert 1 <= 0 failed", "    1     2 assertLe"];
  }
 
@@ -2524,7 +2524,7 @@ if (1)                                                                          
  {Start 1;
   Mov 0, 1;
   AssertGt \0, 2;
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   is_deeply $e->out, ["Assert 1 >  2 failed", "    1     2 assertGt"];
  }
 
@@ -2533,7 +2533,7 @@ if (1)                                                                          
  {Start 1;
   Mov 0, 1;
   AssertGe \0, 2;
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   is_deeply $e->out, ["Assert 1 >= 2 failed", "    1     2 assertGe"];
  }
 
@@ -2544,7 +2544,7 @@ if (1)                                                                          
   my $b = Mov 2;
   Out $a;
   Out $b;
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   is_deeply $e->out, [1..2];
  }
 
@@ -2553,7 +2553,7 @@ if (1)                                                                          
  {Start 1;
   my $a = Array "aaa";
   Dump "dddd";
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   is_deeply $e->out, [
   "dddd",
   "-2=bless([], \"return\")",
@@ -2585,7 +2585,7 @@ if (1)                                                                          
   my $V = Mov [$a, \$i, 'aaa'];
   AssertEq $v, $V;
   Out [$a, \$i, 'aaa'];
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   is_deeply $e->out, [11];
  }
 
@@ -2594,7 +2594,7 @@ if (1)                                                                          
  {Start 1;
   my $a = Array "aaa";
   Clear [$a, 10, 'aaa'];
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   is_deeply $e->memory->{1}, [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
  }
 
@@ -2613,7 +2613,7 @@ if (1)                                                                          
    {Out 3;
    };
   Out 4;
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   is_deeply $e->out, [1,2,4];
  }
 
@@ -2632,7 +2632,7 @@ if (1)                                                                          
    {Out 3;
    };
   Out 4;
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   is_deeply $e->out, [1,3,4];
  }
 
@@ -2646,7 +2646,7 @@ if (1)                                                                          
   Then
    {Out 99;
    };
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   is_deeply $e->out, [1..10];
   ok $e->analyzeExecutionResults(analyze=>3) =~ m(#       12 instructions executed);
  }
@@ -2659,7 +2659,7 @@ if (1)                                                                          
   Mov 3, 1;
   Mov 3, 1;
   Mov 1, 1;
-  my $e = Execute(suppressErrors=>0);
+  my $e = Execute(suppressOutput=>0);
   is_deeply keys($e->doubleWrite->%*), 1;                                       # In area 0, variable 1 was first written by instruction 0 then again by instruction 1 once.
   #say STDERR $e->analyzeExecutionResultsDoubleWrite(doubleWrite=>1);
  }
@@ -2669,7 +2669,7 @@ if (1)                                                                          
  {Start 1;
   Add 2,  1, 1;
   Add 2, \2, 0;
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   is_deeply $e->pointlessAssign, { 1=>  1 };
  }
 
@@ -2678,7 +2678,7 @@ if (0)                                                                          
  {Start 1;
   my $a = Mov 1;
   my $b = Mov $a;
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   ok $e->notRead->{0}{1} == 1;                                                  # Area 0 == stack, variable 1 == $b generated by instruction 1
  }
 
@@ -2692,7 +2692,7 @@ if (1)                                                                          
   Call $set;
   ParamsPut 0, 1;
   Call $set;
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   is_deeply $e->out, [];
  }
 
@@ -2700,7 +2700,7 @@ if (1)                                                                          
 if (1)                                                                          # invalid address
  {Start 1;
   Mov 1, \0;
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   my $t = join "\n", $e->out->@*;
   ok $t =~ m"Cannot assign an undefined value";
  }
@@ -2718,7 +2718,7 @@ if (1)                                                                          
   Mov [$a, \$b, 'array'], 22;
   Mov [$a, \$c, 'array'], 33;
   Mov [$f, \$d, 'array'], 44;
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   is_deeply $e->out,    [2,1];
   is_deeply $e->memory, {1=>[undef, undef, 44, undef, undef, 33]};
  }
@@ -2731,7 +2731,7 @@ if (1)                                                                          
   Mov [$a, 1, 'array'], 1;
   Mov [$a, 2, 'array'], 2;
   ShiftUp [$a, 1, 'array'], 99;
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   is_deeply $e->memory, {1=>[0, 99, 1, 2]};
  }
 
@@ -2744,7 +2744,7 @@ if (1)                                                                          
   Mov [$a, 2, 'array'], 2;
   my $b = ShiftDown [$a, \1, 'array'];
   Out $b;
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   is_deeply $e->memory, {1=>[0, 2]};
   is_deeply $e->out,    [99];
  }
@@ -2762,7 +2762,7 @@ if (1)                                                                          
     my $d = Mov [$c, \0, 'bbb'];
     Jeq $next, $d, $d;
    };
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   is_deeply $e->analyzeExecutionResults(doubleWrite=>3), "#       36 instructions executed";
   is_deeply $e->memory, { 1=>  bless([2], "aaa"), 2=>  bless([99], "bbb") };
  }
@@ -2777,7 +2777,7 @@ if (1)                                                                          
     Mov [$a, \$b, 'aaa'], 1;
     Jeq $next, [$a, \$b, 'aaa'], 1;
    };
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   is_deeply $e->analyzeExecutionResults(doubleWrite=>3), "#       31 instructions executed";
   is_deeply $e->memory, {1=>  bless([undef, undef, 1], "aaa")};
  }
@@ -2790,7 +2790,7 @@ if (1)                                                                          
   Mov [$a, 1, 'aaa'], 2;
   Mov [$a, 2, 'aaa'], 3;
   Resize $a, 2;
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   is_deeply $e->memory, {1=>  [1, 2]};
  }
 
@@ -2816,7 +2816,7 @@ if (1)                                                                          
    {Mov 3, 3;
     Mov 4, 4;
    };
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   is_deeply scalar($e->out->@*), 14;
  }
 
@@ -2830,7 +2830,7 @@ if (1)                                                                          
   Mov $a, 4;
   Mov $b, 5;
   Mov $c, 6;
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   is_deeply $e->out,
 [
   "Change at watched area: 0 (stackArea), address: 1\n",
@@ -2861,7 +2861,7 @@ if (1)                                                                          
     Out $i; Out $e;
    };
   Nop;
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
   is_deeply $e->memory, {1=>[1, 22, 333]};
 
   is_deeply $e->out,
@@ -2891,7 +2891,7 @@ if (1)                                                                          
     Mov [$a, 1, "aaa"], 22;
     Mov [$a, 2, "aaa"], 333;
   DumpArray $a, "AAAA";
-  my $e = Execute(suppressErrors=>1);
+  my $e = Execute(suppressOutput=>1);
 
   is_deeply $e->out,
  ["AAAA",
