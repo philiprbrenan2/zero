@@ -56,6 +56,9 @@ jobs:
     - name: Zero
       run: |
         perl lib/Zero/Emulator.pm
+        perl lib/Zero/NwayTree.pm
+        perl testEmulator.pl
+        perl testNWayTree.pl
 END
 
 lll "Ubuntu work flow for $repo ", writeFileUsingSavedToken($user, $repo, $wf, $y);
