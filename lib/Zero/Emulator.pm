@@ -498,6 +498,7 @@ sub Zero::Emulator::Execution::set($$$)                                         
   $exec->lastAssignArea    = $a;
   $exec->lastAssignAddress = $l;
   $exec->lastAssignValue   = $value;
+  $exec->lastAssignBefore  = $$m{$a}[$l];
 
   $$m{$a}[$l] = $value;
  }
@@ -909,6 +910,7 @@ sub execute(%)                                                                  
     lastAssignArea=>        undef,                                              # Last assignment performed - area
     lastAssignAddress=>     undef,                                              # Last assignment performed - address
     lastAssignValue=>       undef,                                              # Last assignment performed - value
+    lastAssignBefore=>      undef,                                              # Prior value of memory area before assignment
    );
  }
 
@@ -1110,16 +1112,16 @@ sub Zero::Emulator::Code::execute($%)                                           
 
     dec=> sub                                                                   # Decrement locations in memory. The first address is incremented by 1, the next by two, etc.
      {my $i = $exec->currentInstruction;
-      $exec->leftSuppress($i->target);                                          # Make sure there is something to decrement
+      my $T = $exec->right($i->target);
       my $t = $exec->left($i->target);
-      ${$t->at($exec)}--;
+      $exec->set($t, $T-1);
      },
 
     inc=> sub                                                                   # Increment locations in memory. The first address is incremented by 1, the next by two, etc.
      {my $i = $exec->currentInstruction;
-      $exec->leftSuppress($i->target);                                          # Make sure there is something to increment
+      my $T = $exec->right($i->target);
       my $t = $exec->left($i->target);
-      ${$t->at($exec)}++;
+      $exec->set($t, $T+1);
      },
 
     jmp=> sub                                                                   # Jump to the target address
@@ -1318,6 +1320,7 @@ sub Zero::Emulator::Code::execute($%)                                           
       $exec->stackTraceAndExit(qq(Invalid instruction: "$a"\n))
         unless my $c = $instructions{$a};
 
+      $exec->lastAssignArea = $exec->lastAssignAddress = $exec->lastAssignValue = undef;
       $c->($i);                                                                 # Execute instruction
 
       $exec->instructionCounts->{$i->number}++;                                 # Execution count by actual instruction
@@ -1352,7 +1355,9 @@ sub Zero::Emulator::Execution::formatTrace($)                                   
   return "" unless defined(my $addr  = $exec->lastAssignAddress);
   return "" unless defined(my $type  = $exec->memoryType->{$area});
   return "" unless defined(my $value = $exec->lastAssignValue);
-  sprintf "[%d, %d, %s] = %d", $area, $addr, $type, $value;
+  my $B = $exec->lastAssignBefore;
+  my $b = $B ? " was $B" : "";
+  sprintf "[%d, %d, %s] = %d$b", $area, $addr, $type, $value;
  }
 
 my $assembly;                                                                   # The current assembly
@@ -1448,8 +1453,9 @@ sub TracePoints()                                                               
  {$assembly->instruction(action=>"tracePoints");
  }
 
-sub TracePoint()                                                                # Trace point - a point in the code where the flow of execution might change
- {$assembly->instruction(action=>"tracePoint");
+sub TracePoint(%)                                                               # Trace point - a point in the code where the flow of execution might change
+ {my (%options) = @_;                                                           # Parameters
+  $assembly->instruction(action=>"tracePoint", %options);
  }
 
 sub Dec($)                                                                      # Decrement the target
@@ -1767,11 +1773,11 @@ sub Ifx($$$%)                                                                   
    {my $else = label;
     my $end  = label;
     &$cmp($else, $a, $b);
-      TracePoint;
+      TracePoint level=>2;
       &{$options{then}};
       Jmp $end;
     setLabel($else);
-      TracePoint;
+      TracePoint level=>2;
       &{$options{else}};
     setLabel($end);
    }
@@ -1876,7 +1882,7 @@ sub For($$%)                                                                    
     my $i = Mov $s;
       setLabel($Check);                                                         # Check
       Jge  $End, $i, $e;
-        TracePoint;
+        TracePoint level=>2;
         &$block($i, $Check, $Next, $End);                                       # Block
       setLabel($Next);
       Inc $i;                                                                   # Next
@@ -1894,7 +1900,7 @@ sub For($$%)                                                                    
     Subtract $i, $s;
       setLabel($Check);                                                         # Check
       Jlt  $End, $i, $e;
-        TracePoint;
+        TracePoint level=>2;
         &$block($i, $Check, $Next, $End);                                       # Block
       setLabel($Next);
       Dec $i;                                                                   # Next
@@ -1914,7 +1920,7 @@ sub ForArray($$$%)                                                              
   my $i = Mov $s;
     setLabel($Check);                                                           # Check
     Jge  $End, $i, $e;
-      TracePoint;
+      TracePoint level=>2;
       my $a = Mov [$area, \$i, $name];
       &$block($i, $a, $Check, $Next, $End);                                     # Block
     setLabel($Next);
@@ -1944,20 +1950,20 @@ sub Block(&%)                                                                   
 
   setLabel($Start);                                                             # Start
 
-  TracePoint;
+  TracePoint level=>2;
   &$block($Start, $Good, $Bad, $End);                                           # Code of block
 
   if ($g)                                                                       # Good
    {Jmp $End;
     setLabel($Good);
-    TracePoint;
+    TracePoint level=>2;
     &$g;
    }
 
   if ($b)                                                                       # Bad
    {Jmp $End;
     setLabel($Bad);
-    TracePoint;
+    TracePoint level=>2;
     &$b;
    }
   setLabel($End);                                                               # End
@@ -2806,21 +2812,22 @@ if (1)                                                                          
   Nop;
   my $e = Execute(suppressErrors=>1);
   is_deeply $e->memory, {1=>[1, 22, 333]};
+say STDERR "AAAA\n", dump($e->out);
   is_deeply $e->out,
  [3, 0, 1, 1, 22,
   "Trace: 1",
-  "  37    14     1         trace  [0, 4, stackArea] = 333\n",
-  "  38    15     3         label  [0, 4, stackArea] = 333\n",
+  "  37    14     1         trace                      \n",
+  "  38    15     3         label                      \n",
   2,
-  "  39    16     3           out  [0, 4, stackArea] = 333\n",
+  "  39    16     3           out                      \n",
   333,
-  "  40    17     3           out  [0, 4, stackArea] = 333\n",
-  "  41    18     3         label  [0, 4, stackArea] = 333\n",
-  "  42    19     3           inc  [0, 4, stackArea] = 333\n",
-  "  43    20     3           jmp  [0, 4, stackArea] = 333\n",
-  "  44     9     4         label  [0, 4, stackArea] = 333\n",
-  "  45    10     4           jGe  [0, 4, stackArea] = 333\n",
-  "  46    21     1         label  [0, 4, stackArea] = 333\n",
-  "  47    22     1           nop  [0, 4, stackArea] = 333\n",
+  "  40    17     3           out                      \n",
+  "  41    18     3         label                      \n",
+  "  42    19     3           inc  [0, 3, stackArea] = 3 was 2\n",
+  "  43    20     3           jmp                      \n",
+  "  44     9     4         label                      \n",
+  "  45    10     4           jGe                      \n",
+  "  46    21     1         label                      \n",
+  "  47    22     1           nop                      \n",
 ];
  }
