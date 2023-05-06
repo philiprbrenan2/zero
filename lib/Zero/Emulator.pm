@@ -1331,7 +1331,7 @@ sub Zero::Emulator::Code::execute($%)                                           
         my $a = $i->action;
         my $n = $i->number;
         my $m =  sprintf "%4d  %4d  %4d  %12s  %20s", $j, $n, $e, $a, $f;
-           $m .= sprintf "  at %s line %d", $f, $i->file, $i->line unless $s;
+           $m .= sprintf "  at %s line %d", $i->file, $i->line unless $s;
            $m .= "\n";
         say STDERR $m unless $s;
         push $exec->out->@*, $m;
