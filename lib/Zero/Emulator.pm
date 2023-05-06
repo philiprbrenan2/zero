@@ -13,7 +13,7 @@ use strict;
 use Carp qw(cluck confess);
 use Data::Dump qw(dump);
 use Data::Table::Text qw(:all);
-eval "use Test::More tests=>71" unless caller;
+eval "use Test::More tests=>72" unless caller;
 
 makeDieConfess;
 
@@ -1115,6 +1115,18 @@ sub Zero::Emulator::Code::execute($%)                                           
       push $exec->out->@*, @m;
      },
 
+    dumpArray=> sub                                                             # Dump array in memory
+     {my $i = $exec->currentInstruction;
+      my @m;
+      push @m, $i->source // "Array dump";
+      my $a = $exec->right($i->target);
+      push @m, dump($exec->memory->{$a});
+      push @m, $exec->stackTrace;
+
+      say STDERR join "\n", @m unless $exec->suppressErrors;
+      push $exec->out->@*, @m;
+     },
+
     dec=> sub                                                                   # Decrement locations in memory. The first address is incremented by 1, the next by two, etc.
      {my $i = $exec->currentInstruction;
       my $T = $exec->right($i->target);
@@ -1229,7 +1241,6 @@ sub Zero::Emulator::Code::execute($%)                                           
     out=> sub                                                                   # Write source as output to an array of words
      {my $i = $exec->currentInstruction;
       my $t = $exec->right($i->source);
-confess unless $exec->suppressErrors;
       lll $t unless $exec->suppressErrors;
       push $exec->out->@*, $t;
      },
@@ -1448,6 +1459,11 @@ sub Confess()                                                                   
 sub Dump(;$)                                                                    # Dump memory
  {my ($title) = @_;                                                             # Title
   $assembly->instruction(action=>"dump", source=>$title);
+ }
+
+sub DumpArray($;$)                                                              # Dump an array
+ {my ($target, $title) = @_;                                                    # Array to dump, title of dump
+  $assembly->instruction(action=>"dumpArray", target=>RefRight($target), source=>$title);
  }
 
 sub Trace($)                                                                    # Trace
@@ -2862,5 +2878,23 @@ if (1)                                                                          
   "  45    10     4           jGe                      \n",
   "  46    21     1         label                      \n",
   "  47    22     1           nop                      \n",
+];
+ }
+
+#latest:;
+if (1)                                                                          #TDumpArray
+ {Start 1;
+  my $a = Array "aaa";
+    Mov [$a, 0, "aaa"], 1;
+    Mov [$a, 1, "aaa"], 22;
+    Mov [$a, 2, "aaa"], 333;
+  DumpArray $a, "AAAA";
+  my $e = Execute(suppressErrors=>1);
+
+  is_deeply $e->out,
+ ["AAAA",
+  "bless([1, 22, 333], \"aaa\")",
+  "Stack trace",
+  "    1     5 dumpArray",
 ];
  }
